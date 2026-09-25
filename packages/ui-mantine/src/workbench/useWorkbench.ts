@@ -223,8 +223,10 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   const commitSchema = useCallback(
     async (next: GridSchema): Promise<boolean> => {
       try {
+        // Wire contract: `updateSchema` takes the CURRENT schemaVersion and the server bumps it
+        // (the local edit helpers bump it for the in-memory / onSchemaChange path).
         const persisted = client?.updateSchema
-          ? await client.updateSchema(next)
+          ? await client.updateSchema({ ...next, schemaVersion: schemaRef.current?.schemaVersion ?? next.schemaVersion })
           : onSchemaChangeRef.current
             ? await onSchemaChangeRef.current(next)
             : next;

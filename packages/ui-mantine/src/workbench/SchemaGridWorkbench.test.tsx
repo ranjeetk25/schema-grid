@@ -16,7 +16,7 @@ import {
   createFixtureSchema,
 } from "@ranjeetk25/schema-grid-core/testing";
 import { createDataSourceHandler } from "@ranjeetk25/schema-grid-core/wire";
-import { act, configure, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithMantine } from "../test/render";
 import { SchemaGridWorkbench } from "./SchemaGridWorkbench";
@@ -59,7 +59,14 @@ function gridClient(caps?: Partial<DataSourceCapabilities>) {
     const input = JSON.parse(String(init?.body)) as unknown;
     if (op === "getSchema") return jsonResponse(200, { data: schema });
     if (op === "updateSchema") {
-      schema = { ...(input as GridSchema), schemaVersion: schema.schemaVersion + 1 };
+      // Wire contract (like createGridRegistry): the input carries the CURRENT version; the server bumps it.
+      const next = input as GridSchema;
+      if (next.schemaVersion !== schema.schemaVersion) {
+        return jsonResponse(409, {
+          error: { code: "SCHEMA_CONFLICT", message: "stale", details: { currentVersion: schema.schemaVersion } },
+        });
+      }
+      schema = { ...next, schemaVersion: schema.schemaVersion + 1 };
       return jsonResponse(200, { data: schema });
     }
     const result = await handle(op, input);
@@ -302,6 +309,25 @@ describe("<SchemaGridWorkbench>", () => {
     expect(ops.filter((op) => op === "getSchema")).toHaveLength(1);
     expect(ops).toContain("capabilities");
     expect(await screen.findByRole("button", { name: "Add column" })).toBeInTheDocument();
+  });
+
+  it("adding a column through a grid client sends the current schemaVersion (the server bumps it)", async () => {
+    const { client, fetch } = gridClient();
+    const { container } = renderWithMantine(
+      <SchemaGridWorkbench client={client} user={ADMIN} mode="client" viewStore={createMemoryViewStore()} height={400} gridProps={TEST_GRID} />,
+    );
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    fireEvent.click(await screen.findByRole("button", { name: "Add column" }));
+    const dialog = await screen.findByRole("dialog", { name: "New column" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Name" }), { target: { value: "Follow up" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create column" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New column" })).toBeNull());
+    const sent = fetch.mock.calls.filter((c) => String(c[0]).endsWith("/updateSchema"));
+    expect(sent).toHaveLength(1);
+    const body = JSON.parse(String(sent[0]?.[1]?.body)) as GridSchema;
+    expect(body.schemaVersion).toBe(createFixtureSchema().schemaVersion);
+    expect(body.columns.map((c) => c.label)).toContain("Follow up");
+    expect(await client.getSchema()).toMatchObject({ schemaVersion: createFixtureSchema().schemaVersion + 1 });
   });
 
   it("the client's wire capabilities drive features", async () => {
