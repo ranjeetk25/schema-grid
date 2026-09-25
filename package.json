@@ -1,6 +1,7 @@
 {
   "name": "schema-grid",
   "private": true,
+  "license": "MIT",
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
@@ -10,6 +11,9 @@
     "lint": "biome lint .",
     "format:check": "biome format .",
     "changeset": "changeset",
+    "version": "changeset version && bun install --lockfile-only",
+    "release": "bun run build && bun scripts/verify-pack.ts && bun scripts/prepare-publish.ts --write && bun scripts/prepare-publish.ts --check && changeset publish",
+    "verify:pack": "bun scripts/verify-pack.ts",
     "db:up": "docker compose up -d --wait mysql",
     "db:down": "docker compose down",
     "dev:api": "bun run --cwd apps/demo-api dev",

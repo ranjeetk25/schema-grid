@@ -1,6 +1,34 @@
 {
   "name": "@masai/schema-grid-ag-grid",
   "version": "0.0.1",
+  "description": "AG Grid Community binding for Schema Grid: column compiler, editors, range selection, clipboard and fill handle.",
+  "license": "MIT",
+  "author": "Masai School",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranjeetk25/schema-grid.git",
+    "directory": "packages/ag-grid"
+  },
+  "homepage": "https://github.com/ranjeetk25/schema-grid/tree/main/packages/ag-grid#readme",
+  "bugs": {
+    "url": "https://github.com/ranjeetk25/schema-grid/issues"
+  },
+  "keywords": [
+    "ag-grid",
+    "data-grid",
+    "react",
+    "spreadsheet",
+    "range-selection",
+    "clipboard",
+    "schema-grid"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -32,7 +60,7 @@
       "require": "./dist/sync/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",

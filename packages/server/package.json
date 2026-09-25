@@ -1,6 +1,35 @@
 {
   "name": "@masai/schema-grid-server",
   "version": "0.0.1",
+  "description": "Server side of Schema Grid: permission-checked Drizzle/MySQL queries, change feed, import/export jobs and HTTP adapters.",
+  "license": "MIT",
+  "author": "Masai School",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranjeetk25/schema-grid.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/ranjeetk25/schema-grid/tree/main/packages/server#readme",
+  "bugs": {
+    "url": "https://github.com/ranjeetk25/schema-grid/issues"
+  },
+  "keywords": [
+    "data-grid",
+    "drizzle",
+    "mysql",
+    "server",
+    "permissions",
+    "express",
+    "hono",
+    "schema-grid"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -32,7 +61,7 @@
       "require": "./dist/http/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",

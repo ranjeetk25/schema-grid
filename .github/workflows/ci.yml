@@ -30,6 +30,12 @@ jobs:
       - name: Build
         run: bun run build
 
+      # Packs every publishable package the way the release job does and
+      # inspects the tarball (no `development` condition, no `workspace:`
+      # ranges, only dist/README/LICENSE). See scripts/verify-pack.ts.
+      - name: Verify publish tarballs
+        run: bun run verify:pack
+
   # Which paths changed — gates the MySQL integration job on PRs.
   changes:
     if: github.event_name == 'pull_request'

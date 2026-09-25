@@ -1,0 +1,71 @@
+name: Release
+
+# On every push to main, changesets/action either
+#   - opens/updates the "chore: version packages" PR (when .changeset/*.md exist), or
+#   - publishes to npm (when that PR was just merged and versions are unpublished).
+# Runbook: docs/releasing.md
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version-PR branch and the release tags
+  pull-requests: write # open/update the version PR
+  id-token: write # npm provenance (OIDC)
+
+jobs:
+  release:
+    # Forks never publish.
+    if: github.repository == 'ranjeetk25/schema-grid'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.4"
+
+      # `changeset publish` shells out to the npm CLI (it only special-cases
+      # pnpm), and npm is what signs provenance. Node 22 ships npm 10.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Version PR or publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: bun run version
+          # build -> verify tarballs -> rewrite manifests for npm -> changeset publish
+          publish: bun run release
+          commit: "chore: version packages"
+          title: "chore: version packages"
+          createGithubReleases: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # changesets/action writes this into ~/.npmrc before publishing.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+
+      - name: Summary
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          {
+            echo "### Published to npm"
+            echo
+            echo "$PUBLISHED" | jq -r '.[] | "- `\(.name)@\(.version)`"'
+          } >> "$GITHUB_STEP_SUMMARY"
