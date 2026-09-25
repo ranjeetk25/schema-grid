@@ -137,3 +137,29 @@ describe("createCellStatusStore", () => {
     expect(store.get("r1", "name")).toEqual({ pending: false, remoteChanged: false });
   });
 });
+
+describe("setErrors", () => {
+  it("sets several errors with a single notification of only the changed keys", () => {
+    const store = createCellStatusStore();
+    store.setError({ rowId: "r1", columnId: "a" }, "same");
+    const listener = vi.fn();
+    store.subscribeChanges(listener);
+    store.setErrors([
+      { cell: { rowId: "r1", columnId: "a" }, message: "same" },
+      { cell: { rowId: "r1", columnId: "b" }, message: "bad b" },
+      { cell: { rowId: "r2", columnId: "a" }, message: "bad a" },
+    ]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0]?.[0]).toEqual([cellKey("r1", "b"), cellKey("r2", "a")]);
+    expect(store.get("r1", "b").error).toBe("bad b");
+    expect(store.get("r2", "a").error).toBe("bad a");
+  });
+
+  it("does not notify for an empty list", () => {
+    const store = createCellStatusStore();
+    const listener = vi.fn();
+    store.subscribeChanges(listener);
+    store.setErrors([]);
+    expect(listener).not.toHaveBeenCalled();
+  });
+});

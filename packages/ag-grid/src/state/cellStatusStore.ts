@@ -27,6 +27,8 @@ export interface CellStatusStore {
   setPending(cells: CellRef[]): void;
   clearPending(cells: CellRef[], options?: ClearPendingOptions): void;
   setError(cell: CellRef, message: string): void;
+  /** Sets several errors with ONE change notification. */
+  setErrors(entries: { cell: CellRef; message: string }[]): void;
   clearError(cell: CellRef): void;
   markRemoteChanged(cell: CellRef): void;
   clearRemoteChanged(cell: CellRef): void;
@@ -111,6 +113,16 @@ export function createCellStatusStore(): CellStatusStore {
     notify(changed);
   };
 
+  const setErrors = (entries: { cell: CellRef; message: string }[]): void => {
+    const changed = new Set<string>();
+    for (const { cell, message } of entries) {
+      const key = cellKey(cell.rowId, cell.columnId);
+      const prev = statuses.get(key) ?? DEFAULT_STATUS;
+      setStatus(key, { ...prev, error: message }, changed);
+    }
+    notify(changed);
+  };
+
   const clearError = (cell: CellRef): void => {
     const changed = new Set<string>();
     const key = cellKey(cell.rowId, cell.columnId);
@@ -158,6 +170,7 @@ export function createCellStatusStore(): CellStatusStore {
     setPending,
     clearPending,
     setError,
+    setErrors,
     clearError,
     markRemoteChanged,
     clearRemoteChanged,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultRegistry, type GridRow } from "../../src/internal/core";
+import { buildCopyText } from "../../src/clipboard/copyPlan";
 import { planPaste } from "../../src/clipboard/pastePlan";
+import { parseTsv } from "../../src/clipboard/tsv";
 import type { GroupDisplayRow } from "../../src/grouping/clientGroups";
 import { fixtureColumns, row } from "../fixtures/schema";
 
@@ -17,6 +19,19 @@ function makeRows(count: number): GridRow[] {
 function getRowAtFrom(rows: GridRow[]) {
   return (rowIndex: number) => rows[rowIndex];
 }
+
+const GROUP_ROW: GroupDisplayRow = {
+  __sg: "group",
+  id: "g-shared",
+  level: 0,
+  columnId: "payment",
+  key: "paid",
+  label: "Paid",
+  count: 1,
+  aggregates: {},
+  expanded: true,
+  groupPath: [],
+};
 
 const TEXT_COLS = ["name", "notes", "status", "source"];
 
@@ -224,7 +239,126 @@ describe("planPaste", () => {
       canEditCell: alwaysEditable,
     });
 
-    expect(plan.changes).toEqual([{ rowId: "r0", columnId: "name", prev: "n0", next: "Y" }]);
+    // Group rows don't consume a source row (symmetric with copy, which skips them).
+    expect(plan.changes).toEqual([{ rowId: "r0", columnId: "name", prev: "n0", next: "X" }]);
+  });
+
+  it("a block pasted across a group row lands on the data rows below it, in order", () => {
+    const rows = [makeRows(1)[0] as GridRow, GROUP_ROW as unknown as GridRow, row("r1", { name: "n1" })];
+    const plan = planPaste({
+      matrix: [["A"], ["B"]],
+      anchor: { rowIndex: 0, colId: "name" },
+      displayedColIds: ["name"],
+      rowCount: rows.length,
+      getRowAt: (i) => rows[i],
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes.map((c) => [c.rowId, c.next])).toEqual([
+      ["r0", "A"],
+      ["r1", "B"],
+    ]);
+    expect(plan.targetRange).toEqual({ rowStart: 0, rowEnd: 2, colIds: ["name"] });
+  });
+
+  it("copy → paste round-trips across group rows", () => {
+    const source = [row("a", { name: "one" }), GROUP_ROW as unknown as GridRow, row("b", { name: "two" })];
+    const text = buildCopyText<GridRow>(
+      { rowStart: 0, rowEnd: 2, colIds: ["name"] },
+      (i) => source[i],
+      columnsById,
+      registry,
+      new Map([["name", "edit" as const]]),
+    );
+    const target = [row("x", { name: "" }), GROUP_ROW as unknown as GridRow, row("y", { name: "" })];
+    const plan = planPaste({
+      matrix: parseTsv(text),
+      anchor: { rowIndex: 0, colId: "name" },
+      displayedColIds: ["name"],
+      rowCount: target.length,
+      getRowAt: (i) => target[i],
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes.map((c) => [c.rowId, c.next])).toEqual([
+      ["x", "one"],
+      ["y", "two"],
+    ]);
+  });
+
+  it("tiling over a selection skips group rows without advancing the source row", () => {
+    const rows = [row("r0", { name: "" }), GROUP_ROW as unknown as GridRow, row("r1", { name: "" }), row("r2", { name: "" })];
+    const plan = planPaste({
+      matrix: [["a"], ["b"]],
+      anchor: { rowIndex: 0, colId: "name" },
+      selection: { rowStart: 0, rowEnd: 3, colIds: ["name"] },
+      displayedColIds: ["name"],
+      rowCount: rows.length,
+      getRowAt: (i) => rows[i],
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes.map((c) => [c.rowId, c.next])).toEqual([
+      ["r0", "a"],
+      ["r1", "b"],
+      ["r2", "a"],
+    ]);
+  });
+
+  it("drops no-op changes (next deep-equals prev)", () => {
+    const rows = [row("r0", { name: "same", tags: ["hot"] })];
+    const plan = planPaste({
+      matrix: [["same", "Hot"]],
+      anchor: { rowIndex: 0, colId: "name" },
+      displayedColIds: ["name", "tags"],
+      rowCount: rows.length,
+      getRowAt: (i) => rows[i],
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes).toEqual([]);
+    expect(plan.errors).toEqual([]);
+    expect(plan.skippedReadOnly).toBe(0);
+  });
+
+  it("ignores displayed columns that aren't schema columns", () => {
+    const rows = makeRows(1);
+    const plan = planPaste({
+      matrix: [["a", "b"]],
+      anchor: { rowIndex: 0, colId: "name" },
+      displayedColIds: ["name", "ag-Grid-SelectionColumn", "notes"],
+      rowCount: rows.length,
+      getRowAt: getRowAtFrom(rows),
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.targetRange.colIds).toEqual(["name", "notes"]);
+    expect(plan.changes.map((c) => [c.columnId, c.next])).toEqual([
+      ["name", "a"],
+      ["notes", "b"],
+    ]);
+    expect(plan.skippedReadOnly).toBe(0);
+  });
+
+  it("handles very tall matrices (no argument-spread limits)", () => {
+    const rows = makeRows(1);
+    const tall = Array.from({ length: 500_000 }, () => ["w"]);
+    const plan = planPaste({
+      matrix: [["a"], ...tall.slice(1)],
+      anchor: { rowIndex: 0, colId: "name" },
+      displayedColIds: ["name"],
+      rowCount: rows.length,
+      getRowAt: getRowAtFrom(rows),
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes).toEqual([{ rowId: "r0", columnId: "name", prev: "n0", next: "a" }]);
   });
 
   it("parses into core value shapes: user → UserRef, link → LinkRef[], multiSelect labels → ids", () => {

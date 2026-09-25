@@ -350,7 +350,7 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
         const message = e instanceof Error ? e.message : String(e);
         result = { applied: [], conflicts: [], errors: [...spans.values()].map((s) => ({ ...ref(s), message })) };
         const reverted = revertCells(ticket, spans.keys(), spans, batch.changes);
-        for (const s of spans.values()) cellStatus.setError(ref(s), message);
+        cellStatus.setErrors([...spans.values()].map((s) => ({ cell: ref(s), message })));
         release(ticket, spans);
         finish();
         if (reverted.length > 0) opts.onReverted?.(reverted);
@@ -379,7 +379,7 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
 
       // 5. Errors.
       const revertedErrors = revertCells(ticket, result.errors.map(kOf), spans, batch.changes);
-      for (const err of result.errors) cellStatus.setError(ref(err), err.message);
+      if (result.errors.length > 0) cellStatus.setErrors(result.errors.map((err) => ({ cell: ref(err), message: err.message })));
 
       // 6a. Conflicts: revert first.
       const revertedConflicts = revertCells(ticket, result.conflicts.map(kOf), spans, batch.changes);
