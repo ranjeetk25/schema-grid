@@ -104,7 +104,7 @@ function projectRows(rows: Row[], hasColor: boolean | undefined): OptionListItem
 export function OptionListField({ label, description, value, onChange, hasColor, error, rowError }: OptionListFieldProps) {
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
-    options.map((o) => ({ id: nextId.current++, ...o, valueEdited: true }));
+    options.map((o) => ({ id: nextId.current++, ...o, valueEdited: o.value !== slugifyOptionValue(o.label) }));
 
   const [rows, setRows] = useState<Row[]>(() => toRows(readOptions(value)));
   const lastEmitted = useRef<unknown>(value);

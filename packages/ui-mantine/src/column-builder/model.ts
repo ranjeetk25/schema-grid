@@ -181,7 +181,9 @@ export function buildColumnDef(
   };
   if (isFormula) column.formula = draft.formula;
   else delete column.formula;
-  if (!isFormula && !isBlank(draft.defaultValue)) column.defaultValue = draft.defaultValue;
+  // A default that no longer fits the config (e.g. its option was removed) is dropped.
+  const defaultFits = !isBlank(draft.defaultValue) && fieldType.valueSchema(config).safeParse(draft.defaultValue).success;
+  if (!isFormula && defaultFits) column.defaultValue = draft.defaultValue;
   else delete column.defaultValue;
   return column;
 }
