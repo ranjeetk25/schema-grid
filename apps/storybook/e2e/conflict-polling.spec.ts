@@ -218,13 +218,9 @@ test.describe("§10 polling", () => {
   });
 });
 
-/**
- * The popover's dropdown carries aria-label="Edit conflict", but Mantine also
- * sets aria-labelledby → the (empty) anchor, which wins in the accessible-name
- * computation, so getByRole(..., { name }) can't find it.
- */
+/** The popover dialog, found by its accessible name (its own "Edit conflict" heading). */
 function conflictPopover(page: Page) {
-  return page.locator('[role="dialog"][aria-label="Edit conflict"]');
+  return page.getByRole("dialog", { name: "Edit conflict" });
 }
 
 test.describe("§11 notInView", () => {

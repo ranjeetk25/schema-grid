@@ -133,7 +133,7 @@ test("§9 two browser contexts: B saves first, A's stale edit conflicts; keepThe
     await page.keyboard.press("Enter");
   };
   const popover = (page: Page) =>
-    page.locator('[role="dialog"][aria-label="Edit conflict"]');
+    page.getByRole("dialog", { name: "Edit conflict" });
 
   await editName(b, "Asha (B)");
   await expect

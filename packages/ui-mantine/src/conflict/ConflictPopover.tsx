@@ -1,5 +1,5 @@
 import { Box, Button, Group, Popover, Stack, Text } from "@mantine/core";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import type { ChangeConflict, ColumnDef, FieldTypeRegistry } from "../internal/core-contracts";
 import { type ConflictResolution, type UiFieldTypeRegistry, resolveRendererWidget } from "../internal/grid-contracts";
 import { formatRelativeTime } from "../internal/relative-time";
@@ -34,6 +34,7 @@ export function ConflictPopover({
   onClose,
   children,
 }: ConflictPopoverProps) {
+  const headingId = `sg-conflict-heading-${useId()}`;
   const who = conflict.updatedBy?.name ?? "someone";
   const when = formatRelativeTime(conflict.updatedAt, now ?? new Date());
   const Renderer = resolveRendererWidget(uiRegistry.get(column.type).renderer);
@@ -61,9 +62,15 @@ export function ConflictPopover({
           {children}
         </Box>
       </Popover.Target>
-      {/* Mantine gives the dropdown role="dialog" itself. */}
-      <Popover.Dropdown aria-label="Edit conflict">
+      {/*
+        Mantine gives the dropdown role="dialog" and aria-labelledby → the
+        anchor (an unlabelled cell wrapper); point it at our own heading.
+      */}
+      <Popover.Dropdown aria-labelledby={headingId}>
         <Stack gap="xs" maw={280}>
+          <Text component="h2" id={headingId} size="sm" fw={600} m={0}>
+            Edit conflict
+          </Text>
           <Text size="sm">{`Changed by ${who} ${when}:`}</Text>
           <Box>{theirs}</Box>
           <Group gap="xs" justify="flex-end">

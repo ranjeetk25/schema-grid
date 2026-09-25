@@ -54,6 +54,14 @@ describe("ConflictPopover", () => {
     expect(screen.getByTestId("their-badge")).toHaveTextContent("Paid");
   });
 
+  it("the dialog is named by its own heading, not the (empty) anchor", () => {
+    setup();
+    const dialog = screen.getByRole("dialog", { name: "Edit conflict" });
+    const heading = screen.getByRole("heading", { name: "Edit conflict" });
+    expect(dialog).toContainElement(heading);
+    expect(dialog.getAttribute("aria-labelledby")).toBe(heading.id);
+  });
+
   it("keep theirs and overwrite resolve", async () => {
     const { user, onResolve } = setup();
     await user.click(screen.getByRole("button", { name: "Keep theirs" }));
