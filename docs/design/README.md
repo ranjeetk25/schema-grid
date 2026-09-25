@@ -204,3 +204,20 @@ room for the panel instead of hiding under it.
 No `none` / `null` / `0` placeholders: empty entries are hidden, and an idle
 bar reads "No changes yet". Raw values for tests live in visually hidden
 `data-testid` spans.
+
+### The workbench is the page
+
+`<SchemaGridWorkbench>` (both kits) owns the page chrome the Storybook used
+to hand-roll: a 52px header (title, muted subtitle, the signed-in user's
+initials), one toolbar row (views · filter · group · search · host slot on
+the left; host slot · undo/redo · import · export │ "Add column" on the
+right), chips, banners, grid, 30px status bar. Toolbar features follow the
+data source's capabilities and disappear rather than disable (undo/redo stay
+visible at 40% when merely unavailable).
+
+Banners are one 36px line, radius 6, no border: red-light for failures the
+user must act on (network, permission; role `alert`, "Retry"), neutral for
+information (read-only source, unsupported operation; role `status`), accent
+for "The columns were changed elsewhere" ("Reload"). A banner replaces the
+grid's own inline load error and the empty-state copy under it.
+Screenshots: `progress/W-*` (`bun apps/storybook/scripts/capture-workbench.ts`).
