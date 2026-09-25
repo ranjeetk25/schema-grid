@@ -7,5 +7,8 @@ export default defineConfig({
   test: {
     name: "server",
     environment: "node",
+    include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+    testTimeout: 10_000,
+    hookTimeout: 120_000,
   },
 });
