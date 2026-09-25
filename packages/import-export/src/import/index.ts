@@ -10,8 +10,9 @@ export {
 } from "./job-state";
 export type { ImportChunk } from "./job-state";
 export { parseFile } from "./parse-file";
-export { validateRows } from "./validate";
+export { KEY_COLUMN_TYPES, validateRows } from "./validate";
 export type {
+  CellErrorKind,
   CellValidation,
   ColumnMapping,
   ImportJobState,

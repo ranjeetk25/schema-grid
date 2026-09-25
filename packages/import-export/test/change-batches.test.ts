@@ -358,7 +358,7 @@ describe("toChangeBatches: review fixes", () => {
           },
         },
       ],
-      summary: { valid: 1, invalid: 0, newOptions: {}, unmappedRequired: [] },
+      summary: { valid: 1, invalid: 0, newOptions: {}, unknownOptions: {}, unmappedRequired: [] },
     };
     const p = plan(r, [row], "update");
     expect(p.updates).toEqual([]);

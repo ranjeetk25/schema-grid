@@ -33,10 +33,20 @@ export interface ColumnMapping {
   confidence: number;
 }
 
+/**
+ * Why a cell failed, alongside the human `error` message:
+ * - "unknownOption": a value not among the column's options (reject policy);
+ * - "parse": the field type (or its parse) rejected the text;
+ * - "required": a required cell is empty in a create row.
+ */
+export type CellErrorKind = "unknownOption" | "parse" | "required";
+
 export interface CellValidation {
   value: unknown;
   raw: string;
   error?: string;
+  /** Set whenever `error` is. */
+  errorKind?: CellErrorKind;
   /** Update mode: the cell was empty and must be left unchanged. */
   skip?: boolean;
 }
@@ -55,7 +65,14 @@ export interface ValidationReport {
   summary: {
     valid: number;
     invalid: number;
+    /** Option labels to create, per column id — "create" policy only ({} under "reject"). */
     newOptions: Record<string, string[]>;
+    /**
+     * Every distinct unknown option label seen, per column id, under EITHER
+     * policy (case/whitespace-insensitive dedupe, first spelling kept). Equals
+     * `newOptions` under "create".
+     */
+    unknownOptions: Record<string, string[]>;
     unmappedRequired: string[];
   };
 }

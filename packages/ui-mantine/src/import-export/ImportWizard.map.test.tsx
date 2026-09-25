@@ -20,7 +20,7 @@ function mapOf(headers: string[], ids: (string | null)[]): ColumnMapping[] {
   });
 }
 
-const EMPTY_REPORT: ValidationReport = { rows: [], summary: { valid: 0, invalid: 0, newOptions: {}, unmappedRequired: [] } };
+const EMPTY_REPORT: ValidationReport = { rows: [], summary: { valid: 0, invalid: 0, newOptions: {}, unknownOptions: {}, unmappedRequired: [] } };
 
 function setup(ioOverrides: Partial<IoFunctions> = {}, accessOverrides: Record<string, Access> = {}) {
   const schema = buildFixtureSchema();

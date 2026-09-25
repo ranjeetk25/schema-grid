@@ -33,9 +33,12 @@ Call these in order:
 3. **`validateRows(parsed, mapping, schema, registry, { mode, keyColumnId, unknownOptions, limit?, access? })`**
    runs every mapped cell through its field type's `parse`, checks required fields and
    keys, and applies the unknown-option policy (`"create"` collects labels in
-   `summary.newOptions`; `"reject"` makes them cell errors). Mapping problems throw
-   `ImportConfigError` before any row is read. In `update`/`upsert` the key column must be
-   text, longText, email, phone or url.
+   `summary.newOptions`; `"reject"` makes them cell errors). `summary.unknownOptions`
+   lists every distinct unknown label per column under either policy, and each failed
+   cell carries an `errorKind` (`"unknownOption"`, `"parse"` or `"required"`) next to its
+   message. Mapping problems throw `ImportConfigError` before any row is read. In
+   `update`/`upsert` the key column's type must be in `KEY_COLUMN_TYPES` (text, longText,
+   email, phone or url).
 4. **`toChangeBatches(report, existingRowsByKey, { schema, registry, mode, keyColumnId })`**
    returns an `ImportPlan`: flat `creates` (split them with `chunkRows`), update
    `ChangeBatch`es (`source: "import"`, at most 500 rows each), `rejected` rows, and

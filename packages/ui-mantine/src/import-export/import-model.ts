@@ -242,24 +242,16 @@ export function buildImportPlan(state: ImportState): ImportWizardPlan | null {
   };
 }
 
-/** Matches io's cell error for an unknown option in reject mode. */
-const UNKNOWN_OPTION_ERROR = /^Unknown option/;
-
 export interface PreviewSummary {
   valid: number;
   invalid: number;
-  /** New option labels (create policy) or rejected unknown-option cells (reject policy). */
+  /** Distinct unknown option labels across columns (io `summary.unknownOptions`, same under either policy). */
   unknownOptions: number;
 }
 
 export function summarizePreview(report: ValidationReport): PreviewSummary {
   let unknownOptions = 0;
-  for (const labels of Object.values(report.summary.newOptions)) unknownOptions += labels.length;
-  for (const row of report.rows) {
-    for (const cell of Object.values(row.cells)) {
-      if (cell.error && UNKNOWN_OPTION_ERROR.test(cell.error)) unknownOptions += 1;
-    }
-  }
+  for (const labels of Object.values(report.summary.unknownOptions)) unknownOptions += labels.length;
   return { valid: report.summary.valid, invalid: report.summary.invalid, unknownOptions };
 }
 

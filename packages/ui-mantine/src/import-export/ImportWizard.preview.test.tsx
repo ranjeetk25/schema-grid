@@ -39,7 +39,7 @@ function stubReport(
   mapping: ColumnMapping[],
   opts: ValidateRowsOptions,
   patches: Record<number, RowPatch> = {},
-  newOptions: Record<string, string[]> = {},
+  unknownOptions: Record<string, string[]> = {},
 ): ValidationReport {
   const source = opts.limit !== undefined ? parsed.rows.slice(0, opts.limit) : parsed.rows;
   let valid = 0;
@@ -57,7 +57,8 @@ function stubReport(
     else valid += 1;
     return { index, sourceRow: index + 2, cells, ...(rowError ? { rowError } : {}) };
   });
-  return { rows, summary: { valid, invalid, newOptions, unmappedRequired: [] } };
+  const newOptions = opts.unknownOptions === "create" ? unknownOptions : {};
+  return { rows, summary: { valid, invalid, newOptions, unknownOptions, unmappedRequired: [] } };
 }
 
 type ValidateFn = IoFunctions["validateRows"];
@@ -214,7 +215,13 @@ describe("ImportWizard preview + run", () => {
     const utils = setup({
       validate: (p, m, _s, _r, o) =>
         o.unknownOptions === "reject"
-          ? stubReport(p, m, o, { 0: { cells: { [FIXTURE_IDS.payment]: { value: null, error: 'Unknown option "Refunded"' } } } })
+          ? stubReport(
+              p,
+              m,
+              o,
+              { 0: { cells: { [FIXTURE_IDS.payment]: { value: null, error: 'Unknown option "Refunded"', errorKind: "unknownOption" } } } },
+              { [FIXTURE_IDS.payment]: ["Refunded"] },
+            )
           : stubReport(p, m, o, {}, { [FIXTURE_IDS.payment]: ["Refunded"] }),
     });
     await toPreview(utils);

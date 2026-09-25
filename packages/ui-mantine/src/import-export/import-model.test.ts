@@ -100,7 +100,7 @@ describe("import-model", () => {
   });
 
   it("setMapping updates one header by index and clears the preview", () => {
-    const report: ValidationReport = { rows: [], summary: { valid: 0, invalid: 0, newOptions: {}, unmappedRequired: [] } };
+    const report: ValidationReport = { rows: [], summary: { valid: 0, invalid: 0, newOptions: {}, unknownOptions: {}, unmappedRequired: [] } };
     const withPreview = importReducer(parsedState(), { type: "previewLoaded", preview: report });
     const s = importReducer(withPreview, { type: "setMapping", headerIndex: 2, columnId: FIXTURE_IDS.notes });
     expect(s.mapping[2]).toEqual({ header: "Unknown", headerIndex: 2, columnId: FIXTURE_IDS.notes, confidence: 1 });
@@ -223,16 +223,29 @@ describe("import-model", () => {
     expect(importReducer(s, { type: "reset" })).toEqual(initialImportState());
   });
 
-  it("summarizes a report: counts from the summary, unknown options from newOptions and reject errors", () => {
+  it("summarizes a report: counts from the summary, unknown values from summary.unknownOptions (either policy)", () => {
     const report: ValidationReport = {
       rows: [
         { index: 0, sourceRow: 2, cells: { a: { value: "x", raw: "x" } } },
-        { index: 1, sourceRow: 3, cells: { a: { value: null, raw: "Zed", error: 'Unknown option "Zed"' } } },
-        { index: 2, sourceRow: 4, cells: { a: { value: null, raw: "q", error: "Invalid date" } } },
+        {
+          index: 1,
+          sourceRow: 3,
+          cells: { a: { value: null, raw: "Zed", error: 'Unknown option "Zed"', errorKind: "unknownOption" } },
+        },
+        { index: 2, sourceRow: 4, cells: { a: { value: null, raw: "q", error: "Invalid date", errorKind: "parse" } } },
       ],
-      summary: { valid: 1, invalid: 2, newOptions: { b: ["One", "Two"] }, unmappedRequired: [] },
+      // Reject policy: newOptions is empty, unknownOptions still lists every unknown label.
+      summary: { valid: 1, invalid: 2, newOptions: {}, unknownOptions: { a: ["Zed"], b: ["One", "Two"] }, unmappedRequired: [] },
     };
     expect(summarizePreview(report)).toEqual({ valid: 1, invalid: 2, unknownOptions: 3 });
+  });
+
+  it("never parses error messages: an 'Unknown option…' message without the summary entry is not counted", () => {
+    const report: ValidationReport = {
+      rows: [{ index: 0, sourceRow: 2, cells: { a: { value: null, raw: "q", error: "Unknown option-ish parse error", errorKind: "parse" } } }],
+      summary: { valid: 0, invalid: 1, newOptions: {}, unknownOptions: {}, unmappedRequired: [] },
+    };
+    expect(summarizePreview(report).unknownOptions).toBe(0);
   });
 
   it("formats file sizes", () => {

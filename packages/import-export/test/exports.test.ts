@@ -9,6 +9,7 @@ import * as root from "../src/index";
 
 const IMPORT_NAMES = [
   "ImportConfigError",
+  "KEY_COLUMN_TYPES",
   "SheetNotFoundError",
   "autoMapColumns",
   "buildErrorReportCsv",
