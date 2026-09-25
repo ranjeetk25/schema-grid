@@ -41,7 +41,25 @@ export interface ValidatedCell {
   remove: boolean;
 }
 
-/** Validates + serializes one value for a column (shared by applyChanges and createRows). */
+/** `ColumnDef.validation` limits copied into the field config before `valueSchema` (as core's in-memory source does). */
+function configWithLimits(column: ColumnDef): unknown {
+  const v = column.validation;
+  if (!v) return column.config;
+  const limits: Record<string, number> = {};
+  for (const k of ["min", "max", "minLength", "maxLength"] as const) {
+    const n = v[k];
+    if (typeof n === "number") limits[k] = n;
+  }
+  return typeof column.config === "object" && column.config !== null
+    ? { ...(column.config as Record<string, unknown>), ...limits }
+    : limits;
+}
+
+/**
+ * Validates + serializes one value for a column (shared by applyChanges and createRows).
+ * Mirrors core's `validateCellValue`: required, `valueSchema` with validation limits,
+ * `validation.pattern`, `validation.message` override.
+ */
 export function validateCellValue(
   column: ColumnDef,
   value: unknown,
@@ -51,8 +69,23 @@ export function validateCellValue(
   if (!ft) return { ok: false, message: `Unknown field type "${column.type}"` };
   const normalized = isEmptyValue(value) ? null : value;
   if (normalized === null && column.required) return { ok: false, message: "Value is required" };
-  const parsed = ft.valueSchema(column.config).safeParse(normalized);
-  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid value" };
+  const v = column.validation;
+  let parsed: ReturnType<ReturnType<typeof ft.valueSchema>["safeParse"]>;
+  try {
+    parsed = ft.valueSchema(configWithLimits(column)).safeParse(normalized);
+  } catch {
+    return { ok: false, message: "Invalid value" };
+  }
+  if (!parsed.success) return { ok: false, message: v?.message ?? parsed.error.issues[0]?.message ?? "Invalid value" };
+  if (v?.pattern && typeof normalized === "string") {
+    try {
+      if (!new RegExp(v.pattern).test(normalized)) {
+        return { ok: false, message: v.message ?? "Value does not match the required pattern" };
+      }
+    } catch {
+      // An invalid pattern in the schema is ignored rather than blocking edits (matches core).
+    }
+  }
   const next = isEmptyValue(parsed.data) ? null : parsed.data;
   if (next === null) return { ok: true, next: null, serialized: null, remove: true };
   const serialized = ft.serialize(next);

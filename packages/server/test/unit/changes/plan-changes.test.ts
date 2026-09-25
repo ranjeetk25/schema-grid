@@ -114,3 +114,25 @@ describe("planChanges", () => {
     ]);
   });
 });
+
+describe("planChanges: ColumnDef.validation (parity with core)", () => {
+  const vschema = {
+    id: "v",
+    schemaVersion: 1,
+    columns: [
+      col("score", "number", { validation: { min: 0, max: 10, message: "0 to 10 please" } }),
+      col("code", "text", { validation: { pattern: "^[A-Z]{3}$" } }),
+    ],
+  };
+  const vctx = makeCtx(vschema);
+  const vrows = new Map<string, CurrentRow | undefined>([["r1", row("r1")]]);
+  it("limits are applied to valueSchema and the custom message is used", () => {
+    const p = planChanges(batch([ch("r1", "score", 11)], { r1: 1 }), vrows, vctx);
+    expect(p.errors).toEqual([{ rowId: "r1", columnId: "score", message: "0 to 10 please" }]);
+    expect(planChanges(batch([ch("r1", "score", 7)], { r1: 1 }), vrows, vctx).errors).toEqual([]);
+  });
+  it("pattern is enforced", () => {
+    expect(planChanges(batch([ch("r1", "code", "abc")], { r1: 1 }), vrows, vctx).errors[0]?.message).toMatch(/pattern/);
+    expect(planChanges(batch([ch("r1", "code", "ABC")], { r1: 1 }), vrows, vctx).errors).toEqual([]);
+  });
+});
