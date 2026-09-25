@@ -59,3 +59,15 @@ export type {
   ChangeSource,
   GridRow,
 } from "./rows/types";
+export {
+  migrateSchema,
+  SchemaMigrationError,
+  type SchemaMigration,
+  type SchemaMigrationErrorCode,
+} from "./schema/migrate";
+export {
+  getColumnById,
+  getColumnByKey,
+  indexColumns,
+  type ColumnIndex,
+} from "./schema/lookup";
