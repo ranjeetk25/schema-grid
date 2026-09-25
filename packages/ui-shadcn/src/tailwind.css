@@ -129,6 +129,18 @@
   .ag-cell .sg-ui {
     line-height: inherit;
   }
+  /*
+   * ag-grid's createPopupEditor container (.sg-popup-editor) has its own card
+   * chrome; when it wraps our card, ours is the only surface (no box-in-a-box).
+   * !important because ag-grid's theme CSS is unlayered.
+   */
+  .sg-popup-editor:has(> .sg-popup-card) {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-width: 0 !important;
+  }
   .sg-ui,
   .sg-ui *,
   .sg-ui ::before,

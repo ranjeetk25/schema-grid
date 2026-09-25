@@ -232,7 +232,7 @@ const schemes = (process.env.SCHEMES?.split(",") as ("light" | "dark")[] | undef
 const browser = await chromium.launch();
 let failed = 0;
 for (const scheme of schemes) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   for (const s of scenarios) {
     const page = await context.newPage();
     try {
