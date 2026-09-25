@@ -7,6 +7,44 @@ import wizard, an export dialog, a paste-report toast and a theme bridge.
 Peers: `react` 18, `@mantine/core|hooks|dates` ^8, `dayjs`, `zod` `^3.25 || ^4`.
 Optional peer: `@mantine/notifications` ^8.
 
+## One-component page
+
+`<SchemaGridWorkbench>` is a whole admin grid page: header, saved views,
+filter + chips, group, search, undo/redo, import, export, "Add column" (side
+panel with a ghost-column preview), the conflict prompt, polling and a quiet
+status bar. Features follow the data source's capabilities (`groupBy:false`
+hides Group, `changeFeed:false` stops polling, `write.cells:false` makes the
+grid read-only with a banner); `features` can only switch things off.
+
+```tsx
+import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
+import { SchemaGridWorkbench } from "@ranjeetk25/schema-grid-ui-mantine";
+
+// Module scope: the workbench compares the client by reference.
+const leads = createGridClient({ baseUrl: "/api/grid", gridId: "leads" });
+
+export function LeadsPage({ user }: { user: PermissionUser }) {
+  return (
+    <div style={{ height: "100dvh" }}>
+      <SchemaGridWorkbench client={leads} user={user} title="Leads" subtitle="All applicants" />
+    </div>
+  );
+}
+```
+
+Without a server client, pass `dataSource` + `schema` (+ `onSchemaChange` to
+persist column edits). Other props:
+
+| Prop | |
+|---|---|
+| `resolver`, `registry`, `uiRegistry`, `mode` | defaults: role resolver, default registries, `"server"` with `client` else `"client"` |
+| `views` + `onViewsChange` / `viewStore` | controlled views, or a `WorkbenchViewStore` (`load(gridId)`/`save(gridId, views)`); default `createLocalStorageViewStore()` keyed by grid id |
+| `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling }>` — `false` turns one off |
+| `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities`, `openImport`, `openExport`, `openAddColumn`, `refetch` |
+| `emptyState` | shown over the grid when there are no rows |
+| `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload) |
+| `pollIntervalMs`, `height` (`"fill"` default: give the parent a height), `pageSize`, `roles`, `gridProps` | |
+
 ## Entry points
 
 | Import | Contents |

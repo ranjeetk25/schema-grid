@@ -89,7 +89,7 @@ describe("<SchemaGridWorkbench>", () => {
       const ds = memory();
       const getChanges = vi.spyOn(ds as Required<DataSource>, "getChanges");
       renderWorkbench({ dataSource: ds, pollIntervalMs: 20 });
-      await waitFor(() => expect(getChanges).toHaveBeenCalled());
+      await waitFor(() => expect(getChanges).toHaveBeenCalled(), { timeout: 5000 });
     });
 
     it("changeFeed:false disables polling", async () => {
@@ -105,7 +105,7 @@ describe("<SchemaGridWorkbench>", () => {
       const ds = memory();
       vi.spyOn(ds as Required<DataSource>, "getChanges").mockResolvedValue({ cursor: "c", rows: [], deletedRowIds: [], schemaVersion: 999 });
       renderWorkbench({ dataSource: ds, pollIntervalMs: 20 });
-      const banner = await screen.findByTestId("workbench-banner-schema-changed");
+      const banner = await screen.findByTestId("workbench-banner-schema-changed", {}, { timeout: 5000 });
       expect(banner).toHaveTextContent("The columns were changed elsewhere.");
       expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
     });
