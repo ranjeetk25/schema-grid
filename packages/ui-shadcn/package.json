@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-ui-shadcn",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "shadcn/ui (Radix + Tailwind v4) UI for Schema Grid: cell editors, column filters, filter builder, column panel, import wizard and export dialog.",
   "license": "MIT",
   "author": "Masai School",
