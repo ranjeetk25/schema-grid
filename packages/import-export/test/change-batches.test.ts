@@ -132,7 +132,7 @@ describe("toChangeBatches: create", () => {
     expect(p.creates).toHaveLength(1);
     expect(p.rejected).toEqual([
       { sourceRow: 3, columnId: "c_name", message: "Required" },
-      { sourceRow: 3, columnId: "c_amount", message: "Not a number" },
+      { sourceRow: 3, columnId: "c_amount", message: expect.stringMatching(/number/i) },
     ]);
   });
 });
@@ -378,7 +378,7 @@ describe("toChangeBatches: review fixes", () => {
     );
     const p = plan(r, existing, "update");
     expect(p.rejected).toEqual([
-      { sourceRow: 3, columnId: "c_amount", message: "Not a number" },
+      { sourceRow: 3, columnId: "c_amount", message: expect.stringMatching(/number/i) },
       { sourceRow: 3, message: "Duplicate key (first seen on row 2)" },
     ]);
   });

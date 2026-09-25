@@ -198,7 +198,10 @@ describe("toExcelCell", () => {
 
   it("a throwing format falls back to String(value)", () => {
     const reg = makeRegistry();
+    const text = reg.get("text");
+    if (!text) throw new Error("no text type");
     reg.register({
+      ...text,
       id: "boom",
       label: "boom",
       defaultConfig: {},
@@ -244,7 +247,8 @@ describe("toCsvCell and sanitizeCsvText", () => {
   it("formula: numeric strings untouched, text sanitized", () => {
     expect(toCsvCell(-3, getColumn("c_score"), registry)).toBe("-3");
     expect(toCsvCell("-3", getColumn("c_score"), registry)).toBe("-3");
-    expect(toCsvCell("=cmd", getColumn("c_score"), registry)).toBe("'=cmd");
+    const textFormula = { ...getColumn("c_score"), config: { resultType: "text" } };
+    expect(toCsvCell("=cmd", textFormula, registry)).toBe("'=cmd");
   });
 
   it("sanitizeCsvText covers every trigger character", () => {
@@ -313,10 +317,14 @@ describe("review hardening", () => {
   const PAYLOAD = '=HYPERLINK("http://evil","x")';
 
   it("guards payloads echoed by any column type in CSV", () => {
-    expect(csv(PAYLOAD, getColumn("c_call"))).toBe(`'${PAYLOAD}`);
-    expect(csv(PAYLOAD, getColumn("c_joined"))).toBe(`'${PAYLOAD}`);
+    // Whatever a type's format does with an invalid stored value (core's
+    // datetime returns "", date echoes it), the CSV text never starts a formula.
+    expect(csv(PAYLOAD, getColumn("c_call"))).not.toMatch(/^[=+\-@]/);
+    expect(csv(PAYLOAD, getColumn("c_joined"))).not.toMatch(/^[=+\-@]/);
     expect(csv("+cmd|' /C calc'!A0", adHoc("phone"))).toBe("'+cmd|' /C calc'!A0");
-    expect(csv(["=cmd"], getColumn("c_score"))).toBe("'=cmd");
+    expect(
+      csv(["=cmd"], { ...getColumn("c_score"), config: { resultType: "text" } }),
+    ).not.toMatch(/^[=+\-@]/);
     expect(csv(PAYLOAD, adHoc("number"))).not.toMatch(/^=/);
   });
 

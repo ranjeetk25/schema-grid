@@ -1,208 +1,37 @@
 /**
  * Core shim: the ONLY file in this package allowed to depend on
- * `@masai/schema-grid-core`. Everything else imports core types/helpers from here.
- *
- * Core is being built concurrently and currently exposes only a placeholder, so
- * every contract below is a local alias matching spec §4 (and the core plan).
- * Each alias carries a `TODO(core)` marker; when core ships the export, replace
- * the local declaration with a re-export from `@masai/schema-grid-core`.
+ * `@masai/schema-grid-core`. Everything else imports core types/helpers from
+ * here. Only TYPES are imported from core, so runtime bundles (notably
+ * `./clipboard`) never pull core code in.
  */
 
-// ---------------------------------------------------------------------------
-// Field type ids
-// ---------------------------------------------------------------------------
-
-// TODO(core): replace with @masai/schema-grid-core export (BuiltinFieldTypeId)
-export type BuiltinFieldTypeId =
-  | "text"
-  | "longText"
-  | "number"
-  | "currency"
-  | "boolean"
-  | "date"
-  | "datetime"
-  | "select"
-  | "multiSelect"
-  | "creatableSelect"
-  | "user"
-  | "url"
-  | "email"
-  | "phone"
-  | "link"
-  | "formula";
-
-// TODO(core): replace with @masai/schema-grid-core export (FieldTypeId)
-export type FieldTypeId = BuiltinFieldTypeId | (string & {});
-
-// ---------------------------------------------------------------------------
-// Schema (spec §4.1)
-// ---------------------------------------------------------------------------
-
-// TODO(core): replace with @masai/schema-grid-core export (ActorRef)
-export interface ActorRef {
-  id: string;
-  name?: string;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (Option)
-export interface Option {
-  id: string;
-  label: string;
-  color?: string;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (RoleRule)
-export type RoleRule = "all" | { roles: string[] };
-
-// TODO(core): replace with @masai/schema-grid-core export (ColumnPermissions)
-export interface ColumnPermissions {
-  read: RoleRule;
-  edit: RoleRule;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (ColumnDef)
-export interface ColumnDef {
-  id: string;
-  key: string;
-  label: string;
-  type: FieldTypeId;
-  /** Validated by the field type's configSchema. */
-  config: unknown;
-  required?: boolean;
-  defaultValue?: unknown;
-  validation?: {
-    min?: number;
-    max?: number;
-    minLength?: number;
-    maxLength?: number;
-    pattern?: string;
-    message?: string;
-  };
-  permissions?: ColumnPermissions;
-  width?: number;
-  pinned?: "left" | "right" | null;
-  hidden?: boolean;
-  order: number;
-  indexed?: boolean;
-  formula?: string;
-  source?: { valueField: string };
-  createdAt: string;
-  updatedAt: string;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (GridSchema)
-export interface GridSchema {
-  id: string;
-  schemaVersion: number;
-  columns: ColumnDef[];
-  views?: unknown[];
-}
-
-// ---------------------------------------------------------------------------
-// Rows and changes (spec §4.5)
-// ---------------------------------------------------------------------------
-
-// TODO(core): replace with @masai/schema-grid-core export (GridRow)
-export interface GridRow {
-  id: string;
-  version: number;
-  updatedAt: string;
-  updatedBy?: ActorRef;
-  /** Keyed by ColumnDef.key. */
-  cells: Record<string, unknown>;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (CellChange)
-export interface CellChange {
-  rowId: string;
-  columnId: string;
-  prev: unknown;
-  next: unknown;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (ChangeSource)
-export type ChangeSource =
-  | "edit"
-  | "paste"
-  | "fill"
-  | "undo"
-  | "redo"
-  | "import";
-
-// TODO(core): replace with @masai/schema-grid-core export (ChangeBatch)
-export interface ChangeBatch {
-  id: string;
-  changes: CellChange[];
-  baseVersions: Record<string, number>;
-  source: ChangeSource;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (ChangeConflict)
-export interface ChangeConflict {
-  rowId: string;
-  columnId: string;
-  serverValue: unknown;
-  serverVersion: number;
-  updatedBy?: ActorRef;
-  updatedAt: string;
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (ChangeResult)
-export interface ChangeResult {
-  applied: CellChange[];
-  conflicts: ChangeConflict[];
-  errors: { rowId: string; columnId: string; message: string }[];
-}
-
-// ---------------------------------------------------------------------------
-// Field types (spec §4.2) — only the members this package relies on are typed
-// precisely; the rest are optional so a real core FieldType is assignable.
-// ---------------------------------------------------------------------------
-
-// TODO(core): replace with @masai/schema-grid-core export (ParseResult)
-export type ParseResult<T> =
-  | { ok: true; value: T; pendingOptions?: string[]; warnings?: string[] }
-  | { ok: false; error: string };
-
-// TODO(core): replace with @masai/schema-grid-core export (FieldType)
-export interface FieldType<TValue = unknown, TConfig = unknown> {
-  id: FieldTypeId;
-  label: string;
-  defaultConfig: TConfig;
-  /** Never throws. */
-  parse(input: unknown, config: TConfig): ParseResult<TValue | null>;
-  format(value: TValue | null | undefined, config: TConfig): string;
-  serialize(value: TValue | null): unknown;
-  deserialize(raw: unknown): TValue | null;
-  compare(a: TValue | null, b: TValue | null, config: TConfig): number;
-  defaultValue(config: TConfig): TValue | null;
-  // biome-ignore lint/suspicious/noExplicitAny: zod schema types are core's concern
-  configSchema?: any;
-  // biome-ignore lint/suspicious/noExplicitAny: zod schema types are core's concern
-  valueSchema?: (config: TConfig) => any;
-  operators?: unknown[];
-  aggregations?: string[];
-}
-
-// TODO(core): replace with @masai/schema-grid-core export (AnyFieldType)
-// biome-ignore lint/suspicious/noExplicitAny: erased field type, as in core
-export type AnyFieldType = FieldType<any, any>;
-
-// TODO(core): replace with @masai/schema-grid-core export (FieldTypeRegistry)
-export interface FieldTypeRegistry {
-  register(type: AnyFieldType): void;
-  /** Returns undefined for an unknown id. */
-  get(id: string): AnyFieldType | undefined;
-  list(): AnyFieldType[];
-  has(id: string): boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Permissions (spec §4.7)
-// ---------------------------------------------------------------------------
-
-// TODO(core): replace with @masai/schema-grid-core export (Access)
-export type Access = "hidden" | "read" | "edit";
+export type {
+  Access,
+  ActorRef,
+  AnyFieldType,
+  BuiltinFieldTypeId,
+  CellChange,
+  ChangeBatch,
+  ChangeConflict,
+  ChangeResult,
+  ChangeSource,
+  ColumnDef,
+  ColumnPermissions,
+  FieldType,
+  FieldTypeId,
+  FieldTypeRegistry,
+  GridRow,
+  GridSchema,
+  Option,
+  ParseResult,
+  RoleRule,
+} from "@masai/schema-grid-core";
+import type {
+  AnyFieldType,
+  ColumnDef,
+  FieldTypeRegistry,
+  GridSchema,
+} from "@masai/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -94,7 +94,7 @@ describe("scaffold", () => {
     expect(isImportable(getColumn("c_score"), access)).toBe(false);
   });
 
-  it("fake registry covers the fixture types", () => {
+  it("registry covers the fixture types", () => {
     const reg = makeRegistry();
     for (const c of makeColumns()) expect(reg.has(c.type)).toBe(true);
     const pay = getColumn("c_pay");
@@ -105,7 +105,7 @@ describe("scaffold", () => {
     });
     const call = getColumn("c_call");
     expect(
-      unwrapParse(reg.get("datetime")?.parse("2026-09-25 10:30", call.config)),
+      unwrapParse(reg.get("datetime")?.parse("25/09/2026 10:30", call.config)),
     ).toEqual({ ok: true, value: "2026-09-25T05:00:00.000Z" });
   });
 });
