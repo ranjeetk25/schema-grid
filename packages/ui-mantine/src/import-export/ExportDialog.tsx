@@ -1,4 +1,5 @@
 import { Alert, Button, Group, Modal, Radio, SegmentedControl, Stack, Text } from "@mantine/core";
+import { IconDownload } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import type { ExportFormat } from "../internal/io-contracts";
 
@@ -59,10 +60,10 @@ export function ExportDialog({
   };
 
   return (
-    <Modal opened={opened} onClose={pending ? () => {} : onClose} title="Export">
-      <Stack gap="md">
+    <Modal opened={opened} onClose={pending ? () => {} : onClose} title="Export" size={440}>
+      <Stack gap="lg">
         <Radio.Group label="Rows" value={scope} onChange={(v) => setScope(v as ExportScope)}>
-          <Stack gap="xs" mt="xs">
+          <Stack gap={10} mt={8}>
             <Radio value="view" label="Current view" />
             <Radio
               value="selected"
@@ -79,13 +80,14 @@ export function ExportDialog({
           <SegmentedControl
             value={format}
             onChange={(v) => setFormat(v as ExportFormat)}
+            style={{ alignSelf: "flex-start" }}
             data={[
               { value: "csv", label: "CSV" },
               { value: "xlsx", label: "XLSX" },
             ]}
           />
         </Stack>
-        <Text size="sm" c="dimmed">
+        <Text size="xs" c="dimmed">
           {`Includes ${visibleColumnCount} visible column${visibleColumnCount === 1 ? "" : "s"}`}
         </Text>
         {error && (
@@ -93,11 +95,11 @@ export function ExportDialog({
             {error}
           </Alert>
         )}
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose} disabled={pending}>
+        <Group justify="flex-end" gap="xs">
+          <Button variant="subtle" color="gray" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={pending}>
+          <Button onClick={submit} loading={pending} leftSection={<IconDownload size={16} stroke={1.75} />}>
             Export
           </Button>
         </Group>

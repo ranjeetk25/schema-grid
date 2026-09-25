@@ -76,7 +76,8 @@ export {
 
 // §4.8 formula
 export type { FormulaError, FormulaNode, FormulaResultType } from "@ranjeetk25/schema-grid-core";
-export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parseFormula } from "@ranjeetk25/schema-grid-core";
+export { FORMULA_FUNCTIONS, dependencies, evaluate, inferResultType, isFormulaError, parseFormula } from "@ranjeetk25/schema-grid-core";
+export type { FormulaEnv } from "@ranjeetk25/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API

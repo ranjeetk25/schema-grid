@@ -2,22 +2,40 @@ import { Textarea } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
+import { useEditorStyles } from "./EditorCard";
 
-/** Multi-line text editor. Cmd/Ctrl+Enter commits, plain Enter inserts a newline, Escape cancels. */
-export function LongTextEditor({ value, onChange, onCommit, onCancel, autoFocus, error }: UiEditorProps<string, unknown>) {
+const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
+
+/**
+ * Multi-line text editor. Cmd/Ctrl+Enter commits, plain Enter inserts a
+ * newline, Escape cancels. In the popup card it is a borderless, auto-growing
+ * text area (at least 320px wide) with a muted keyboard hint below.
+ */
+export function LongTextEditor({ value, onChange, onCommit, onCancel, column, autoFocus, error, surface }: UiEditorProps<string, unknown>) {
+  useEditorStyles();
   const [text, setText] = useState(value ?? "");
   const ref = useRef<HTMLTextAreaElement>(null);
+  const card = surface === "popup";
 
   useEffect(() => {
-    if (autoFocus !== false) ref.current?.focus();
+    const el = ref.current;
+    if (autoFocus === false || !el) return;
+    el.focus();
+    // Caret at the end, like a document.
+    el.setSelectionRange(el.value.length, el.value.length);
   }, [autoFocus]);
 
-  return (
+  const field = (
     <Textarea
       ref={ref}
       autosize
+      minRows={card ? 4 : 2}
+      maxRows={card ? 12 : 8}
       value={text}
       error={error}
+      aria-label={column.label || undefined}
+      variant={card ? "unstyled" : "default"}
+      styles={card ? { input: { padding: "6px 8px", fontSize: 13, lineHeight: 1.5 } } : undefined}
       onChange={(event) => {
         const next = event.currentTarget.value;
         setText(next);
@@ -33,6 +51,16 @@ export function LongTextEditor({ value, onChange, onCommit, onCancel, autoFocus,
         }
       }}
     />
+  );
+  if (!card) return field;
+  return (
+    <div style={{ width: "max(var(--sg-ed-width, 320px), 320px)" }}>
+      {field}
+      <div className="sg-ed-divider" aria-hidden />
+      <div className="sg-ed-hint" style={{ fontFamily: "var(--mantine-font-family-monospace)", fontSize: 11 }}>
+        {`${isMac() ? "⌘" : "Ctrl"}↵ save · Esc cancel`}
+      </div>
+    </div>
   );
 }
 

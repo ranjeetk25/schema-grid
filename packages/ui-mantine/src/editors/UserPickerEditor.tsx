@@ -12,8 +12,8 @@ const valueId = (v: string | UserRef | null): string | null => (v == null ? null
 export function UserAvatarLabel({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <Group gap={8} wrap="nowrap">
-      <Avatar src={avatarUrl ?? null} name={name} alt={name} size={22} radius="xl" color="initials" />
-      <Text size="sm" truncate>
+      <Avatar src={avatarUrl ?? null} name={name} alt={name} size={20} radius="xl" color="initials" styles={{ placeholder: { fontSize: 9, fontWeight: 600 } }} />
+      <Text fz={13} truncate>
         {name}
       </Text>
     </Group>

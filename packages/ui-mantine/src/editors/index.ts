@@ -30,6 +30,7 @@ export { UserRenderer } from "../renderers/UserRenderer";
 export { UrlRenderer } from "../renderers/UrlRenderer";
 export { FormattedRenderer, createFormattedRenderer } from "../renderers/FormattedRenderer";
 export { FormulaRenderer } from "../renderers/FormulaRenderer";
+export { BooleanRenderer } from "../renderers/BooleanRenderer";
 
 // Registry (real @ranjeetk25/schema-grid-ag-grid registry) + widget adapters
 export {

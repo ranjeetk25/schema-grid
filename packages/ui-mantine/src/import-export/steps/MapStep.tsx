@@ -1,4 +1,5 @@
 import { Select, SegmentedControl, Stack, Table, Text } from "@mantine/core";
+import { IconArrowRight } from "@tabler/icons-react";
 import type { ColumnDef } from "../../internal/core-contracts";
 import type { ColumnMapping, ImportMode } from "../../internal/io-contracts";
 import type { MappingErrors } from "../import-model";
@@ -10,6 +11,12 @@ const MODE_DATA: { label: string; value: ImportMode }[] = [
   { label: "Update", value: "update" },
   { label: "Upsert", value: "upsert" },
 ];
+
+const MODE_HELP: Record<ImportMode, string> = {
+  create: "Every row in the file becomes a new row.",
+  update: "Rows are matched on a key column and updated; unmatched rows are skipped.",
+  upsert: "Matched rows are updated; the rest are created.",
+};
 
 export interface MapStepProps {
   headers: string[];
@@ -60,10 +67,14 @@ export function MapStep({
           aria-label="Import mode"
           data={MODE_DATA}
           value={mode}
+          style={{ alignSelf: "flex-start" }}
           onChange={(v) => {
             if (isMode(v)) onModeChange(v);
           }}
         />
+        <Text size="xs" c="dimmed">
+          {MODE_HELP[mode]}
+        </Text>
       </Stack>
       {mode !== "create" ? (
         <Select
@@ -79,11 +90,12 @@ export function MapStep({
           comboboxProps={{ withinPortal: false }}
         />
       ) : null}
-      <Table>
+      <Table verticalSpacing={6} horizontalSpacing="sm" withRowBorders layout="fixed">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>File column</Table.Th>
-            <Table.Th>Imports into</Table.Th>
+            <Table.Th style={{ fontSize: 12, fontWeight: 500, color: "var(--mantine-color-dimmed)" }}>File column</Table.Th>
+            <Table.Th w={28} aria-hidden />
+            <Table.Th style={{ fontSize: 12, fontWeight: 500, color: "var(--mantine-color-dimmed)" }}>Imports into</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -91,9 +103,12 @@ export function MapStep({
             // biome-ignore lint/suspicious/noArrayIndexKey: headers may repeat; the position is the identity
             <Table.Tr key={index}>
               <Table.Td>
-                <Text size="sm" c={header.trim() === "" ? "dimmed" : undefined}>
+                <Text size="sm" c={header.trim() === "" ? "dimmed" : undefined} truncate>
                   {header.trim() === "" ? `(blank, column ${index + 1})` : header}
                 </Text>
+              </Table.Td>
+              <Table.Td aria-hidden style={{ color: "var(--mantine-color-dimmed)", verticalAlign: "middle", lineHeight: 0 }}>
+                <IconArrowRight size={14} stroke={1.75} style={{ display: "block" }} />
               </Table.Td>
               <Table.Td>
                 <Select

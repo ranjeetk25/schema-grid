@@ -1,6 +1,8 @@
 import { Combobox, Group, InputBase, Loader, Stack, Text, useCombobox } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { useEditorStyles } from "./EditorCard";
+import { PickerDivider, PickerEmpty, PickerOption, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 
 export interface AsyncComboboxProps<TItem> {
   /** Loads the items for a search string. Called once with "" on open/mount. */
@@ -58,6 +60,7 @@ export function AsyncCombobox<TItem>({
   "aria-label": ariaLabel,
   header,
 }: AsyncComboboxProps<TItem>) {
+  useEditorStyles();
   const gridMode = autoFocus !== false;
   const [search, setSearch] = useState("");
   const [debounced] = useDebouncedValue(search, debounceMs);
@@ -134,7 +137,7 @@ export function AsyncCombobox<TItem>({
   const status = (() => {
     if (state === "error") {
       return (
-        <Text size="sm" c="red">
+        <Text size="xs" c="red">
           {`Could not load: ${loadError}`}
         </Text>
       );
@@ -144,27 +147,74 @@ export function AsyncCombobox<TItem>({
     return "No results";
   })();
 
+  // Grid mode: pick the highlighted item before AG Grid sees Enter.
+  useEnterPicksHighlighted(inputRef, gridMode && !readOnly && !disabled, handleSubmit);
+
+  const inputProps = {
+    value: search,
+    placeholder: selectedLabel ?? valueLabel ?? placeholder,
+    "aria-label": ariaLabel,
+    disabled,
+    readOnly,
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      setSearch(event.currentTarget.value);
+      combobox.openDropdown();
+    },
+    onKeyDown: handleKeyDown,
+  };
+
+  if (gridMode) {
+    // Picker card: header (e.g. picked pills), search row, hairline, list attached below.
+    return (
+      <Combobox store={combobox} withinPortal={false} onOptionSubmit={handleSubmit} readOnly={readOnly || disabled}>
+        <div style={{ width: "var(--sg-ed-width, 100%)" }}>
+          {header != null && <div style={{ padding: "4px 4px 0" }}>{header}</div>}
+          <SearchRow
+            right={state === "loading" ? <Loader size={12} aria-label="Loading" /> : null}
+            onMouseDown={() => inputRef.current?.focus()}
+          >
+            <Combobox.EventsTarget>
+              <input ref={inputRef} className="sg-ed-input" {...inputProps} />
+            </Combobox.EventsTarget>
+          </SearchRow>
+          {error && (
+            <div className="sg-ed-error" role="alert">
+              {error}
+            </div>
+          )}
+          <PickerDivider />
+          <Combobox.Options className="sg-ed-list">
+            {items.map((item) => {
+              const key = getKey(item);
+              return (
+                <PickerOption key={key} value={key} selected={key === value}>
+                  {renderItem ? renderItem(item) : getLabel(item)}
+                </PickerOption>
+              );
+            })}
+            {status != null && (
+              <Combobox.Empty>
+                <PickerEmpty>{status}</PickerEmpty>
+              </Combobox.Empty>
+            )}
+          </Combobox.Options>
+        </div>
+      </Combobox>
+    );
+  }
+
   const box = (
     <Combobox store={combobox} withinPortal={false} onOptionSubmit={handleSubmit} readOnly={readOnly || disabled}>
       <Combobox.Target>
         <InputBase
           ref={inputRef}
-          value={search}
-          placeholder={selectedLabel ?? valueLabel ?? placeholder}
-          aria-label={ariaLabel}
-          disabled={disabled}
-          readOnly={readOnly}
+          {...inputProps}
           error={error}
           rightSection={state === "loading" ? <Loader size="xs" /> : <Combobox.Chevron />}
           rightSectionPointerEvents="none"
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            combobox.openDropdown();
-          }}
           onClick={() => {
             if (!readOnly) combobox.openDropdown();
           }}
-          onKeyDown={handleKeyDown}
         />
       </Combobox.Target>
       <Combobox.Dropdown>

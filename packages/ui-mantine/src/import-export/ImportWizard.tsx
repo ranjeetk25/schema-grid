@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Modal, Stack, Stepper } from "@mantine/core";
+import { Alert, Box, Button, Group, Modal, Stack } from "@mantine/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import type { FieldTypeRegistry, GridSchema } from "../internal/core-contracts";
@@ -27,6 +27,9 @@ import { MapStep } from "./steps/MapStep";
 import { PreviewStep } from "./steps/PreviewStep";
 import { RunStep } from "./steps/RunStep";
 import { UploadStep } from "./steps/UploadStep";
+import { StepIndicator } from "./StepIndicator";
+
+const STEPS = ["Upload", "Map columns", "Preview", "Import"];
 
 export interface ImportWizardProps {
   opened: boolean;
@@ -195,12 +198,13 @@ export function ImportWizard({
       opened={opened}
       onClose={handleClose}
       title="Import data"
-      size="xl"
+      size={760}
       closeButtonProps={{ "aria-label": "Close import" }}
     >
-      <Stack gap="md">
-        <Stepper active={state.step} size="sm" allowNextStepsSelect={false}>
-          <Stepper.Step label="Upload">
+      <Stack gap="lg">
+        <StepIndicator steps={STEPS} active={state.step} aria-label="Import steps" />
+        <Box pt={4}>
+          {state.step === 0 && (
             <UploadStep
               file={state.file}
               fileName={state.fileName}
@@ -210,9 +214,8 @@ export function ImportWizard({
               truncated={state.parsed?.truncated ?? false}
               onFile={(f) => void handleFile(f)}
             />
-          </Stepper.Step>
-          <Stepper.Step label="Map columns">
-            {state.parsed ? (
+          )}
+          {state.step === 1 && state.parsed ? (
               <MapStep
                 headers={state.parsed.headers}
                 mapping={state.mapping}
@@ -227,9 +230,7 @@ export function ImportWizard({
                 onModeChange={(mode) => dispatch({ type: "setMode", mode })}
               />
             ) : null}
-          </Stepper.Step>
-          <Stepper.Step label="Preview">
-            {state.parsed ? (
+          {state.step === 2 && state.parsed ? (
               <PreviewStep
                 parsed={state.parsed}
                 mapping={state.mapping}
@@ -241,22 +242,27 @@ export function ImportWizard({
                 onPolicyChange={changePolicy}
               />
             ) : null}
-          </Stepper.Step>
-          <Stepper.Step label="Import">
+          {state.step === 3 && (
             <RunStep job={activeJob} />
-          </Stepper.Step>
-        </Stepper>
+          )}
+        </Box>
         {commitError ? (
           <Alert color="red" title="Import failed to start">
             {commitError}
           </Alert>
         ) : null}
-        <Group justify="flex-end">
-          {state.step > 0 && state.step < 3 ? (
-            <Button variant="default" onClick={goBack} disabled={committing}>
-              Back
-            </Button>
-          ) : null}
+        <Group justify="space-between" pt="sm" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
+          <Box>
+            {state.step > 0 && state.step < 3 ? (
+              <Button variant="subtle" color="gray" onClick={goBack} disabled={committing}>
+                Back
+              </Button>
+            ) : state.step === 0 ? (
+              <Button variant="subtle" color="gray" onClick={handleClose}>
+                Cancel
+              </Button>
+            ) : null}
+          </Box>
           {state.step < 2 ? (
             <Button onClick={goNext} disabled={!nextEnabled}>
               Next

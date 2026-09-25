@@ -82,7 +82,7 @@ describe("LongTextEditor", () => {
 
   it("exports LongTextPopupEditor wrapped as a popup editor", () => {
     expect(LongTextPopupEditor.cellEditorPopup).toBe(true);
-    expect(LongTextPopupEditor.cellEditorPopupPosition).toBe("over");
+    expect(LongTextPopupEditor.cellEditorPopupPosition).toBe("under");
   });
 });
 
@@ -137,5 +137,40 @@ describe("UrlEditor", () => {
       />,
     );
     expect(getByRole("textbox")).toHaveAttribute("inputmode", "url");
+  });
+});
+
+describe("inline validation (text-family editors)", () => {
+  const base = () => ({ onChange: vi.fn(), onCommit: vi.fn(), onCancel: vi.fn(), column: fixtureColumn(FIXTURE_IDS.notes), config: {} });
+
+  it("shows no error on open, even for an invalid stored value", () => {
+    const { queryByText, getByRole } = renderWithMantine(<PhoneEditor {...base()} value="abc" />);
+    expect(queryByText(/invalid phone/i)).not.toBeInTheDocument();
+    expect(getByRole("textbox")).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("shows the error as helper text once typed, and Enter on an invalid value does not commit", async () => {
+    const props = base();
+    const { user, getByRole, getByText } = renderWithMantine(<PhoneEditor {...props} value={null} surface="popup" />);
+    await user.type(getByRole("textbox"), "abc{Enter}");
+    expect(getByText(/invalid phone/i)).toBeInTheDocument();
+    expect(props.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("in a grid cell the error is an in-cell ring + icon with the message as the input's aria-errormessage", async () => {
+    const { user, getByRole, getByText } = renderWithMantine(<EmailEditor {...base()} value={null} surface="cell" />);
+    const input = getByRole("textbox");
+    await user.type(input, "nope");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    const describedBy = input.getAttribute("aria-errormessage") ?? "";
+    expect(describedBy).not.toBe("");
+    expect(getByText(/invalid email/i).id).toBe(describedBy);
+  });
+
+  it("Enter commits a valid value", async () => {
+    const props = base();
+    const { user, getByRole } = renderWithMantine(<EmailEditor {...props} value={null} />);
+    await user.type(getByRole("textbox"), "a@b.co{Enter}");
+    expect(props.onCommit).toHaveBeenCalledWith("a@b.co");
   });
 });

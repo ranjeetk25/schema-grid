@@ -1,11 +1,19 @@
 import { createDefaultRegistry } from "../internal/core-contracts";
 import type { FieldTypeRegistry } from "../internal/core-contracts";
 import type { UiRendererProps } from "../internal/grid-contracts";
+import { CELL_BOX_STYLE } from "./CellBox";
+
+const NUMERIC_TYPES = new Set(["number", "currency"]);
 
 function renderFormatted(registry: FieldTypeRegistry, { value, column, config, fieldType }: UiRendererProps) {
-  const type = registry.get(fieldType ?? column.type);
+  const id = fieldType ?? column.type;
+  const type = registry.get(id);
   if (!type) return null;
-  return <span>{type.format(value, config)}</span>;
+  return (
+    <span style={{ ...CELL_BOX_STYLE, display: "block", lineHeight: "inherit", textOverflow: "ellipsis", fontVariantNumeric: NUMERIC_TYPES.has(id) ? "tabular-nums" : undefined }}>
+      {type.format(value, config)}
+    </span>
+  );
 }
 
 /**

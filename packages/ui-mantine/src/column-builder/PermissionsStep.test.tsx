@@ -3,14 +3,15 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ColumnPermissions } from "../internal/core-contracts";
 import { renderWithMantine } from "../test/render";
-import { PermissionsStep, permissionsError } from "./PermissionsStep";
+import { AccessSection, accessSummary, permissionsError } from "./PermissionsStep";
 
-function Harness({ onChange }: { onChange: (p: ColumnPermissions) => void }) {
-  const [value, setValue] = useState<ColumnPermissions>({ read: "all", edit: "all" });
+function Harness({ onChange, computed, initial = { read: "all", edit: "all" } }: { onChange: (p: ColumnPermissions) => void; computed?: boolean; initial?: ColumnPermissions }) {
+  const [value, setValue] = useState<ColumnPermissions>(initial);
   return (
-    <PermissionsStep
+    <AccessSection
       value={value}
-      roles={["admin", "counsellor", "finance"]}
+      roles={["admin", "counsellor", "viewer"]}
+      computed={computed}
       onChange={(p) => {
         setValue(p);
         onChange(p);
@@ -19,21 +20,41 @@ function Harness({ onChange }: { onChange: (p: ColumnPermissions) => void }) {
   );
 }
 
-describe("PermissionsStep", () => {
-  it("switches read to roles and warns when editors are not a subset of readers", async () => {
+describe("AccessSection (Who can access)", () => {
+  it("limits viewing to roles, summarises in plain English and shows who it's hidden from", async () => {
     const onChange = vi.fn();
     const { user } = renderWithMantine(<Harness onChange={onChange} />);
-    await user.click(screen.getAllByText("Roles")[0] as HTMLElement);
-    expect(screen.getByText("Choose at least one role")).toBeInTheDocument();
-    await user.click(screen.getByRole("textbox", { name: "Read roles" }));
-    await user.click(screen.getByRole("option", { name: "counsellor" }));
+    expect(screen.getByTestId("access-summary")).toHaveTextContent("Everyone can view · everyone can edit");
+    await user.click(screen.getAllByText("Only roles…")[0] as HTMLElement);
+    expect(screen.getByText("Pick at least one role")).toBeInTheDocument();
+    await user.click(screen.getByRole("textbox", { name: "Roles that can view" }));
+    await user.click(screen.getByRole("option", { name: "Counsellor" }));
     expect(onChange).toHaveBeenLastCalledWith({ read: { roles: ["counsellor"] }, edit: "all" });
-    expect(screen.getByText(/can edit but not read/)).toBeInTheDocument();
-    expect(screen.queryByText("Choose at least one role")).not.toBeInTheDocument();
+    expect(screen.getByTestId("access-summary")).toHaveTextContent("Only Counsellor can view · all of them can edit");
+    expect(screen.getByText("Hidden from: Admin, Viewer")).toBeInTheDocument();
+    expect(screen.getByText("Everyone who can view")).toBeInTheDocument();
   });
 
-  it("permissionsError flags empty role lists", () => {
+  it("giving a role edit also gives it view (with a note)", async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithMantine(
+      <Harness onChange={onChange} initial={{ read: { roles: ["admin"] }, edit: { roles: ["admin"] } }} />,
+    );
+    await user.click(screen.getByRole("textbox", { name: "Roles that can edit" }));
+    await user.click(screen.getByRole("option", { name: "Counsellor" }));
+    expect(onChange).toHaveBeenLastCalledWith({ read: { roles: ["admin", "counsellor"] }, edit: { roles: ["admin", "counsellor"] } });
+    expect(screen.getByRole("status")).toHaveTextContent("Counsellor can now view it too");
+  });
+
+  it("formula columns only ask who can view", () => {
+    renderWithMantine(<Harness onChange={() => {}} computed />);
+    expect(screen.getByText("Computed — read-only for everyone.")).toBeInTheDocument();
+    expect(screen.queryByText("Can edit")).not.toBeInTheDocument();
+  });
+
+  it("permissionsError flags empty role lists; accessSummary reads naturally", () => {
     expect(permissionsError({ read: { roles: [] }, edit: "all" })).toBeTruthy();
     expect(permissionsError({ read: "all", edit: { roles: ["admin"] } })).toBeNull();
+    expect(accessSummary({ read: "all", edit: { roles: ["admin", "finance_team"] } })).toBe("Everyone can view · only Admin and Finance team can edit");
   });
 });

@@ -92,7 +92,7 @@ describe("BooleanEditor", () => {
     expect(onCommit).toHaveBeenCalled();
   });
 
-  it("toggles and commits on space", async () => {
+  it("Space toggles without committing; Enter commits", async () => {
     const onChange = vi.fn();
     const onCommit = vi.fn();
     const { user, getByRole } = renderWithMantine(
@@ -109,6 +109,23 @@ describe("BooleanEditor", () => {
     getByRole("checkbox").focus();
     await user.keyboard(" ");
     expect(onChange).toHaveBeenCalledWith(true);
-    expect(onCommit).toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    expect(onCommit).toHaveBeenCalledWith(true);
+  });
+});
+
+describe("NumberEditor range validation", () => {
+  it("shows nothing on open, then an at-least message once an out-of-range value is typed; Enter keeps it open", async () => {
+    const onCommit = vi.fn();
+    const { user, getByRole, queryByText, getByText } = renderWithMantine(
+      <NumberEditor value={5} onChange={vi.fn()} onCommit={onCommit} onCancel={vi.fn()} column={fixtureColumn(FIXTURE_IDS.amount)} config={{ min: 10 }} surface="popup" />,
+    );
+    expect(queryByText(/Must be at least/)).not.toBeInTheDocument();
+    const input = getByRole("textbox");
+    await user.clear(input);
+    await user.type(input, "3{Enter}");
+    expect(getByText("Must be at least 10")).toBeInTheDocument();
+    expect(onCommit).not.toHaveBeenCalled();
   });
 });

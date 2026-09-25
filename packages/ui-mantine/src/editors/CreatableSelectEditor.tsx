@@ -1,8 +1,11 @@
-import { Box, Combobox, Group, InputBase, Loader, useCombobox, useMantineTheme } from "@mantine/core";
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Combobox, Group, InputBase, Loader, useCombobox } from "@mantine/core";
+import { IconPlus } from "@tabler/icons-react";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
-import { getSelectOptions, resolveOptionColor } from "../internal/options";
+import { getSelectOptions } from "../internal/options";
+import { useEditorStyles } from "./EditorCard";
+import { OptionColorDot, PickerDivider, PickerEmpty, PickerOption, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 
 /**
  * Sentinel option value for the trailing "Create '<x>'" entry. Contains a NUL
@@ -15,13 +18,6 @@ export type CreatableSelectEditorProps = UiEditorProps<string, unknown>;
 const errorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : typeof err === "string" && err ? err : "Could not create option";
 
-function OptionDot({ option }: { option: Option }) {
-  const theme = useMantineTheme();
-  const color = resolveOptionColor(option, theme);
-  const background = color in theme.colors ? `var(--mantine-color-${color}-filled)` : color;
-  return <Box component="span" w={8} h={8} style={{ borderRadius: "50%", background, flexShrink: 0 }} />;
-}
-
 /**
  * Searchable single select that can create new options through
  * `dataSource.createOption`. The dropdown stays inside the editor
@@ -29,6 +25,7 @@ function OptionDot({ option }: { option: Option }) {
  */
 export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error } = props;
+  useEditorStyles();
   // Latest props for async continuations (avoids stale closures after await).
   const latest = useRef(props);
   latest.current = props;
@@ -129,6 +126,9 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
     if (option) pick(option);
   };
 
+  // Grid mode: pick (or create) the highlighted option before AG Grid sees Enter.
+  useEnterPicksHighlighted(inputRef, gridMode, (picked) => handleSubmit(picked));
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -142,44 +142,97 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
     }
   };
 
+  const inputProps = {
+    value: search,
+    placeholder: valueLabel ?? "Search or create…",
+    "aria-label": column.label,
+    disabled: creating,
+    "aria-busy": creating || undefined,
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      setSearch(event.currentTarget.value);
+      setCreateError(null);
+      combobox.openDropdown();
+    },
+    onKeyDown: handleKeyDown,
+  };
+  const loader = creating ? <Loader size="xs" aria-label="Creating option" data-testid="creatable-select-loader" /> : null;
+
+  const optionNodes = (
+    <>
+      {filtered.map((option) =>
+        gridMode ? (
+          <PickerOption key={option.id} value={option.id} selected={option.id === value} disabled={creating} leading={<OptionColorDot option={option} />}>
+            {option.label}
+          </PickerOption>
+        ) : (
+          <Combobox.Option value={option.id} key={option.id} active={option.id === value} disabled={creating}>
+            <Group gap={8} wrap="nowrap">
+              <OptionColorDot option={option} />
+              <span>{option.label}</span>
+            </Group>
+          </Combobox.Option>
+        ),
+      )}
+      {showCreate &&
+        (gridMode ? (
+          <PickerOption
+            value={CREATE_OPTION_VALUE}
+            disabled={creating}
+            aria-label={`Create '${query}'`}
+            leading={<IconPlus size={14} stroke={1.75} aria-hidden style={{ flexShrink: 0, color: "var(--mantine-color-dimmed)" }} />}
+          >
+            <span>
+              Create <strong style={{ fontWeight: 500 }}>{query}</strong>
+            </span>
+          </PickerOption>
+        ) : (
+          <Combobox.Option value={CREATE_OPTION_VALUE} disabled={creating}>{`Create '${query}'`}</Combobox.Option>
+        ))}
+    </>
+  );
+
+  if (gridMode) {
+    // Picker card: search row, hairline, the list attached below (always visible).
+    return (
+      <Combobox store={combobox} withinPortal={false} onOptionSubmit={handleSubmit} readOnly={creating}>
+        <div style={{ width: "var(--sg-ed-width, 100%)" }}>
+          <SearchRow right={loader} onMouseDown={() => inputRef.current?.focus()}>
+            <Combobox.EventsTarget>
+              <input ref={inputRef} className="sg-ed-input" {...inputProps} />
+            </Combobox.EventsTarget>
+          </SearchRow>
+          {(createError ?? error) && (
+            <div className="sg-ed-error" role="alert">
+              {createError ?? error}
+            </div>
+          )}
+          <PickerDivider />
+          <Combobox.Options className="sg-ed-list">
+            {optionNodes}
+            {filtered.length === 0 && !showCreate && <PickerEmpty>{query ? "No matches" : "No options yet — type to create one"}</PickerEmpty>}
+          </Combobox.Options>
+        </div>
+      </Combobox>
+    );
+  }
+
   return (
     <Combobox store={combobox} withinPortal={false} onOptionSubmit={handleSubmit} readOnly={creating}>
       <Combobox.Target>
         <InputBase
           ref={inputRef}
-          value={search}
-          placeholder={valueLabel ?? "Search or create…"}
-          aria-label={column.label}
-          disabled={creating}
-          aria-busy={creating || undefined}
+          {...inputProps}
           error={createError ?? error}
-          rightSection={creating ? <Loader size="xs" aria-label="Creating option" data-testid="creatable-select-loader" /> : <Combobox.Chevron />}
+          rightSection={loader ?? <Combobox.Chevron />}
           rightSectionPointerEvents="none"
-          onChange={(event) => {
-            setSearch(event.currentTarget.value);
-            setCreateError(null);
-            combobox.openDropdown();
-          }}
           onClick={() => {
             if (!creatingRef.current) combobox.openDropdown();
           }}
-          onFocus={() => {
-            if (gridMode) combobox.openDropdown();
-          }}
-          onKeyDown={handleKeyDown}
         />
       </Combobox.Target>
       <Combobox.Dropdown>
         <Combobox.Options mah={240} style={{ overflowY: "auto" }}>
-          {filtered.map((option) => (
-            <Combobox.Option value={option.id} key={option.id} active={option.id === value} disabled={creating}>
-              <Group gap={8} wrap="nowrap">
-                <OptionDot option={option} />
-                <span>{option.label}</span>
-              </Group>
-            </Combobox.Option>
-          ))}
-          {showCreate && <Combobox.Option value={CREATE_OPTION_VALUE} disabled={creating}>{`Create '${query}'`}</Combobox.Option>}
+          {optionNodes}
           {filtered.length === 0 && !showCreate && <Combobox.Empty>Nothing found</Combobox.Empty>}
         </Combobox.Options>
       </Combobox.Dropdown>

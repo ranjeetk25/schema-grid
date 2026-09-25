@@ -1,8 +1,10 @@
-import { Group, Pill, Stack, Text } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import { useCallback, useState } from "react";
 import type { LinkRef } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { AsyncCombobox } from "./AsyncCombobox";
+import { useEditorStyles } from "./EditorCard";
+import { PickerPill } from "./pickerParts";
 
 /** Core link values are always `LinkRef[]`; a lone `LinkRef` is accepted on read. */
 export type LinkValue = LinkRef[] | LinkRef;
@@ -25,6 +27,7 @@ const toList = (value: LinkValue | null): LinkRef[] =>
  * and Enter on an empty search commits the list.
  */
 export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error }: LinkPickerEditorProps) {
+  useEditorStyles();
   const multiple = allowsMultiple(config);
   const lookup = dataSource?.lookup;
   const [picked, setPicked] = useState<LinkRef[]>(() => toList(value));
@@ -39,7 +42,7 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
     return (
       <Stack gap={4}>
         {current.length > 0 && <Text size="sm">{current.map((l) => l.label).join(", ")}</Text>}
-        <Text size="xs" c="dimmed">
+        <Text size="xs" c="dimmed" px={8} py={4}>
           Lookup not configured
         </Text>
       </Stack>
@@ -55,14 +58,7 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
     multiple && picked.length > 0 ? (
       <Group gap={4} data-testid="link-picker-pills">
         {picked.map((link) => (
-          <Pill
-            key={link.id}
-            withRemoveButton
-            removeButtonProps={{ "aria-label": `Remove ${link.label}` }}
-            onRemove={() => update(picked.filter((p) => p.id !== link.id))}
-          >
-            {link.label}
-          </Pill>
+          <PickerPill key={link.id} label={link.label} onRemove={() => update(picked.filter((p) => p.id !== link.id))} />
         ))}
       </Group>
     ) : null;

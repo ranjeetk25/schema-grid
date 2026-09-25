@@ -16,6 +16,7 @@ import {
   type UiFieldTypeRegistry,
   createDefaultUiRegistry,
   getSchemaGridContext,
+  readOnlyReason,
 } from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type CreatePopupEditorOptions,
@@ -25,7 +26,9 @@ import {
 } from "@ranjeetk25/schema-grid-ag-grid/editors";
 import { type CustomCellEditorProps, type CustomCellRendererProps, useGridCellEditor } from "ag-grid-react";
 import { type ComponentType, createElement, useCallback, useRef } from "react";
+import { EditorCard } from "../editors/EditorCard";
 import {
+  type Access,
   type ColumnDef,
   type DataSource,
   type FieldTypeId,
@@ -68,6 +71,12 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
   autoFocus?: boolean;
   error?: string;
   onOptionCreate?(option: Option): void;
+  /**
+   * Where the widget renders: `"cell"` = inside the AG Grid cell (inline
+   * editor), `"popup"` = inside the popup card, `"form"` = a form / filter
+   * field. Undefined when used directly (treated like a form field).
+   */
+  surface?: "cell" | "popup" | "form";
 }
 
 export interface UiRendererProps<TValue = unknown, TConfig = unknown> {
@@ -76,6 +85,8 @@ export interface UiRendererProps<TValue = unknown, TConfig = unknown> {
   config: TConfig;
   row?: GridRow;
   fieldType: FieldTypeId;
+  /** True when the grid will not let this cell be edited (`colDef.editable` is false or returns false). */
+  readOnly?: boolean;
 }
 
 export interface UiFilterInputProps<TValue = unknown> {
@@ -127,6 +138,32 @@ function contextExtras(context: unknown, column: ColumnDef | undefined) {
 // Renderer adapter
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the grid will refuse edits to this cell. Inside a schema grid this
+ * follows ag-grid's own rule (`readOnlyReason`: formula, column access,
+ * row-level `canEditCell`) — `colDef.editable` is deliberately false for
+ * in-place toggles such as booleans, so it is only the fallback outside one.
+ */
+function isCellReadOnly(props: CustomCellRendererProps<GridRow> & SchemaExtras): boolean {
+  const column = props.schemaColumn;
+  if (column?.type === "formula") return true;
+  const ctx = props.context as
+    | { schema?: unknown; access?: { get(id: string): Access | undefined }; canEditCell?: (row: GridRow, columnId: string) => boolean }
+    | undefined;
+  if (column && ctx && typeof ctx === "object" && "schema" in ctx) {
+    return readOnlyReason<GridRow>(column, ctx.access?.get(column.id), props.data, ctx.canEditCell) !== null;
+  }
+  const editable = props.colDef?.editable;
+  if (typeof editable === "function") {
+    try {
+      return !editable(props as unknown as Parameters<typeof editable>[0]);
+    } catch {
+      return false;
+    }
+  }
+  return editable === false;
+}
+
 /** Wraps a `UiRendererProps` widget as an AG Grid cell renderer (reads `params.schemaColumn` / `params.fieldType`). */
 export function toGridRenderer(widget: AnyRendererWidget): GridRenderer {
   function MantineCellRenderer(props: CustomCellRendererProps<GridRow> & SchemaExtras) {
@@ -138,6 +175,7 @@ export function toGridRenderer(widget: AnyRendererWidget): GridRenderer {
       config: column.config,
       row: props.data,
       fieldType: props.fieldType?.id ?? column.type,
+      readOnly: isCellReadOnly(props),
     });
   }
   MantineCellRenderer.displayName = `GridRenderer(${widget.displayName ?? widget.name ?? "Widget"})`;
@@ -216,6 +254,7 @@ export function toInlineGridEditor(widget: AnyEditorWidget): GridEditor {
       column,
       config: column.config,
       autoFocus: true,
+      surface: "cell",
       ...contextExtras(props.context, props.schemaColumn),
     });
   }
@@ -238,7 +277,7 @@ function popupInner(widget: AnyEditorWidget): ComponentType<PopupEditorInnerProp
       [onChange],
     );
     const handleCommit = useCallback((v?: unknown) => commit(v !== undefined ? v : (latest.current ?? null)), [commit]);
-    return createElement(widget, {
+    const editor = createElement(widget, {
       value: props.value,
       onChange: handleChange,
       onCommit: handleCommit,
@@ -246,16 +285,19 @@ function popupInner(widget: AnyEditorWidget): ComponentType<PopupEditorInnerProp
       column,
       config: column.config,
       autoFocus: true,
+      surface: "popup",
       ...contextExtras(props.editorProps.context, props.schemaColumn),
     });
+    // The opaque card every popup editor sits in: at least as wide as the cell (min 240px).
+    return createElement(EditorCard, { cellWidth: props.editorProps.eGridCell?.getBoundingClientRect().width }, editor);
   }
   MantinePopupInner.displayName = `PopupInner(${widget.displayName ?? widget.name ?? "Widget"})`;
   return MantinePopupInner;
 }
 
-/** Wraps a widget as an AG Grid popup editor (dropdowns render inside the popup layer). */
+/** Wraps a widget as an AG Grid popup editor (dropdowns render inside the popup layer); the card drops below the cell by default. */
 export function toPopupGridEditor(widget: AnyEditorWidget, opts: CreatePopupEditorOptions = {}): PopupEditorEntry<GridRow> {
-  const entry = createPopupEditor<unknown, GridRow>(popupInner(widget), opts);
+  const entry = createPopupEditor<unknown, GridRow>(popupInner(widget), { position: "under", ...opts });
   tag(entry.component, widget);
   return tag(entry, widget);
 }
@@ -265,6 +307,7 @@ export type WidgetEntry = {
   editor?: AnyEditorWidget | null;
   /** Render the editor in AG Grid's popup layer. */
   popup?: boolean;
+  /** Where the popup card sits relative to the cell. Default "under" (the cell stays visible). */
   popupPosition?: "over" | "under";
 };
 
@@ -277,7 +320,7 @@ export function widgetsToUiFieldType(entry: WidgetEntry): Partial<UiFieldType<Gr
     out.editorPopup = undefined;
   } else if (entry.editor) {
     if (entry.popup) {
-      const popup = toPopupGridEditor(entry.editor, { position: entry.popupPosition ?? "over" });
+      const popup = toPopupGridEditor(entry.editor, { position: entry.popupPosition ?? "under" });
       out.editor = popup.component;
       out.editorPopup = true;
       out.editorPopupPosition = popup.cellEditorPopupPosition;
@@ -329,6 +372,7 @@ export function toFilterInput(widget: AnyEditorWidget): ComponentType<UiFilterIn
       config: column.config,
       dataSource,
       autoFocus: false,
+      surface: "form",
     });
   }
   FilterInput.displayName = `FilterInput(${widget.displayName ?? widget.name ?? "Widget"})`;

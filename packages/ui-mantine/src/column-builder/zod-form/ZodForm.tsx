@@ -82,6 +82,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
           value={typeof value === "number" ? value : ""}
           min={field.min}
           max={field.max}
+          hideControls
           allowDecimal={!field.int}
           onChange={(next) => onChange(typeof next === "number" ? next : undefined)}
         />

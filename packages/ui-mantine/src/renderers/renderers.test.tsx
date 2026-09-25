@@ -125,3 +125,49 @@ describe("FormulaRenderer", () => {
     expect(getByText(expected)).toBeInTheDocument();
   });
 });
+
+describe("MultiSelectRenderer clamping", () => {
+  it("defaults to two pills plus a +N badge on one line", () => {
+    const column = fixtureColumn(FIXTURE_IDS.payment);
+    const { getByTestId, getByLabelText } = renderWithMantine(
+      <MultiSelectRenderer value={["paid", "pending", "failed", "paid"]} column={column} config={column.config as MultiSelectRendererConfig} fieldType="multiSelect" />,
+    );
+    const cellRoot = getByTestId("multi-select-cell");
+    // Visible pills are direct children (the measuring copy is aria-hidden).
+    const visible = Array.from(cellRoot.children).filter((c) => c.getAttribute("aria-hidden") !== "true" && c.classList.contains("mantine-Badge-root"));
+    expect(visible.map((c) => c.textContent)).toEqual(["Paid", "Pending", "+2"]);
+    expect(getByLabelText("2 more")).toBeInTheDocument();
+  });
+
+  it("fitPillCount keeps what fits and reserves room for +N", async () => {
+    const { fitPillCount } = await import("./MultiSelectRenderer");
+    expect(fitPillCount([50, 50, 50], 140, 5)).toBe(2);
+    expect(fitPillCount([50, 50, 50], 300, 5)).toBe(3);
+    expect(fitPillCount([300], 100, 5)).toBe(1);
+    expect(fitPillCount([20, 20, 20, 20], 1000, 2)).toBe(2);
+  });
+});
+
+describe("BooleanRenderer", () => {
+  it("draws a small checkbox, checked for true, muted when read-only", async () => {
+    const { BooleanRenderer } = await import("./BooleanRenderer");
+    const column = fixtureColumn(FIXTURE_IDS.payment);
+    const { getByRole, getByTestId, rerender } = renderWithMantine(<BooleanRenderer value={true} column={column} config={{}} fieldType="boolean" />);
+    expect(getByRole("checkbox")).toBeChecked();
+    expect(getByRole("checkbox")).toHaveAttribute("tabindex", "-1");
+    rerender(<BooleanRenderer value={false} column={column} config={{}} fieldType="boolean" readOnly />);
+    expect(getByRole("checkbox")).not.toBeChecked();
+    expect(getByTestId("boolean-cell")).toHaveAttribute("data-readonly", "true");
+  });
+});
+
+describe("FormulaRenderer chrome", () => {
+  it("adds a hidden ƒ glyph (CSS, not text) so the cell text stays the value", () => {
+    const column = fixtureColumn(FIXTURE_IDS.total);
+    const { getByTestId } = renderWithMantine(<FormulaRenderer value={84} column={column} config={column.config} fieldType="formula" />);
+    const glyph = getByTestId("formula-glyph");
+    expect(glyph).toHaveAttribute("aria-hidden", "true");
+    expect(glyph.textContent).toBe("");
+    expect(glyph.parentElement?.textContent).toBe("84");
+  });
+});

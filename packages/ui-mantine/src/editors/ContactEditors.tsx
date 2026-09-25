@@ -1,7 +1,7 @@
 import { TextInput } from "@mantine/core";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createDefaultRegistry } from "../internal/core-contracts";
+import { useEffect, useRef, useState } from "react";
 import type { UiEditorProps } from "../internal/grid-contracts";
+import { textInputError, useBlockInvalidEnter, useSurfaceInputProps, useTouchedError } from "./fieldValidation";
 
 type ContactFieldTypeId = "url" | "email" | "phone";
 
@@ -12,55 +12,53 @@ interface ContactEditorSpec {
 }
 
 /**
- * Single-line contact editor (url/email/phone). Shows a non-blocking hint
- * when core's `parse` rejects the current text; commit is still allowed —
- * the core validation layer is the one that ultimately decides.
+ * Single-line contact editor (url/email/phone). Core's `parse` validates the
+ * text; the message renders inside the editor (red ring + 12px helper text,
+ * or an alert icon in a cramped grid cell) once the user has typed or
+ * pressed Enter — never on open. Enter on an invalid value keeps the editor
+ * open instead of committing.
  */
 function createContactEditor({ fieldTypeId, type, inputMode }: ContactEditorSpec) {
-  // Resolved once per editor kind, lazily (no work at import time).
-  let fieldTypeCache: ReturnType<ReturnType<typeof createDefaultRegistry>["get"]> | null = null;
-  const getFieldType = () => {
-    fieldTypeCache ??= createDefaultRegistry().get(fieldTypeId);
-    return fieldTypeCache;
-  };
-  return function ContactEditor({ value, onChange, onCommit, onCancel, autoFocus, error }: UiEditorProps<string, unknown>) {
+  return function ContactEditor({ value, onChange, onCommit, onCancel, column, config, autoFocus, error, surface }: UiEditorProps<string, unknown>) {
     const [text, setText] = useState(value ?? "");
     const inputRef = useRef<HTMLInputElement>(null);
-    const fieldType = getFieldType();
+    const problem = textInputError(fieldTypeId, text, config);
+    const validation = useTouchedError(problem, error);
+    useBlockInvalidEnter(inputRef, problem !== undefined, validation.touch);
+    const { props: surfaceProps, extra } = useSurfaceInputProps(surface, validation.visible);
 
     useEffect(() => {
       if (autoFocus !== false) inputRef.current?.focus();
     }, [autoFocus]);
 
-    const hint = useMemo(() => {
-      if (!fieldType || text.trim() === "") return undefined;
-      const result = fieldType.parse(text, fieldType.defaultConfig);
-      return result.ok ? undefined : result.error;
-    }, [fieldType, text]);
-
     return (
-      <TextInput
-        ref={inputRef}
-        type={type}
-        inputMode={inputMode}
-        value={text}
-        error={error}
-        description={error ? undefined : hint}
-        onChange={(event) => {
-          const next = event.currentTarget.value;
-          setText(next);
-          onChange(next);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            onCommit(text);
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            onCancel();
-          }
-        }}
-      />
+      <>
+        <TextInput
+          ref={inputRef}
+          type={type}
+          inputMode={inputMode}
+          value={text}
+          aria-label={column.label || undefined}
+          {...surfaceProps}
+          onChange={(event) => {
+            const next = event.currentTarget.value;
+            setText(next);
+            validation.touch();
+            onChange(next);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              if (problem) validation.touch();
+              else onCommit(text);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              onCancel();
+            }
+          }}
+        />
+        {extra}
+      </>
     );
   };
 }

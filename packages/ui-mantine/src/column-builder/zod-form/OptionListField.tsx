@@ -1,4 +1,5 @@
-import { ActionIcon, Button, ColorSwatch, Group, Input, Popover, SimpleGrid, Stack, TextInput } from "@mantine/core";
+import { ActionIcon, Button, ColorSwatch, Group, Input, Popover, SimpleGrid, Stack, TextInput, UnstyledButton } from "@mantine/core";
+import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MANTINE_NAMED_COLORS } from "../../internal/options";
 
@@ -56,21 +57,29 @@ const swatchColor = (color: string | undefined) => (color ? `var(--mantine-color
 function ColourPicker({ color, onPick, error }: { color?: string; onPick: (color: string) => void; error?: string }) {
   const [opened, setOpened] = useState(false);
   return (
-    <Popover opened={opened} onChange={setOpened} withinPortal={false} position="bottom-end" shadow="md">
+    <Popover opened={opened} onChange={setOpened} withinPortal={false} position="bottom-start" shadow="md" radius="lg">
       <Popover.Target>
-        <ColorSwatch
-          component="button"
-          type="button"
+        <UnstyledButton
           aria-label="Option colour"
           title={error ?? color ?? "No colour"}
-          color={swatchColor(color)}
-          size={24}
-          withShadow
-          style={{ cursor: "pointer", flexShrink: 0, outline: error ? "1px solid var(--mantine-color-error)" : undefined }}
           onClick={() => setOpened((o) => !o)}
-        />
+          style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 20, borderRadius: 4 }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: color ? swatchColor(color) : "transparent",
+              border: color ? "none" : "1.5px dashed var(--mantine-color-dimmed)",
+              outline: error ? "1px solid var(--mantine-color-error)" : undefined,
+              outlineOffset: 2,
+            }}
+          />
+        </UnstyledButton>
       </Popover.Target>
-      <Popover.Dropdown>
+      <Popover.Dropdown p={8}>
         <SimpleGrid cols={7} spacing={6}>
           {MANTINE_NAMED_COLORS.map((name) => (
             <ColorSwatch
@@ -81,8 +90,8 @@ function ColourPicker({ color, onPick, error }: { color?: string; onPick: (color
               aria-pressed={color === name}
               title={name}
               color={`var(--mantine-color-${name}-filled)`}
-              size={22}
-              style={{ cursor: "pointer" }}
+              size={20}
+              style={{ cursor: "pointer", outline: color === name ? "2px solid var(--mantine-primary-color-filled)" : undefined, outlineOffset: 2 }}
               onClick={() => {
                 onPick(name);
                 setOpened(false);
@@ -155,13 +164,17 @@ export function OptionListField({
     <Input.Wrapper label={label} description={description} error={error}>
       <Stack gap="xs" mt={4}>
         {rows.map((row, index) => (
-          <Group key={row.id} gap={6} wrap="nowrap" align="flex-start">
+          <Group key={row.id} gap={4} wrap="nowrap" align="flex-start">
             <TextInput
               aria-label="Option label"
-              placeholder="Label"
+              placeholder="Option name"
               value={row.label}
               error={rowError?.(index, "label")}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 0 }}
+              leftSection={
+                hasColor ? <ColourPicker color={row.color} error={rowError?.(index, "color")} onPick={(color) => update(index, { color })} /> : undefined
+              }
+              leftSectionPointerEvents="all"
               onChange={(e) => {
                 const text = e.currentTarget.value;
                 update(index, row.valueEdited ? { label: text } : { label: text, value: slugifyOptionValue(text) });
@@ -172,32 +185,36 @@ export function OptionListField({
               placeholder={valueKey}
               value={row.value}
               error={rowError?.(index, "value")}
-              style={{ flex: 1 }}
+              w={104}
+              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12, color: "var(--mantine-color-dimmed)" } }}
               onChange={(e) => update(index, { value: e.currentTarget.value, valueEdited: true })}
             />
-            {hasColor && (
-              <ColourPicker color={row.color} error={rowError?.(index, "color")} onPick={(color) => update(index, { color })} />
-            )}
-            <ActionIcon variant="subtle" color="gray" aria-label="Move option up" disabled={index === 0} onClick={() => move(index, -1)}>
-              ↑
-            </ActionIcon>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              aria-label="Move option down"
-              disabled={index === rows.length - 1}
-              onClick={() => move(index, 1)}
-            >
-              ↓
-            </ActionIcon>
-            <ActionIcon variant="subtle" color="red" aria-label="Remove option" onClick={() => commit(rows.filter((_, i) => i !== index))}>
-              ×
-            </ActionIcon>
+            <Group gap={0} wrap="nowrap" h={32} align="center">
+              <ActionIcon className="sg-cp-icon-btn" size="sm" variant="subtle" color="gray" aria-label="Move option up" disabled={index === 0} onClick={() => move(index, -1)}>
+                <IconChevronUp size={14} stroke={1.75} />
+              </ActionIcon>
+              <ActionIcon
+                className="sg-cp-icon-btn"
+                size="sm"
+                variant="subtle"
+                color="gray"
+                aria-label="Move option down"
+                disabled={index === rows.length - 1}
+                onClick={() => move(index, 1)}
+              >
+                <IconChevronDown size={14} stroke={1.75} />
+              </ActionIcon>
+              <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Remove option" onClick={() => commit(rows.filter((_, i) => i !== index))}>
+                <IconX size={14} stroke={1.75} />
+              </ActionIcon>
+            </Group>
           </Group>
         ))}
         <Button
-          variant="light"
+          variant="subtle"
+          color="gray"
           size="xs"
+          leftSection={<IconPlus size={14} stroke={1.75} />}
           style={{ alignSelf: "flex-start" }}
           onClick={() => commit([...rows, { id: nextId.current++, label: "", value: "", valueEdited: false }])}
         >

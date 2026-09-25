@@ -99,10 +99,10 @@ export function PreviewStep({
         </Stack>
       ) : null}
       <Table.ScrollContainer minWidth={400} maxHeight={360}>
-        <Table withTableBorder>
+        <Table verticalSpacing={6} horizontalSpacing="sm" styles={{ th: { fontSize: 12, fontWeight: 500, color: "var(--mantine-color-dimmed)" }, td: { fontSize: 13 } }}>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Row</Table.Th>
+              <Table.Th w={56}>Row</Table.Th>
               {mapped.map((m) => (
                 <Table.Th key={m.headerIndex}>{byId.get(m.columnId)?.label ?? m.header}</Table.Th>
               ))}

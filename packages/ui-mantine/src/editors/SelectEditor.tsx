@@ -1,56 +1,27 @@
-import { Select, useMantineTheme } from "@mantine/core";
+import { Combobox, Select, useCombobox, useMantineTheme } from "@mantine/core";
+import { IconCheck } from "@tabler/icons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSelectOptions, resolveOptionColor } from "../internal/options";
+import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
-import type { Option } from "../internal/core-contracts";
+import { getSelectOptions, resolveOptionColor } from "../internal/options";
+import { useEditorStyles } from "./EditorCard";
+import { OptionColorDot, PickerDivider, PickerEmpty, PickerOption, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 
 export interface SelectEditorConfig {
   options?: Option[];
   dynamic?: boolean;
 }
 
-/** A coloured dot matching an option's configured colour. */
-function OptionColorDot({ color }: { color: string }) {
-  return (
-    <span
-      data-testid="option-color-dot"
-      data-color={color}
-      style={{
-        display: "inline-block",
-        width: 8,
-        height: 8,
-        borderRadius: "50%",
-        marginRight: 8,
-        backgroundColor: `var(--mantine-color-${color}-filled)`,
-      }}
-    />
-  );
-}
-
-/** Searchable single-select editor. Options come from config, or `dataSource.getOptions` when the config is dynamic. */
-export function SelectEditor({
-  value,
-  onChange,
-  onCommit,
-  onCancel,
-  column,
-  config,
-  dataSource,
-  autoFocus,
-  error,
-}: UiEditorProps<string, SelectEditorConfig>) {
-  const theme = useMantineTheme();
-  // Static options follow `config` live (e.g. a column builder adding options); dynamic ones are fetched.
+/** Static options follow `config` live (e.g. a column builder adding options); dynamic ones are fetched once. */
+export function useSelectOptions(config: SelectEditorConfig | undefined, columnId: string, dataSource: UiEditorProps["dataSource"]): Option[] {
   const configOptions = useMemo(() => getSelectOptions(config), [config]);
   const [fetched, setFetched] = useState<Option[] | null>(null);
-  const options = config?.dynamic ? (fetched ?? configOptions) : configOptions;
-
   const dynamic = config?.dynamic === true;
   useEffect(() => {
     if (!dynamic || !dataSource?.getOptions) return;
     let cancelled = false;
-    dataSource.getOptions(column.id).then(
+    dataSource.getOptions(columnId).then(
       (opts) => {
         if (!cancelled) setFetched(opts);
       },
@@ -59,54 +30,107 @@ export function SelectEditor({
     return () => {
       cancelled = true;
     };
-  }, [dynamic, dataSource, column.id]);
+  }, [dynamic, dataSource, columnId]);
+  return dynamic ? (fetched ?? configOptions) : configOptions;
+}
 
-  // Grid mode: AG Grid forwards Enter from a popup editor to the grid (a
-  // native listener on an ancestor, which runs before React's delegated
-  // handlers), ending the edit with the old value. When an option is
-  // highlighted, pick it here at the input and keep Enter from the grid.
+export const matchesSearch = (option: Option, search: string): boolean =>
+  search.trim() === "" || option.label.toLowerCase().includes(search.trim().toLowerCase());
+
+/**
+ * Searchable single-select. In the grid (`autoFocus !== false`) it is a
+ * picker card: a borderless search row, a hairline and the option list
+ * attached below (no floating dropdown). As a form / filter field it is a
+ * regular Mantine `Select`. Options come from config, or
+ * `dataSource.getOptions` when the config is dynamic.
+ */
+export function SelectEditor(props: UiEditorProps<string, SelectEditorConfig>) {
+  return props.autoFocus === false ? <SelectField {...props} /> : <SelectPicker {...props} />;
+}
+
+function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource }: UiEditorProps<string, SelectEditorConfig>) {
+  useEditorStyles();
+  const options = useSelectOptions(config, column.id, dataSource);
+  const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const commitRef = useRef({ onChange, onCommit });
-  commitRef.current = { onChange, onCommit };
-  const gridMode = autoFocus !== false;
+  const combobox = useCombobox({ defaultOpened: true });
+  const visible = options.filter((o) => matchesSearch(o, search));
+  const current = options.find((o) => o.id === value);
+
+  const pick = (id: string) => {
+    onChange(id);
+    onCommit(id);
+  };
+  useEnterPicksHighlighted(inputRef, true, pick);
+
   useEffect(() => {
-    const input = inputRef.current;
-    if (!gridMode || !input) return;
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Enter") return;
-      const activeId = input.getAttribute("aria-activedescendant");
-      const picked = activeId
-        ? input.ownerDocument.getElementById(activeId)?.getAttribute("value")
-        : null;
-      if (!picked) return;
-      event.preventDefault();
-      event.stopPropagation();
-      commitRef.current.onChange(picked);
-      commitRef.current.onCommit(picked);
-    };
-    input.addEventListener("keydown", onKeyDown);
-    return () => input.removeEventListener("keydown", onKeyDown);
-  }, [gridMode]);
+    inputRef.current?.focus();
+  }, []);
+
+  // Highlight the first match while searching so Enter picks it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the search changes
+  useEffect(() => {
+    if (search.trim() !== "") combobox.selectFirstOption();
+    else combobox.resetSelectedOption();
+  }, [search]);
 
   return (
+    <Combobox store={combobox} onOptionSubmit={pick} withinPortal={false}>
+      <div style={{ width: "var(--sg-ed-width, 100%)" }}>
+        <SearchRow onMouseDown={() => inputRef.current?.focus()}>
+          <Combobox.EventsTarget>
+            <input
+              ref={inputRef}
+              className="sg-ed-input"
+              value={search}
+              placeholder={current ? current.label : "Search…"}
+              aria-label={column.label || "Search options"}
+              onChange={(event) => {
+                setSearch(event.currentTarget.value);
+                combobox.openDropdown();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onCancel();
+                }
+              }}
+            />
+          </Combobox.EventsTarget>
+        </SearchRow>
+        <PickerDivider />
+        <Combobox.Options className="sg-ed-list">
+          {visible.map((o) => (
+            <PickerOption key={o.id} value={o.id} selected={o.id === value} leading={<OptionColorDot option={o} />}>
+              {o.label}
+            </PickerOption>
+          ))}
+          {visible.length === 0 && <PickerEmpty>{options.length === 0 ? "No options yet" : "No matches"}</PickerEmpty>}
+        </Combobox.Options>
+      </div>
+    </Combobox>
+  );
+}
+
+/** Form / filter mode: a regular Mantine Select (dropdown kept inside the component). */
+function SelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error }: UiEditorProps<string, SelectEditorConfig>) {
+  const theme = useMantineTheme();
+  const options = useSelectOptions(config, column.id, dataSource);
+  return (
     <Select
-      ref={inputRef}
       data={options.map((o) => ({ value: o.id, label: o.label }))}
       value={value}
       error={error}
       searchable
       comboboxProps={{ withinPortal: false }}
-      // Grid mode: focus the input so arrow keys / typing reach the combobox
-      // (otherwise the popup wrapper keeps focus and the list is mouse-only).
-      autoFocus={autoFocus !== false}
-      defaultDropdownOpened={autoFocus !== false}
-      renderOption={({ option }) => {
+      renderOption={({ option, checked }) => {
         const match = options.find((o) => o.id === option.value);
         return (
-          <>
-            <OptionColorDot color={resolveOptionColor(match, theme)} />
-            {option.label}
-          </>
+          <span style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+            <OptionColorDot option={match ?? { id: option.value, label: option.label, color: resolveOptionColor(match, theme) }} />
+            <span style={{ flex: 1 }}>{option.label}</span>
+            {checked && <IconCheck size={14} stroke={2} color="var(--mantine-primary-color-filled)" aria-hidden />}
+          </span>
         );
       }}
       onChange={(next) => {
