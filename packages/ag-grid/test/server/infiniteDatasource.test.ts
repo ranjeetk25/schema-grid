@@ -71,6 +71,34 @@ describe("createInfiniteDatasource — offset mode", () => {
     expect(await call(adapter, 0, 10)).toMatchObject({ ok: true, lastRow: undefined });
     expect(await call(adapter, 20, 30)).toMatchObject({ ok: true, lastRow: 25 });
   });
+
+  it("caps each request at maxPageSize and fills the block with further pages", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, rows);
+    const adapter = createInfiniteDatasource({ dataSource: ds, getQuery: baseQuery, pageMode: "offset", blockSize: 10, maxPageSize: 4 });
+    const res = await call(adapter, 0, 10);
+    expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
+      { offset: 0, limit: 4 },
+      { offset: 4, limit: 4 },
+      { offset: 8, limit: 2 },
+    ]);
+    expect(res.ok && res.rows).toHaveLength(10);
+  });
+
+  it("a short page with a nextCursor (a source clamping to its own max) does not end the data", async () => {
+    // Serves at most 3 rows per request, never a total; nextCursor while more exist.
+    const fetch = vi.fn(async (q: GridQuery): Promise<QueryResult> => {
+      const off = q.page.offset ?? 0;
+      const end = Math.min(off + Math.min(3, q.page.limit), rows.length);
+      return { rows: rows.slice(off, end), ...(end < rows.length ? { nextCursor: String(end) } : {}) };
+    });
+    const adapter = createInfiniteDatasource({ dataSource: { fetch } as unknown as DataSource, getQuery: baseQuery, pageMode: "offset", blockSize: 10 });
+    const first = await call(adapter, 0, 10);
+    expect(first).toMatchObject({ ok: true, lastRow: undefined });
+    expect(first.ok && first.rows).toHaveLength(10);
+    const tail = await call(adapter, 20, 30);
+    expect(tail).toMatchObject({ ok: true, lastRow: 25 });
+    expect(tail.ok && tail.rows).toHaveLength(5);
+  });
 });
 
 describe("createInfiniteDatasource — cursor mode", () => {

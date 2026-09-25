@@ -246,8 +246,9 @@ export function createServerGroupsController<Row extends GridRow = GridRow>(
         const seen = new Set(node.rows.map((r) => r.id));
         node.rows = [...node.rows, ...result.rows.filter((r) => !seen.has(r.id))];
         if (typeof result.total === "number") node.total = result.total;
-        // A short page means the group is exhausted whatever the counts say.
-        if (result.rows.length < pageSize) node.total = node.rows.length;
+        // An empty page means the group is exhausted whatever the counts say.
+        // A short page does not: the source may clamp `limit` to its maxPageSize.
+        if (result.rows.length === 0) node.total = node.rows.length;
         node.childrenLoaded = true;
       });
     }

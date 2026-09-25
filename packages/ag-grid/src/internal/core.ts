@@ -96,6 +96,22 @@ export type {
 
 export type Pinned = "left" | "right" | null;
 
+// Data-source capabilities (v0.2, C2).
+export type {
+  ColumnScope,
+  DataSourceCapabilities,
+  EffectiveCapabilities,
+  EffectiveColumnCapabilities,
+} from "@ranjeetk25/schema-grid-core";
+export {
+  applyEffectiveCapabilities,
+  DEFAULT_CAPABILITIES,
+  getDataSourceCapabilities,
+  inferCapabilities,
+  mergeCapabilities,
+  normalizeCapabilities,
+} from "@ranjeetk25/schema-grid-core";
+
 // ============================================================================
 // 2. Field types
 // ============================================================================

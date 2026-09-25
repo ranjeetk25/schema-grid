@@ -1,7 +1,12 @@
 /**
  * Server mode: adapts a core `DataSource` to AG Grid's infinite row model.
  *
- * - offset mode: block [startRow, endRow) → `{ offset: startRow, limit }`.
+ * - offset mode: block [startRow, endRow) → `{ offset: startRow, limit }`
+ *   (limit capped at `maxPageSize`). The block is filled with further pages
+ *   until it is full: a page shorter than requested ends the data only when
+ *   the source signals nothing more (no `total` beyond it, no `nextCursor`),
+ *   since a source may clamp `limit` to its own maxPageSize. An empty page
+ *   always ends it.
  * - cursor mode: block 0 → `{ offset: 0, limit }`; block k → `{ cursor, limit }`
  *   using block k-1's nextCursor from the cursor cache. A request for a block whose cursor is unknown walks
  *   forward from the nearest known block, fetching the missing blocks one by
@@ -22,6 +27,8 @@ export interface InfiniteDatasourceOptions<Row extends GridRow> {
   getQuery: () => Omit<GridQuery, "page">;
   pageMode: PageMode;
   blockSize: number;
+  /** The source's `maxPageSize` capability: no request asks for more (offset mode). */
+  maxPageSize?: number;
   /** Every fetched block, including blocks fetched while walking forward (feeds the RowStore). */
   onRows?(rows: Row[], startRow: number): void;
   onError?(error: unknown): void;
@@ -41,6 +48,7 @@ export function createInfiniteDatasource<Row extends GridRow>(
   opts: InfiniteDatasourceOptions<Row>,
 ): SchemaGridInfiniteDatasource {
   const { dataSource, getQuery, pageMode, blockSize, onRows, onError } = opts;
+  const maxPageSize = opts.maxPageSize !== undefined && opts.maxPageSize > 0 ? opts.maxPageSize : Number.POSITIVE_INFINITY;
   const cursors = createCursorCache();
   /** Total row count once the end has been seen in cursor mode. */
   let knownLastRow: number | undefined;
@@ -66,13 +74,34 @@ export function createInfiniteDatasource<Row extends GridRow>(
     dataSource.fetch({ ...query, page });
 
   async function getOffsetBlock(params: IGetRowsParams, query: Omit<GridQuery, "page">) {
-    const limit = params.endRow - params.startRow;
-    const result = await fetchPage(query, { offset: params.startRow, limit });
+    const want = params.endRow - params.startRow;
+    const rows: Row[] = [];
+    let total: number | undefined;
+    let ended = false;
+    while (rows.length < want) {
+      const offset = params.startRow + rows.length;
+      const limit = Math.min(want - rows.length, maxPageSize);
+      const result = await fetchPage(query, { offset, limit });
+      if (typeof result.total === "number") total = result.total;
+      rows.push(...result.rows);
+      if (result.rows.length === 0) {
+        ended = true;
+        break;
+      }
+      if (total !== undefined) {
+        if (params.startRow + rows.length >= total) break;
+        continue;
+      }
+      if (result.rows.length < limit && !result.nextCursor) {
+        ended = true;
+        break;
+      }
+    }
     let lastRow: number | undefined;
-    if (typeof result.total === "number") lastRow = result.total;
-    else if (result.rows.length < limit) lastRow = params.startRow + result.rows.length;
-    onRows?.(result.rows, params.startRow);
-    params.successCallback(result.rows, lastRow);
+    if (total !== undefined) lastRow = total;
+    else if (ended) lastRow = params.startRow + rows.length;
+    onRows?.(rows, params.startRow);
+    params.successCallback(rows, lastRow);
   }
 
   async function getCursorBlock(params: IGetRowsParams, query: Omit<GridQuery, "page">) {

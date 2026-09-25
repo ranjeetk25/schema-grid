@@ -1,7 +1,13 @@
 /**
- * Server-mode export: pages through `dataSource.fetch` (offset paging) and
- * hands the RAW rows + ColumnDefs to io's browser-safe `buildExportBlob`,
- * which types every cell itself (XLSX numbers/dates/hyperlinks, CSV text).
+ * Server-mode export: pages through `dataSource.fetch` (offset paging, or
+ * `nextCursor` in cursor mode) and hands the RAW rows + ColumnDefs to io's
+ * browser-safe `buildExportBlob`, which types every cell itself (XLSX
+ * numbers/dates/hyperlinks, CSV text).
+ *
+ * Paging never stops on a short page: a source may clamp `page.limit` to its
+ * `maxPageSize`. Offset mode continues until an empty page or `total`;
+ * cursor mode continues while `nextCursor` is returned. `maxRows` caps the
+ * export (the source's `export.maxRows` capability).
  *
  * io is an optional peer. Pass it explicitly (`io`, or the grid's `io` prop)
  * or let the default load `@ranjeetk25/schema-grid-io/export` through a literal
@@ -17,6 +23,7 @@ import {
   type GridRow,
   type IoExportModule,
 } from "../internal/core";
+import type { PageMode } from "../server/infiniteDatasource";
 
 const DEFAULT_PAGE_SIZE = 500;
 const IO_EXPORT = "@ranjeetk25/schema-grid-io/export";
@@ -29,6 +36,10 @@ export interface ExportCurrentViewOptions<Row extends GridRow> {
   columns: ColumnDef[];
   registry: FieldTypeRegistry;
   pageSize?: number;
+  /** "cursor" follows `nextCursor` after the first page. Default "offset". */
+  pageMode?: PageMode;
+  /** Stop after this many rows (the rest is not fetched). Default: no limit. */
+  maxRows?: number;
   /** Default `export.<format>`. */
   fileName?: string;
   /** Zone datetimes are written in. Default `DEFAULT_TZ`. */
@@ -74,15 +85,17 @@ export async function exportCurrentView<Row extends GridRow>(opts: ExportCurrent
   const pageSize = opts.pageSize ?? DEFAULT_PAGE_SIZE;
   const read = opts.getCellValue;
 
+  const maxRows = opts.maxRows !== undefined && opts.maxRows >= 0 ? opts.maxRows : Number.POSITIVE_INFINITY;
+  const cursorMode = opts.pageMode === "cursor";
+
   const rows: GridRow[] = [];
   let offset = 0;
-  for (;;) {
-    const result = await opts.dataSource.fetch({
-      ...opts.query,
-      page: { offset, limit: pageSize },
-      includeTotal: true,
-    });
-    for (const row of result.rows) {
+  let cursor: string | undefined;
+  while (rows.length < maxRows) {
+    const limit = Math.min(pageSize, maxRows - rows.length);
+    const page: GridQuery["page"] = cursor !== undefined ? { cursor, limit } : { offset, limit };
+    const result = await opts.dataSource.fetch({ ...opts.query, page, includeTotal: true });
+    for (const row of result.rows.slice(0, maxRows - rows.length)) {
       if (!read) {
         rows.push(row);
         continue;
@@ -92,8 +105,15 @@ export async function exportCurrentView<Row extends GridRow>(opts: ExportCurrent
       rows.push({ ...row, cells });
     }
     offset += result.rows.length;
-    const done = result.rows.length < pageSize || (result.total !== undefined && offset >= result.total);
-    if (done) break;
+    if (cursorMode) {
+      // Cursor mode: the source says where the next page starts; no cursor = the end.
+      if (!result.nextCursor) break;
+      cursor = result.nextCursor;
+      continue;
+    }
+    // Offset mode: never stop on a short page (the source may clamp the limit).
+    if (result.rows.length === 0) break;
+    if (typeof result.total === "number" && offset >= result.total) break;
   }
 
   const io = opts.io ?? (await loadIoExport());

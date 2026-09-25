@@ -62,6 +62,12 @@ function isDataRow<Row extends GridRow>(data: unknown): data is Row {
  * keyboard shortcut handler; the floating-filter row is opt-in
  * (`floatingFilters`).
  *
+ * Column options (C1): `sortable: false` → ColDef `sortable: false` (no
+ * header sort); `filterable: false` → `filter: false` (no filter button, no
+ * floating filter); `settable: false` → never editable. `useSchemaGrid`
+ * writes the data source's capabilities onto these options first
+ * (`applyEffectiveCapabilities`).
+ *
  * Ordering: columns with view state come first (by view order); columns the
  * view doesn't know (added after it was saved) follow by `ColumnDef.order`.
  */
@@ -113,8 +119,14 @@ export function compileColumns<Row extends GridRow = GridRow>(
     // Booleans toggle in place (`editing/inPlace.ts`): AG Grid never opens an
     // editor for them; editability is checked by the toggle itself.
     const inPlaceToggle = isInPlaceToggleColumn(column);
+    // `settable: false` (C1): the data source can't write it. Access already
+    // caps it at "read"; checked here too so a hand-built access map can't
+    // make it editable.
+    const settable = column.settable !== false;
+    const sortable = column.sortable !== false;
+    const filterComponent = column.filterable === false ? undefined : entry.filterComponent;
     const editable: ColDef<Row>["editable"] =
-      columnAccess === "edit" && !isFormula && !inPlaceToggle
+      columnAccess === "edit" && settable && !isFormula && !inPlaceToggle
         ? (p: EditableCallbackParams<Row>) => {
             const data: unknown = p.data;
             if (!isDataRow<Row>(data)) return false;
@@ -131,7 +143,7 @@ export function compileColumns<Row extends GridRow = GridRow>(
       valueGetter,
       valueSetter: () => false,
       editable,
-      sortable: true,
+      sortable,
       // Stateful attributes use the `initial*` forms so recompiling ColDefs
       // (seams, access or formula changes) never resets the user's live column
       // layout; saved views are applied via `applyViewState` (applyColumnState).
@@ -144,13 +156,15 @@ export function compileColumns<Row extends GridRow = GridRow>(
       cellEditorPopup: entry.editorPopup,
       // Popups open under the cell by default so the cell stays readable.
       cellEditorPopupPosition: entry.editorPopupPosition ?? (entry.editorPopup ? "under" : undefined),
-      filter: entry.filterComponent ?? false,
+      filter: filterComponent ?? false,
       filterParams: params,
-      floatingFilter: floatingFilters && entry.filterComponent !== undefined && entry.floatingFilter !== undefined,
+      floatingFilter: floatingFilters && filterComponent !== undefined && entry.floatingFilter !== undefined,
       headerComponent: SchemaHeader,
       suppressHeaderKeyboardEvent: schemaHeaderKeyboardEvent,
     };
-    if (floatingFilters && entry.floatingFilter !== undefined) def.floatingFilterComponent = entry.floatingFilter;
+    if (floatingFilters && filterComponent !== undefined && entry.floatingFilter !== undefined) {
+      def.floatingFilterComponent = entry.floatingFilter;
+    }
     if (width !== undefined) def.initialWidth = width;
     if (cellClassRules) def.cellClassRules = cellClassRules;
     if (column.type === "longText") def.suppressKeyboardEvent = longTextSuppressKeyboardEvent;

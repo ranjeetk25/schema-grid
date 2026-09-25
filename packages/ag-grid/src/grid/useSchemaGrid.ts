@@ -62,6 +62,16 @@
  *   chains onto `onCellMouseOver` (range mousedown is skipped while filling)
  *   and submits ONE "fill" batch through the controller.
  *
+ * - Capabilities (v0.2 C2): `dataSource.capabilities()` is read on mount,
+ *   when `dataSource` changes and after the change feed reports a schema
+ *   change (a rejection, e.g. an older server, falls back to
+ *   `inferCapabilities`). Until they arrive the grid is unrestricted. The
+ *   EFFECTIVE schema (`applyEffectiveCapabilities`) drives access, column
+ *   compilation and filter validation; `groupBy: false` / `search: false`
+ *   prune those from every query, `changeFeed: false` stops polling, and
+ *   `maxPageSize` clamps every page request (client load, server blocks and
+ *   groups, export). Paging never stops on a short page.
+ *
  * `schema`, `dataSource`, `resolver`, `registry`, `uiRegistry` and `theme` are
  * compared by reference: pass stable instances. `user` and `externalFilter`
  * are compared by value. `mode` must not change after mount.
@@ -109,11 +119,15 @@ import { astToFilterModel, type ColumnFilterModel, filterModelToAst } from "../f
 import { buildClientGroups, type DisplayRow, type GroupDisplayRow, isGroupRow, isLoadMoreRow } from "../grouping/clientGroups";
 import {
   type Access,
+  applyEffectiveCapabilities,
   type ColumnDef,
   createDefaultRegistry,
   createRolePermissionResolver,
+  DEFAULT_CAPABILITIES,
   DEFAULT_TZ,
   type DataSource,
+  type DataSourceCapabilities,
+  type EffectiveCapabilities,
   type FieldTypeRegistry,
   type FilterNode,
   type FilterValidationError,
@@ -123,9 +137,12 @@ import {
   type GridUser,
   type IoExportModule,
   type GroupSpec,
+  getDataSourceCapabilities,
+  inferCapabilities,
   isFilterGroup,
   isFormulaError,
   matchesFilter,
+  mergeCapabilities,
   type PermissionResolver,
   resolveColumnAccess,
   type SchemaGridEvents,
@@ -321,9 +338,18 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   keyboard: KeyboardRegistry<Row>;
   /** Clipboard (T24); `<SchemaGrid>` wires `onCopy`/`onPaste` on `.sg-root`. */
   clipboard: ClipboardHandlers;
+  /**
+   * Column options ∩ data-source capabilities (`mergeCapabilities`). Always
+   * defined: `DEFAULT_CAPABILITIES` until the source's capabilities load.
+   */
+  effectiveCapabilities: EffectiveCapabilities;
+  /** The source's raw capabilities; undefined until loaded. */
+  capabilities: DataSourceCapabilities | undefined;
 }
 
 const DEFAULT_PAGE_SIZE = 100;
+/** Export page size before the `maxPageSize` clamp. */
+const EXPORT_PAGE_SIZE = 500;
 
 const EVENT_KEYS_WE_CHAIN = [
   "onGridReady",
@@ -504,9 +530,9 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const latestSeams = useRef(seams);
   latestSeams.current = seams;
 
-  const { schema, dataSource, user } = props;
+  const { schema: baseSchema, dataSource, user } = props;
   const mode: SchemaGridMode = props.mode ?? "client";
-  const pageSize = props.pageSize ?? DEFAULT_PAGE_SIZE;
+  const requestedPageSize = props.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageMode: PageMode = props.pageMode ?? "offset";
   const tz = props.tz ?? DEFAULT_TZ;
   const floatingFilters = props.floatingFilters === true;
@@ -515,6 +541,27 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   // biome-ignore lint/correctness/useExhaustiveDependencies: draft compared by value (draftKey), so identical drafts don't recompile.
   const draft = useMemo(() => props.draftColumn ?? null, [draftKey]);
   const hasAddColumn = typeof props.onAddColumn === "function";
+
+  // ---- Capabilities (C2) -----------------------------------------------------------
+  const [capabilities, setCapabilities] = useState<DataSourceCapabilities | undefined>(undefined);
+  const effectiveCapabilities = useMemo(
+    () => mergeCapabilities(baseSchema, capabilities ?? (DEFAULT_CAPABILITIES as DataSourceCapabilities)),
+    [baseSchema, capabilities],
+  );
+  /** The schema with the source's restrictions written onto column options; `baseSchema` itself when nothing is restricted. */
+  const schema = useMemo(
+    () => applyEffectiveCapabilities(baseSchema, effectiveCapabilities),
+    [baseSchema, effectiveCapabilities],
+  );
+  const canGroup = effectiveCapabilities.groupBy;
+  const canSearch = effectiveCapabilities.search;
+  const maxPageSize = effectiveCapabilities.maxPageSize;
+  const pageSize = Math.max(1, Math.min(requestedPageSize, maxPageSize));
+  const exportMaxRows = effectiveCapabilities.export.maxRows;
+  const pollOptions = useMemo<SchemaGridPollOptions | undefined>(
+    () => (effectiveCapabilities.changeFeed === false ? { ...props.poll, enabled: false } : props.poll),
+    [effectiveCapabilities.changeFeed, props.poll],
+  );
 
   // ---- Derived configuration -----------------------------------------------------
   const resolver = useMemo(() => props.resolver ?? createRolePermissionResolver(), [props.resolver]);
@@ -530,6 +577,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const externalFilter = useMemo(() => props.externalFilter ?? null, [externalKey]);
   const access = useMemo(() => resolveColumnAccess(schema, resolver, stableUser), [schema, resolver, stableUser]);
   const readable = useMemo(() => readableIds(access), [access]);
+  /** Readable columns the source can sort by. */
+  const sortableIds = useMemo(
+    () => new Set(schema.columns.filter((c) => c.sortable !== false && readable.has(c.id)).map((c) => c.id)),
+    [schema, readable],
+  );
   const allColumnIds = useMemo(() => new Set(schema.columns.map((c) => c.id)), [schema]);
   const externalErrors = useMemo(
     () => (externalFilter ? validateFilter(externalFilter, schema, registry, allColumnIds) : []),
@@ -550,8 +602,38 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   );
 
   /** Everything the imperative (non-React) paths read; refreshed every render. */
-  const cfg = useRef({ schema, registry, readable, externalFilter, externalErrors, getCellValue, tz, stableUser });
-  cfg.current = { schema, registry, readable, externalFilter, externalErrors, getCellValue, tz, stableUser };
+  const cfg = useRef({
+    schema,
+    registry,
+    readable,
+    sortableIds,
+    canGroup,
+    canSearch,
+    pageSize,
+    maxPageSize,
+    exportMaxRows,
+    externalFilter,
+    externalErrors,
+    getCellValue,
+    tz,
+    stableUser,
+  });
+  cfg.current = {
+    schema,
+    registry,
+    readable,
+    sortableIds,
+    canGroup,
+    canSearch,
+    pageSize,
+    maxPageSize,
+    exportMaxRows,
+    externalFilter,
+    externalErrors,
+    getCellValue,
+    tz,
+    stableUser,
+  };
 
   // ---- Stable per-instance state -------------------------------------------------
   const [stores] = useState<SchemaGridStores<Row>>(() => ({
@@ -577,6 +659,24 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       apiRef.current = null;
     };
   }, []);
+
+  // Capabilities: once per data source, again after a schema change (see getSyncEvents).
+  const capsGeneration = useRef(0);
+  const loadCapabilities = useCallback(() => {
+    const generation = ++capsGeneration.current;
+    const ds = latest.current.dataSource;
+    getDataSourceCapabilities(ds)
+      // An older server answers UNKNOWN_OPERATION: behave as before capabilities existed.
+      .catch(() => inferCapabilities(ds))
+      .then((next) => {
+        if (generation !== capsGeneration.current || !mountedRef.current) return;
+        setCapabilities((prev) => (prev && json(prev) === json(next) ? prev : next));
+      });
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dataSource isn't read directly (loadCapabilities reads `latest.current`); it's the trigger.
+  useEffect(() => {
+    loadCapabilities();
+  }, [dataSource, loadCapabilities]);
 
   const [loadState, setLoadStateRaw] = useState<SchemaGridLoadState>(() =>
     externalErrors.length > 0 ? "error" : mode === "client" ? "loading" : "idle",
@@ -635,7 +735,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }));
   const headerMenu: HeaderMenuContext = {
     ...(props.headerMenu ? { component: props.headerMenu } : {}),
-    ...(props.onGroupByColumn ? { onGroupByColumn: menuSeams.onGroupByColumn } : {}),
+    ...(props.onGroupByColumn && canGroup ? { onGroupByColumn: menuSeams.onGroupByColumn } : {}),
     ...(props.onEditColumn ? { onEditColumn: menuSeams.onEditColumn } : {}),
     ...(props.onInsertColumn ? { onInsertColumn: menuSeams.onInsertColumn } : {}),
   };
@@ -709,7 +809,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     // 2. The user's filter/search/sort, readable columns only.
     const derived = deriveClientRows(
       base,
-      { filter: state.filter, sort: state.sort, search: state.search },
+      {
+        filter: state.filter,
+        sort: pruneSortToReadable(state.sort, c.sortableIds),
+        search: c.canSearch ? state.search : undefined,
+      },
       {
         schema: c.schema,
         registry: c.registry,
@@ -736,7 +840,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     prevDataOrder.current = new Map(rows.map((r, i) => [r.id, i]));
 
     // 4. Grouping on readable columns only; reuse unchanged group shells.
-    const groupBy = pruneGroupByToReadable(state.groupBy, c.readable);
+    const groupBy = c.canGroup ? pruneGroupByToReadable(state.groupBy, c.readable) : [];
     let display: DisplayRow<Row>[] = rows;
     if (groupBy.length > 0) {
       const nextShells = new Map<string, GroupDisplayRow>();
@@ -793,14 +897,25 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, []);
 
   // ---- Remote changes (T28) --------------------------------------------------------------
+  /** The host's events, plus a capabilities refetch on a schema change. */
+  const getSyncEvents = useCallback((): SchemaGridEvents<Row> => {
+    const events = latest.current.events;
+    return {
+      ...events,
+      onSchemaChanged: (schemaVersion: number) => {
+        loadCapabilities();
+        events?.onSchemaChanged?.(schemaVersion);
+      },
+    };
+  }, [loadCapabilities]);
   const remote = useRemoteSync<Row>({
     api: () => apiRef.current,
     mode,
     stores,
     dataSource,
-    ...(props.poll ? { poll: props.poll } : {}),
+    ...(pollOptions ? { poll: pollOptions } : {}),
     schema,
-    events: getEvents,
+    events: getSyncEvents,
     matchesView: (row) => rowMatchesView(row, cfg.current, stores.query.getState()),
   });
   const { flushAfterGridUpdate, onCellEditingStopped } = remote;
@@ -813,10 +928,23 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [rowData, mode, flushPendingRefresh, flushAfterGridUpdate]);
 
   // Re-derive when anything the derivation reads changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: schema/registry/readable/tz/getCellValue/externalFilter/externalErrors aren't read directly here — deriveRef.current() (invoked via scheduleRowSync) reads them off `cfg.current`. They're kept as deps purely to re-trigger derivation whenever any of them changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: schema/registry/readable/sortableIds/canGroup/canSearch/tz/getCellValue/externalFilter/externalErrors aren't read directly here — deriveRef.current() (invoked via scheduleRowSync) reads them off `cfg.current`. They're kept as deps purely to re-trigger derivation whenever any of them changes.
   useEffect(() => {
     if (mode === "client") scheduleRowSync();
-  }, [mode, schema, registry, readable, tz, getCellValue, externalFilter, externalErrors, scheduleRowSync]);
+  }, [
+    mode,
+    schema,
+    registry,
+    readable,
+    sortableIds,
+    canGroup,
+    canSearch,
+    tz,
+    getCellValue,
+    externalFilter,
+    externalErrors,
+    scheduleRowSync,
+  ]);
 
   useEffect(() => {
     const offRows = stores.rows.subscribe(scheduleRowSync);
@@ -895,14 +1023,15 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     // NOTE: externalFilter is AND-ed in, but the server must enforce the real restriction.
     const query: Omit<GridQuery, "page"> = {
       filter: combineFilters(c.externalFilter, userFilter),
-      sort: pruneSortToReadable(state.sort, c.readable),
+      sort: pruneSortToReadable(state.sort, c.sortableIds),
     };
-    if (state.search !== undefined && state.search !== "") query.search = state.search;
-    const groupBy = pruneGroupByToReadable(state.groupBy, c.readable);
+    if (c.canSearch && state.search !== undefined && state.search !== "") query.search = state.search;
+    const groupBy = c.canGroup ? pruneGroupByToReadable(state.groupBy, c.readable) : [];
     if (groupBy.length > 0) query.groupBy = groupBy;
     return query;
   }, [stores]);
 
+  const pushQueryToGridRef = useRef<() => boolean>(() => false);
   /** Key of the query the current datasource last fetched with (undefined: nothing fetched yet). */
   const lastServerQueryKey = useRef<string | undefined>(undefined);
   const serverGeneration = useRef(0);
@@ -914,7 +1043,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       dataSource: { fetch: (q) => latest.current.dataSource.fetch(q) },
       getQuery: getServerQuery,
       pageMode: latest.current.pageMode ?? "offset",
-      blockSize: latest.current.pageSize ?? DEFAULT_PAGE_SIZE,
+      blockSize: cfg.current.pageSize,
+      maxPageSize: cfg.current.maxPageSize,
       onRows: (rows) => {
         if (isCurrent()) upsertIncoming(rows);
       },
@@ -994,6 +1124,20 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     replaceServerDatasource();
   }, [getServerQuery, replaceServerDatasource]);
 
+  // Server mode: capabilities that change the effective query (sortable
+  // columns, groupBy, search) re-query when something was already fetched.
+  const capsQueryKey = json([canGroup, canSearch, [...sortableIds]]);
+  const firstCapsQuery = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on capsQueryKey on purpose.
+  useEffect(() => {
+    if (firstCapsQuery.current) {
+      firstCapsQuery.current = false;
+      return;
+    }
+    if (apiRef.current) pushQueryToGridRef.current();
+    syncServerQuery();
+  }, [capsQueryKey]);
+
   // T27 (Deviation 4): server mode + groupBy → lazy groups on the client-side row model.
   const serverGroups = useServerGroups<Row>({
     enabled: mode === "server",
@@ -1033,15 +1177,14 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     try {
       let offset = 0;
       for (;;) {
-        const result = await ds.fetch({ filter: external, sort: [], page: { offset, limit: pageSize }, includeTotal: true });
+        const limit = cfg.current.pageSize;
+        const result = await ds.fetch({ filter: external, sort: [], page: { offset, limit }, includeTotal: true });
         if (generation !== loadGeneration.current || !mountedRef.current) return;
         upsertIncoming(result.rows);
         for (const r of result.rows) seen.add(r.id);
         offset += result.rows.length;
-        const done =
-          result.rows.length === 0 ||
-          result.rows.length < pageSize ||
-          (typeof result.total === "number" && offset >= result.total);
+        // Never stop on a short page: the source may clamp `limit` to its maxPageSize.
+        const done = result.rows.length === 0 || (typeof result.total === "number" && offset >= result.total);
         if (done) break;
       }
     } catch (error) {
@@ -1057,7 +1200,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     stores.rows.clearNotInView();
     setLastError(undefined);
     setLoadState("idle");
-  }, [pageSize, stores, upsertIncoming, setLoadState, setLastError]);
+  }, [stores, upsertIncoming, setLoadState, setLastError]);
 
   const refetch = useCallback(async (): Promise<void> => {
     if ((latest.current.mode ?? "client") === "client") {
@@ -1096,6 +1239,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [externalFilter, externalErrors]);
 
   // ---- Edit controller + undo ----------------------------------------------------------
+  const canEditCellRef = useRef(canEditCell);
+  canEditCellRef.current = canEditCell;
   const controller = useMemo(
     () =>
       // T30: veto / conflict / rejected-edit outcomes are announced (assertive) through the announce seam.
@@ -1106,6 +1251,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         cellStatus: stores.cellStatus,
         events: getEvents,
         formulas,
+        // C3: read through a ref so undo/redo re-check at execution time.
+        canEditCell: (row: Row, columnId: string) => canEditCellRef.current(row, columnId),
         onApplied: (info: AppliedInfo<Row>) => {
           undoStack.record(info.batch, info.result.applied);
           if (info.formulaDependents.length > 0) {
@@ -1269,9 +1416,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     if (!api) return false;
     let changed = false;
     const state = stores.query.getState();
-    if (json(sortFromColumnState(api.getColumnState())) !== json(state.sort)) {
+    // Unsortable columns (C1/C2) never get a sort indicator.
+    const sort = pruneSortToReadable(state.sort, cfg.current.sortableIds);
+    if (json(sortFromColumnState(api.getColumnState())) !== json(sort)) {
       api.applyColumnState({
-        state: state.sort.map((s, i) => ({ colId: s.columnId, sort: s.dir, sortIndex: i })),
+        state: sort.map((s, i) => ({ colId: s.columnId, sort: s.dir, sortIndex: i })),
         defaultState: { sort: null },
       });
       changed = true;
@@ -1285,6 +1434,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     }
     return changed;
   }, [stores]);
+
+  pushQueryToGridRef.current = pushQueryToGrid;
 
   useEffect(
     () =>
@@ -1508,11 +1659,14 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         access,
         getCellValue,
         tz,
+        pageSize: Math.min(EXPORT_PAGE_SIZE, cfg.current.maxPageSize),
+        pageMode: mode === "server" ? (latest.current.pageMode ?? "offset") : "offset",
+        ...(cfg.current.exportMaxRows !== undefined ? { maxRows: cfg.current.exportMaxRows } : {}),
         ...(io ? { io } : {}),
         ...(fileName !== undefined ? { fileName } : {}),
       });
     },
-    [getServerQuery, exportColumns, registry, access, getCellValue, tz],
+    [getServerQuery, exportColumns, registry, access, getCellValue, tz, mode],
   );
 
   const exportCsv = useCallback(
@@ -1667,5 +1821,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     poll: props.poll,
     keyboard,
     clipboard,
+    effectiveCapabilities,
+    capabilities,
   };
 }

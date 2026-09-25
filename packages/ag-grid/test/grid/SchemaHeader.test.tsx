@@ -113,6 +113,14 @@ describe("SchemaHeader", () => {
     renderHeader(makeColumn({ filterAllowed: false }));
     expect(screen.queryByRole("button", { name: /Filter/ })).toBeNull();
   });
+
+  it("an unsortable column shows no sort indicator and is not marked sortable (C1)", () => {
+    const { container, props } = renderHeader(makeColumn({ sort: "asc" }), { enableSorting: false });
+    expect(container.querySelector(".sg-header-sort")).toBeNull();
+    expect(container.querySelector("[data-sortable]")).toBeNull();
+    fireEvent.click(screen.getByText("Payment status"));
+    expect(props.progressSort).not.toHaveBeenCalled();
+  });
 });
 
 describe("schemaHeaderKeyboardEvent", () => {
