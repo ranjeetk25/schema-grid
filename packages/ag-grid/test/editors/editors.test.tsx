@@ -438,8 +438,7 @@ describe("DEFAULT_EDITORS", () => {
     expect(DEFAULT_EDITORS.select?.editorPopup).toBe(false);
     expect(DEFAULT_EDITORS.multiSelect?.editor).toBe(MultiSelectEditor);
     expect(DEFAULT_EDITORS.multiSelect?.editorPopup).toBe(true);
-    for (const id of ["creatableSelect", "user", "link", "formula"] as const) {
-      expect(DEFAULT_EDITORS[id]).toBeUndefined();
-    }
+    // creatableSelect/user/link use ComboboxEditor (see comboboxEditor.test.tsx).
+    expect(DEFAULT_EDITORS.formula).toBeUndefined();
   });
 });
