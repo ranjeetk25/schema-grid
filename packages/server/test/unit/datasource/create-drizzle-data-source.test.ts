@@ -11,7 +11,7 @@ import {
 } from "../../../src/internal/core";
 import { defineGridTables } from "../../../src/storage/tables";
 import { type FakeCall, createFakeMysql } from "../../helpers/fake-mysql";
-import { FIXTURE_NOW, admissionsSchema } from "../../fixtures/admissions";
+import { FIXTURE_COLUMN_IDS, FIXTURE_NOW, serverFixtureSchema } from "../../fixtures/admissions";
 
 const tables = defineGridTables({
   rowsTable: "grid_rows",
@@ -19,16 +19,20 @@ const tables = defineGridTables({
   physicalColumns: { email_addr: varchar("email_addr", { length: 191 }) },
 });
 
+const fee = FIXTURE_COLUMN_IDS.fee;
+const status = FIXTURE_COLUMN_IDS.status;
+const notes = FIXTURE_COLUMN_IDS.notes;
+
 function make(extra: Partial<DrizzleDataSourceOptions> = {}, roles = ["counsellor"]) {
   const fake = createFakeMysql((c) => (c.rowsAsArray ? [] : undefined));
   const ds = createDrizzleDataSource({
     db: fake.db as unknown as GridDb,
     gridId: "admissions",
-    schema: admissionsSchema,
+    schema: serverFixtureSchema,
     registry: createDefaultRegistry(),
     resolver: createRolePermissionResolver(),
     user: { id: "u1", roles },
-    now: () => FIXTURE_NOW,
+    now: () => new Date(FIXTURE_NOW),
     tables,
     ...extra,
   });
@@ -42,7 +46,7 @@ describe("createDrizzleDataSource", () => {
   });
 
   it("an invalid schema throws at construction", () => {
-    const bad = { ...admissionsSchema, columns: [...admissionsSchema.columns, { ...admissionsSchema.columns[0]!, id: "dup" }] };
+    const bad = { ...serverFixtureSchema, columns: [...serverFixtureSchema.columns, { ...serverFixtureSchema.columns[0]!, id: "dup" }] };
     expect(() => make({ schema: bad })).toThrow(SchemaValidationError);
     expect(() => make({ tables: defineGridTables({ rowsTable: "r", changeLogTable: "l" }) })).toThrow(SchemaValidationError);
   });
@@ -52,7 +56,7 @@ describe("createDrizzleDataSource", () => {
     const res = await ds.fetch({
       filter: null,
       sort: [],
-      groupBy: [{ columnId: "payment_status", aggregations: [{ columnId: "fee", agg: "sum" }] }],
+      groupBy: [{ columnId: status, aggregations: [{ columnId: fee, agg: "sum" }] }],
       page: { offset: 0, limit: 10 },
     });
     expect(res.rows).toEqual([]);
@@ -62,7 +66,7 @@ describe("createDrizzleDataSource", () => {
 
   it("fetch without groupBy runs the row query", async () => {
     const { ds, statements } = make();
-    const res = await ds.fetch({ filter: null, sort: [{ columnId: "fee", dir: "desc" }], page: { offset: 0, limit: 10 } });
+    const res = await ds.fetch({ filter: null, sort: [{ columnId: fee, dir: "desc" }], page: { offset: 0, limit: 10 } });
     expect(res.rows).toEqual([]);
     expect((statements()[0] as FakeCall).sql).toMatch(/order by/);
   });
@@ -70,7 +74,7 @@ describe("createDrizzleDataSource", () => {
   it("fetch with a hidden sort column rejects with PermissionError before any SQL", async () => {
     const { ds, calls } = make();
     await expect(
-      ds.fetch({ filter: null, sort: [{ columnId: "salary", dir: "asc" }], page: { offset: 0, limit: 10 } }),
+      ds.fetch({ filter: null, sort: [{ columnId: notes, dir: "asc" }], page: { offset: 0, limit: 10 } }),
     ).rejects.toBeInstanceOf(PermissionError);
     expect(calls).toHaveLength(0);
   });
@@ -83,18 +87,19 @@ describe("createDrizzleDataSource", () => {
       onCreateOption: async (_c, label) => ({ id: "new", label }),
       linkLookup: async () => [{ id: "l1", label: "L1" }],
     }).ds;
-    await expect(withHooks.createOption?.("payment_status", "Refunded")).resolves.toEqual({ id: "new", label: "Refunded" });
-    await expect(withHooks.lookup?.("name", "x")).resolves.toEqual([{ id: "l1", label: "L1" }]);
-    await expect(withHooks.lookup?.("salary", "x")).rejects.toBeInstanceOf(PermissionError);
+    await expect(withHooks.createOption?.(status, "Refunded")).resolves.toEqual({ id: "new", label: "Refunded" });
+    await expect(withHooks.lookup?.(FIXTURE_COLUMN_IDS.name, "x")).resolves.toEqual([{ id: "l1", label: "L1" }]);
+    await expect(withHooks.lookup?.(notes, "x")).rejects.toBeInstanceOf(PermissionError);
   });
 
   it("getOptions filters by search case-insensitively; hidden columns are rejected", async () => {
     const { ds } = make();
-    await expect(ds.getOptions?.("payment_status", "PA")).resolves.toEqual([{ id: "paid", label: "Paid" }]);
-    await expect(ds.getOptions?.("payment_status")).resolves.toHaveLength(3);
-    await expect(ds.getOptions?.("salary")).rejects.toBeInstanceOf(PermissionError);
+    // "ai" matches only "Paid" among status's options (Paid/Pending/Partial)
+    await expect(ds.getOptions?.(status, "ai")).resolves.toEqual([{ id: "paid", label: "Paid", color: "green" }]);
+    await expect(ds.getOptions?.(status)).resolves.toHaveLength(3);
+    await expect(ds.getOptions?.(notes)).rejects.toBeInstanceOf(PermissionError);
     const users = make({ userDirectory: async (s) => [{ id: "u9", label: `match:${s}` }] }).ds;
-    await expect(users.getOptions?.("owner", "ra")).resolves.toEqual([{ id: "u9", label: "match:ra" }]);
+    await expect(users.getOptions?.(FIXTURE_COLUMN_IDS.owner, "ra")).resolves.toEqual([{ id: "u9", label: "match:ra" }]);
   });
 
   it("createOption requires edit access", async () => {
@@ -103,7 +108,7 @@ describe("createDrizzleDataSource", () => {
       ["viewer"],
     );
     // viewers still have edit on unrestricted columns under the default role resolver
-    await expect(ds.createOption?.("payment_status", "X")).resolves.toMatchObject({ label: "X" });
-    await expect(ds.createOption?.("salary", "X")).rejects.toBeInstanceOf(PermissionError);
+    await expect(ds.createOption?.(status, "X")).resolves.toMatchObject({ label: "X" });
+    await expect(ds.createOption?.(notes, "X")).rejects.toBeInstanceOf(PermissionError);
   });
 });

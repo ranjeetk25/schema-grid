@@ -1,42 +1,56 @@
-import { compareRows } from "../../src/formula/compare-rows";
 /**
- * In-memory reference semantics for parity tests.
- * TODO(core): replace with core's `createInMemoryDataSource` over the shared fixture.
+ * In-memory reference semantics for parity tests, built on core's
+ * `createInMemoryDataSource` (the executable definition of schema-grid
+ * semantics that adapters like `createDrizzleDataSource` are tested against).
  */
-import { resolveAccess } from "../../src/access/query-access";
-import { createServerContext } from "../../src/context";
-import { evaluateFormulaCells } from "../../src/formula/evaluate-rows";
+import { createInMemoryDataSource } from "@masai/schema-grid-core/memory";
 import {
   type FilterNode,
   type GridRow,
   type GridSchema,
-  type RowPartial,
+  type GroupResult,
   type SortSpec,
-  createDefaultRegistry,
   createRolePermissionResolver,
-  matchesFilter,
 } from "../../src/internal/core";
 
-export function referenceIds(
+export async function referenceIds(
   schema: GridSchema,
-  partials: RowPartial[],
+  rows: readonly GridRow[],
   query: { filter: FilterNode | null; sort: SortSpec[] },
   env: { now: Date; tz: string; userId: string },
-): string[] {
-  const registry = createDefaultRegistry();
-  const ctx = createServerContext({
+): Promise<string[]> {
+  const ds = createInMemoryDataSource<GridRow>({
     schema,
-    registry,
+    rows: structuredClone(rows as GridRow[]),
     resolver: createRolePermissionResolver({ superRoles: ["ref"] }),
     user: { id: env.userId, roles: ["ref"] },
     now: () => env.now,
-    tz: env.tz,
+    timeZone: env.tz,
   });
-  const rows: GridRow[] = partials.map((p) => ({ id: p.id as string, version: 1, updatedAt: "", cells: { ...(p.cells ?? {}) } }));
-  const evaluated = evaluateFormulaCells(rows, resolveAccess(ctx), ctx);
-  const mctx = { schema, registry, now: env.now, tz: env.tz, userId: env.userId };
-  return evaluated
-    .filter((r) => matchesFilter(query.filter, r, mctx))
-    .sort((a, b) => compareRows(a, b, query.sort, schema, registry))
-    .map((r) => r.id);
+  const res = await ds.fetch({ filter: query.filter, sort: query.sort, page: { offset: 0, limit: 1000 } });
+  return res.rows.map((r) => r.id);
+}
+
+export async function referenceGroups(
+  schema: GridSchema,
+  rows: readonly GridRow[],
+  columnId: string,
+  aggregations: { columnId: string; agg: "sum" }[],
+  env: { now: Date; tz: string; userId: string },
+): Promise<GroupResult[]> {
+  const ds = createInMemoryDataSource<GridRow>({
+    schema,
+    rows: structuredClone(rows as GridRow[]),
+    resolver: createRolePermissionResolver({ superRoles: ["ref"] }),
+    user: { id: env.userId, roles: ["ref"] },
+    now: () => env.now,
+    timeZone: env.tz,
+  });
+  const res = await ds.fetch({
+    filter: null,
+    sort: [],
+    groupBy: [{ columnId, aggregations }],
+    page: { offset: 0, limit: 50 },
+  });
+  return res.groups ?? [];
 }
