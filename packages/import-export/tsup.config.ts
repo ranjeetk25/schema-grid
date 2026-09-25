@@ -1,10 +1,22 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: {
+    index: "src/index.ts",
+    "import/index": "src/import/index.ts",
+    "export/index": "src/export/index.ts",
+    "clipboard/index": "src/clipboard/index.ts",
+  },
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ["@masai/schema-grid-core", "papaparse", "exceljs"],
+  splitting: true,
+  treeshake: true,
+  external: [
+    "@masai/schema-grid-core",
+    "papaparse",
+    "exceljs",
+    "node:stream",
+  ],
 });
