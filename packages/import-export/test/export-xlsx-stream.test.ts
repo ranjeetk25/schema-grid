@@ -1,4 +1,5 @@
 import { Readable } from "node:stream";
+import type { PassThrough } from "node:stream";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import type { ExportOptions } from "../src/export/types";
@@ -127,12 +128,24 @@ describe("buildXlsxStream backpressure and early failure", () => {
       }
     }
     const stream = await buildXlsxStream(opts({ rows: endless() }));
-    await new Promise((r) => setTimeout(r, 300));
+    // Poll for the actual backpressure signal instead of assuming it has
+    // engaged after a fixed wall-clock window: under full-suite CPU load the
+    // event loop can be busy long enough that a fixed sleep elapses before
+    // `writableNeedDrain` flips, which made this test flaky.
+    const pass = stream as unknown as PassThrough;
+    const deadline = Date.now() + 20_000;
+    while (!pass.writableNeedDrain && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(pass.writableNeedDrain).toBe(true);
     const afterWait = pulled;
-    await new Promise((r) => setTimeout(r, 200));
-    // Stalled on backpressure: bounded, and no longer advancing.
     expect(afterWait).toBeLessThan(50_000);
-    expect(pulled).toBe(afterWait);
+    // Confirm it stays stalled: repeated short polls rather than one fixed
+    // window, so the assertion doesn't depend on scheduling speed.
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      expect(pulled).toBe(afterWait);
+    }
     stream.destroy();
     await new Promise((r) => setTimeout(r, 50));
     expect(finalized).toBe(true);
