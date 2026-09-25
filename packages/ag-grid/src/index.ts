@@ -1,6 +1,10 @@
 // Public barrel for `@ranjeetk25/schema-grid-ag-grid`.
 // Subpaths: `./editors`, `./filters`, `./sync`.
-export const SCHEMA_GRID_AG_GRID_VERSION = "0.0.1";
+// Injected from package.json by tsup (`define`) and by vitest.config.ts; source
+// consumers without either (e.g. the Storybook dev build) get the dev fallback.
+declare const __SCHEMA_GRID_AG_GRID_VERSION__: string | undefined;
+export const SCHEMA_GRID_AG_GRID_VERSION: string =
+  typeof __SCHEMA_GRID_AG_GRID_VERSION__ === "string" ? __SCHEMA_GRID_AG_GRID_VERSION__ : "0.0.0-dev";
 
 // Grid
 export {
@@ -102,6 +106,7 @@ export {
   type AppliedInfo,
   type EditController,
   type EditControllerOptions,
+  READ_ONLY_MESSAGE,
   type SubmitOutcome,
 } from "./editing/editController";
 export { createEditRequestHandler } from "./editing/editEntry";
@@ -149,6 +154,9 @@ export { LiveAnnouncer, type LiveAnnouncerProps } from "./a11y/LiveAnnouncer";
 // Local extensions of core types used in this package's public API.
 export type {
   ConflictResolution,
+  DataSourceCapabilities,
+  EffectiveCapabilities,
+  EffectiveColumnCapabilities,
   IoExportModule,
   IoExportOptions,
   SchemaGridEvents,

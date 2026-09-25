@@ -2,7 +2,11 @@
  * `@ranjeetk25/schema-grid-server` root entry — Node-only, drizzle-free at runtime.
  * SQL/Drizzle APIs live in `@ranjeetk25/schema-grid-server/drizzle`, DDL helpers in `/ddl`.
  */
-export const SCHEMA_GRID_SERVER_VERSION = "0.0.1";
+// Injected from package.json by tsup (`define`) and by vitest.config.ts; source
+// consumers without either (e.g. the Storybook dev build) get the dev fallback.
+declare const __SCHEMA_GRID_SERVER_VERSION__: string | undefined;
+export const SCHEMA_GRID_SERVER_VERSION: string =
+  typeof __SCHEMA_GRID_SERVER_VERSION__ === "string" ? __SCHEMA_GRID_SERVER_VERSION__ : "0.0.0-dev";
 
 export {
   CursorError,
@@ -11,6 +15,7 @@ export {
   FormulaQueryLimitError,
   GroupingError,
   PermissionError,
+  type PermissionErrorCode,
   type PermissionUsage,
   RowValidationError,
   SchemaGridServerError,

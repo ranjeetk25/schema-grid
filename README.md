@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ranjeetk25/schema-grid/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ranjeetk25/schema-grid/actions/workflows/ci.yml)
 [![Release](https://github.com/ranjeetk25/schema-grid/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/ranjeetk25/schema-grid/actions/workflows/release.yml)
-[![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-core?label=%40masai%2Fschema-grid-core)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-core)
+[![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-core?label=%40ranjeetk25%2Fschema-grid-core)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Schema Grid is a schema-driven, Airtable-style data grid built as a thin layer

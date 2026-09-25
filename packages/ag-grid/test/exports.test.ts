@@ -123,3 +123,11 @@ describe("build output (run `bun run build` first; skipped when dist/ is absent)
     }
   });
 });
+
+describe("SCHEMA_GRID_AG_GRID_VERSION", () => {
+  it("equals the package.json version (injected via tsup/vitest `define`)", async () => {
+    const { version } = JSON.parse(readFileSync(join(pkgRoot, "package.json"), "utf8")) as { version: string };
+    const mod = await import("../src/index");
+    expect(mod.SCHEMA_GRID_AG_GRID_VERSION).toBe(version);
+  });
+});

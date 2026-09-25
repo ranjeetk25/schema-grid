@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import pkg from "./package.json" with { type: "json" };
 
 export default defineConfig({
   entry: {
@@ -8,6 +9,8 @@ export default defineConfig({
     "sync/index": "src/sync/index.ts",
   },
   format: ["esm", "cjs"],
+  // SCHEMA_GRID_AG_GRID_VERSION (src/index.ts) is the published package.json version.
+  define: { __SCHEMA_GRID_AG_GRID_VERSION__: JSON.stringify(pkg.version) },
   dts: true,
   clean: true,
   sourcemap: true,

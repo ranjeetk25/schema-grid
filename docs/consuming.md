@@ -1,6 +1,6 @@
 # Consuming Schema Grid from npm
 
-The packages are public on npmjs.com under the `@masai` scope, MIT-licensed, and
+The packages are public on npmjs.com under the `@ranjeetk25` scope, MIT-licensed, and
 released in lockstep: every `@ranjeetk25/schema-grid-*` package always has the same
 version, so pin them all to the same number.
 
@@ -134,16 +134,19 @@ Render it inside your existing `<MantineProvider>`.
 
 ## CI / AWS CodePipeline + CodeBuild
 
-The packages are on the **public** npm registry, so `bun install` in CodeBuild
-needs nothing: no token, no `.npmrc`. Commit the updated `bun.lock` as usual and
-keep `bun install --frozen-lockfile` in the buildspec.
+The packages are on the **public** npm registry (registry.npmjs.org), so
+installing them needs no `.npmrc`, no registry override and no token: not on a
+laptop and not in CodeBuild. They are not published to GitHub Packages. Commit
+the updated `bun.lock` as usual and keep `bun install --frozen-lockfile` in the
+buildspec.
 
-If you later install through a private mirror (CodeArtifact, Verdaccio,
-Artifactory), route only the scope through it:
+Only if you later install through a private mirror (CodeArtifact, Verdaccio,
+Artifactory) that proxies npmjs.com do you need an `.npmrc`, routing just the
+scope through the mirror:
 
 ```ini
 # .npmrc (bun reads it too; or use bunfig.toml [install.scopes])
-@masai:registry=https://<your-mirror>/npm/
+@ranjeetk25:registry=https://<your-mirror>/npm/
 //<your-mirror>/npm/:_authToken=${NPM_MIRROR_TOKEN}
 ```
 
