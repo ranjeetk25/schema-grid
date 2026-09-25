@@ -7,7 +7,13 @@
     "test": "vitest run",
     "build": "bun run --filter '*' build",
     "lint": "biome check .",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "db:up": "docker compose up -d --wait mysql",
+    "db:down": "docker compose down",
+    "dev:api": "bun run --cwd apps/demo-api dev",
+    "storybook": "bun run --cwd apps/storybook storybook",
+    "build-storybook": "bun run --cwd apps/storybook build-storybook",
+    "e2e": "bun run --cwd apps/storybook e2e"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

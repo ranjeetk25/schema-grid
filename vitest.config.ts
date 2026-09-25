@@ -8,6 +8,7 @@ export default defineConfig({
       "packages/ag-grid",
       "packages/ui-mantine",
       "packages/import-export",
+      "apps/demo-api",
     ],
   },
 });
