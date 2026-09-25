@@ -124,8 +124,7 @@ export { LiveAnnouncer, type LiveAnnouncerProps } from "./a11y/LiveAnnouncer";
 // Local extensions of core types used in this package's public API.
 export type {
   ConflictResolution,
-  IoExportColumn,
-  IoModule,
-  IoWriteInput,
+  IoExportModule,
+  IoExportOptions,
   SchemaGridEvents,
 } from "./internal/core";

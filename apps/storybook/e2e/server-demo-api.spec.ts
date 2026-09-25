@@ -9,6 +9,7 @@
  * Skipped unless the API answers at http://localhost:3001/health
  * (`bun run db:up && bun run dev:api`).
  */
+import { readFile } from "node:fs/promises";
 import { type Page, expect, test } from "@playwright/test";
 import {
   FIXTURE_NOW,
@@ -203,15 +204,22 @@ test("§12 server-mode grouping: collapsed group rows, expanding fetches that gr
   await expect(cell(page, "r1", "col_name")).toHaveCount(0);
 });
 
-test("§14 server-mode 'Export CSV' pages the current view through the data source (known gap)", async ({
+test("§14 server-mode 'Export CSV' pages the current view through the data source", async ({
   page,
 }) => {
-  test.fail(
-    true,
-    "exportCurrentView loads @masai/schema-grid-io via a non-static import() and expects writeCsv/writeXlsx, which io does not export",
-  );
   await openServerStory(page, "&sgPoll=off");
-  const download = page.waitForEvent("download", { timeout: 5000 });
+  const before = (await calls(page, "fetch")).length;
+  const download = page.waitForEvent("download", { timeout: 10_000 });
   await page.getByRole("button", { name: "Export CSV" }).click();
-  await download;
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("schema-grid.csv");
+  const path = await file.path();
+  const csv = (await readFile(path, "utf8")).replace(/^\uFEFF/, "");
+  const lines = csv.split("\r\n");
+  expect(lines[0]).toContain("Name");
+  // Every fixture row, not just the loaded block: the export re-queried the view.
+  expect(lines.slice(1).filter(Boolean)).toHaveLength(5);
+  expect(csv).toContain("Asha Verma");
+  const exportFetches = (await calls(page, "fetch")).slice(before);
+  expect(exportFetches.length).toBeGreaterThan(0);
 });

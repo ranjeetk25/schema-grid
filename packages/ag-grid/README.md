@@ -92,6 +92,7 @@ interface SchemaGridProps<Row extends GridRow = GridRow> {
   events?: SchemaGridEvents<Row>;
   mode?: "client" | "server";                // default "client"; must not change after mount
   tz?: string;                               // default DEFAULT_TZ
+  io?: { buildExportBlob };                  // io's export module; default: import("@masai/schema-grid-io/export")
   pageSize?: number;                         // default 100
   pageMode?: "offset" | "cursor";            // default "offset"; server mode only
   externalFilter?: FilterNode | null;
@@ -112,7 +113,7 @@ interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   controller: EditController<Row>;
   undo: { undo(): Promise<void>; redo(): Promise<void>; canUndo(): boolean; canRedo(): boolean };
   exportCsv(fileName?: string): void;
-  exportCurrentView(format: "csv" | "xlsx", fileName?: string): Promise<Blob | string | ArrayBuffer | Uint8Array>;
+  exportCurrentView(format: "csv" | "xlsx", fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;
   access: Map<string, Access>;               // per-column "hidden" | "read" | "edit"
@@ -373,12 +374,21 @@ CSS as a plain stylesheet instead.
   registry's `exportFormat`, falling back to the field type's `format`). Server mode: delegates to
   `exportCurrentView("csv", fileName)` and triggers a browser download of the result.
 - **`exportCurrentView(format, fileName?)`** — pages the **full current query** through `dataSource.fetch`
-  (not just the loaded/visible rows) and hands the formatted rows to `@masai/schema-grid-io`'s CSV/XLSX
-  writer via a dynamic import. Returns a `Blob | string | ArrayBuffer | Uint8Array`.
+  (not just the loaded/visible rows) and hands the **raw** rows + `ColumnDef`s to `@masai/schema-grid-io`'s
+  browser-safe `buildExportBlob({ columns, registry, rows, format, tz, fileName, access })`, which types the
+  cells itself (XLSX numbers, dates, hyperlinks). Resolves to that `Blob`.
 
 `@masai/schema-grid-io` is an **optional peer dependency** — only `exportCurrentView` (and therefore
-server-mode `exportCsv`, and any XLSX export) needs it. Calling it without the package installed throws a
-clear error naming the missing package; client-mode `exportCsv` works without it.
+server-mode `exportCsv`, and any XLSX export) needs it. By default it is loaded with a literal
+`import("@masai/schema-grid-io/export")` (bundlers resolve and code-split it); to avoid any lookup, pass it in:
+
+```tsx
+import * as io from "@masai/schema-grid-io/export";
+<SchemaGrid io={io} ... />; // or exportCurrentView({ ..., io })
+```
+
+Without the package installed and no `io` prop, the call throws a clear error naming the missing package;
+client-mode `exportCsv` works without it.
 
 ## Interaction features
 

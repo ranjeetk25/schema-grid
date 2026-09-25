@@ -74,6 +74,7 @@
         "@masai/schema-grid-core": "workspace:*",
       },
       "devDependencies": {
+        "@masai/schema-grid-io": "workspace:*",
         "ag-grid-community": "^36.2.0",
         "ag-grid-react": "^36.2.0",
         "react": "^18.3.0",

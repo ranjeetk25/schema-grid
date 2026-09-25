@@ -61,7 +61,7 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   canUndo(): boolean;
   canRedo(): boolean;
   exportCsv(fileName?: string): void;
-  exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob | string | ArrayBuffer | Uint8Array>;
+  exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;
   stores: SchemaGridStores<Row>;

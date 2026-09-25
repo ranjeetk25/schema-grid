@@ -121,6 +121,7 @@ import {
   type GridRow,
   type GridSchema,
   type GridUser,
+  type IoExportModule,
   type GroupSpec,
   isFilterGroup,
   isFormulaError,
@@ -179,6 +180,12 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
   mode?: SchemaGridMode;
   /** Default `DEFAULT_TZ`. */
   tz?: string;
+  /**
+   * io's export module for `exportCurrentView` / server-mode `exportCsv`
+   * (`import * as io from "@masai/schema-grid-io/export"`). Default: loaded
+   * lazily with a literal `import("@masai/schema-grid-io/export")`.
+   */
+  io?: IoExportModule;
   /** Default 100 (client fetch page size and server block size). */
   pageSize?: number;
   /** Server mode paging. Default "offset". */
@@ -257,7 +264,7 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   /** Client mode: AG Grid CSV of the displayed rows. Server mode: full current query through io, downloaded. */
   exportCsv(fileName?: string): void;
   /** Pages the full current query through `dataSource.fetch` and hands it to io's writer. */
-  exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob | string | ArrayBuffer | Uint8Array>;
+  exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;
   access: Map<string, Access>;
@@ -1316,19 +1323,21 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const exportCurrentView = useCallback(
     (format: ExportFormat, fileName?: string) => {
       if (cfg.current.externalErrors.length > 0) return Promise.reject(new Error("Invalid externalFilter: nothing to export."));
+      const io = latest.current.io;
       return exportViewThroughIo<Row>({
         format,
         dataSource: latest.current.dataSource,
         query: getServerQuery(),
         columns: exportColumns(),
         registry,
-        uiRegistry,
         access,
         getCellValue,
+        tz,
+        ...(io ? { io } : {}),
         ...(fileName !== undefined ? { fileName } : {}),
       });
     },
-    [getServerQuery, exportColumns, registry, uiRegistry, access, getCellValue],
+    [getServerQuery, exportColumns, registry, access, getCellValue, tz],
   );
 
   const exportCsv = useCallback(

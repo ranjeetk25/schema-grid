@@ -4,7 +4,7 @@ import { AgGridReact } from "ag-grid-react";
 import { describe, expect, it, vi } from "vitest";
 import { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "../../src/agModules";
 import { type SchemaGridProps, type UseSchemaGridResult, useSchemaGrid } from "../../src/grid/useSchemaGrid";
-import type { GridRow, ViewDef } from "../../src/internal/core";
+import type { GridRow, IoExportOptions, ViewDef } from "../../src/internal/core";
 import { createInMemoryDataSource } from "../fixtures/dataSource";
 import { ADMIN, AGENT, fixtureRows, fixtureSchema } from "../fixtures/schema";
 
@@ -305,6 +305,22 @@ describe("useSchemaGrid — server mode", () => {
     await grid.ready();
     await waitFor(() => expect(ds.calls.fetch).toHaveBeenCalled());
     expect((ds.calls.fetch.mock.calls[0]?.[0] as { filter: unknown }).filter).toEqual(external);
+  });
+
+  it("exportCurrentView uses the injected io option with the grid's tz", async () => {
+    const buildExportBlob = vi.fn(async (_opts: IoExportOptions) => new Blob(["x"]));
+    const { result } = renderStable(
+      baseProps({ mode: "server", pageSize: 50, tz: "Europe/London", io: { buildExportBlob } }),
+    );
+    const blob = await result.current.exportCurrentView("xlsx", "leads.xlsx");
+    expect(blob).toBeInstanceOf(Blob);
+    expect(buildExportBlob).toHaveBeenCalledTimes(1);
+    expect(buildExportBlob.mock.calls[0]?.[0]).toMatchObject({
+      format: "xlsx",
+      tz: "Europe/London",
+      fileName: "leads.xlsx",
+      rows: expect.any(Array),
+    });
   });
 
   it("reports rowModelKey", () => {

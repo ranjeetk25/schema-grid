@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultUiRegistry } from "../../src/compile/uiRegistry";
 import { exportCsv } from "../../src/export/csv";
 import { exportCurrentView } from "../../src/export/exportCurrentView";
-import type { Access, GridRow, IoModule, IoWriteInput } from "../../src/internal/core";
-import { createDefaultRegistry } from "../../src/internal/core";
+import type { Access, GridRow, IoExportOptions } from "../../src/internal/core";
+import { createDefaultRegistry, DEFAULT_TZ } from "../../src/internal/core";
 import { createInMemoryDataSource } from "../fixtures/dataSource";
 import { createFakeGridApi } from "../fixtures/fakeGridApi";
 import { ADMIN, fixtureRows, fixtureSchema, row } from "../fixtures/schema";
@@ -28,11 +28,11 @@ function exportCsvParams(spies: Record<string, ReturnType<typeof vi.fn>>) {
   return call[0];
 }
 
-/** Grabs the first argument of the first call to a `writeCsv` mock. */
-function firstWriteCsvInput(writeCsv: { mock: { calls: unknown[][] } }): IoWriteInput {
-  const call = writeCsv.mock.calls[0];
-  if (!call) throw new Error("expected writeCsv to have been called");
-  return call[0] as IoWriteInput;
+/** Grabs the first argument of the first call to a `buildExportBlob` mock. */
+function firstExportInput(buildExportBlob: { mock: { calls: unknown[][] } }): IoExportOptions {
+  const call = buildExportBlob.mock.calls[0];
+  if (!call) throw new Error("expected buildExportBlob to have been called");
+  return call[0] as IoExportOptions;
 }
 
 describe("exportCsv", () => {
@@ -155,13 +155,15 @@ describe("exportCsv", () => {
 
 describe("exportCurrentView", () => {
   const columns = fixtureSchema.columns.filter((c) => c.type !== "formula");
+  const fakeIo = () => {
+    const buildExportBlob = vi.fn(async (_opts: IoExportOptions) => new Blob(["ok"]));
+    return { io: { buildExportBlob }, buildExportBlob };
+  };
 
-  it("pages through dataSource.fetch until a short page and hands rows + columns to io", async () => {
+  it("pages through dataSource.fetch until a short page and hands RAW rows + ColumnDefs to io.buildExportBlob", async () => {
     const manyRows = Array.from({ length: 12 }, (_, i) => row(`p${i}`, { name: `Row ${i}`, score: i }));
     const dataSource = createInMemoryDataSource(fixtureSchema, manyRows, { user: ADMIN });
-
-    const writeCsv = vi.fn((_input: IoWriteInput) => "csv-content");
-    const io: IoModule = { writeCsv, writeXlsx: vi.fn() };
+    const { io, buildExportBlob } = fakeIo();
 
     const result = await exportCurrentView({
       format: "csv",
@@ -169,23 +171,30 @@ describe("exportCurrentView", () => {
       query: { filter: null, sort: [] },
       columns,
       registry,
-      uiRegistry,
       pageSize: 5,
-      loadIo: async () => io,
+      tz: "Asia/Kolkata",
+      fileName: "leads.csv",
+      io,
     });
 
-    expect(result).toBe("csv-content");
+    expect(result).toBeInstanceOf(Blob);
     expect(dataSource.calls.fetch).toHaveBeenCalledTimes(3); // 5 + 5 + 2
-    expect(writeCsv).toHaveBeenCalledTimes(1);
-    const input = firstWriteCsvInput(writeCsv);
+    expect(buildExportBlob).toHaveBeenCalledTimes(1);
+    const input = firstExportInput(buildExportBlob);
+    expect(input.format).toBe("csv");
+    expect(input.tz).toBe("Asia/Kolkata");
+    expect(input.fileName).toBe("leads.csv");
+    expect(input.registry).toBe(registry);
+    expect(input.columns).toEqual(columns);
     expect(input.rows).toHaveLength(12);
-    expect(input.columns.map((c: { id: string }) => c.id)).toEqual(columns.map((c) => c.id));
+    // Raw values, not pre-formatted strings: io types the cells itself.
+    expect((input.rows as GridRow[]).find((r) => r.id === "p3")?.cells.score).toBe(3);
+    for (const c of columns) expect(input.access.get(c.id)).toBe("read");
   });
 
   it("stops on an exact-size final page using total, without an extra empty fetch", async () => {
     const tenRows = Array.from({ length: 10 }, (_, i) => row(`e${i}`, { name: `Row ${i}` }));
     const dataSource = createInMemoryDataSource(fixtureSchema, tenRows, { user: ADMIN });
-    const writeCsv = vi.fn(() => "ok");
 
     await exportCurrentView({
       format: "csv",
@@ -193,56 +202,41 @@ describe("exportCurrentView", () => {
       query: { filter: null, sort: [] },
       columns,
       registry,
-      uiRegistry,
       pageSize: 5,
-      loadIo: async () => ({ writeCsv, writeXlsx: vi.fn() }),
+      io: fakeIo().io,
     });
 
     expect(dataSource.calls.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("calls writeXlsx for xlsx format", async () => {
+  it("passes format xlsx through, with default tz and file name", async () => {
     const dataSource = createInMemoryDataSource(fixtureSchema, [row("x1", { name: "X" })], { user: ADMIN });
-    const writeXlsx = vi.fn(() => new Uint8Array([1, 2, 3]));
+    const { io, buildExportBlob } = fakeIo();
 
-    const result = await exportCurrentView({
-      format: "xlsx",
-      dataSource,
-      query: { filter: null, sort: [] },
-      columns,
-      registry,
-      uiRegistry,
-      loadIo: async () => ({ writeCsv: vi.fn(), writeXlsx }),
-    });
+    await exportCurrentView({ format: "xlsx", dataSource, query: { filter: null, sort: [] }, columns, registry, io });
 
-    expect(writeXlsx).toHaveBeenCalledTimes(1);
-    expect(result).toBeInstanceOf(Uint8Array);
+    const input = firstExportInput(buildExportBlob);
+    expect(input.format).toBe("xlsx");
+    expect(input.tz).toBe(DEFAULT_TZ);
+    expect(input.fileName).toBe("export.xlsx");
   });
 
-  it("filters out columns not in the optional access map", async () => {
+  it("filters out columns not readable in the optional access map and forwards that map", async () => {
     const dataSource = createInMemoryDataSource(fixtureSchema, [row("a1", { name: "A", salary: 99 })], { user: ADMIN });
-    const writeCsv = vi.fn((_input: IoWriteInput) => "ok");
+    const { io, buildExportBlob } = fakeIo();
     const access = new Map<string, Access>(columns.map((c) => [c.id, "read" as Access]));
     access.set("salary", "hidden");
 
-    await exportCurrentView({
-      format: "csv",
-      dataSource,
-      query: { filter: null, sort: [] },
-      columns,
-      registry,
-      uiRegistry,
-      access,
-      loadIo: async () => ({ writeCsv, writeXlsx: vi.fn() }),
-    });
+    await exportCurrentView({ format: "csv", dataSource, query: { filter: null, sort: [] }, columns, registry, access, io });
 
-    const input = firstWriteCsvInput(writeCsv);
-    expect(input.columns.map((c: { id: string }) => c.id)).not.toContain("salary");
+    const input = firstExportInput(buildExportBlob);
+    expect(input.columns.map((c) => c.id)).not.toContain("salary");
+    expect(input.access).toBe(access);
   });
 
-  it("respects getCellValue overrides when formatting rows", async () => {
+  it("respects getCellValue overrides (e.g. computed formula values)", async () => {
     const dataSource = createInMemoryDataSource(fixtureSchema, [row("f1", { name: "F", score: 3 })], { user: ADMIN });
-    const writeCsv = vi.fn((_input: IoWriteInput) => "ok");
+    const { io, buildExportBlob } = fakeIo();
     const nameColumns = fixtureSchema.columns.filter((c) => c.id === "name");
 
     await exportCurrentView({
@@ -251,29 +245,44 @@ describe("exportCurrentView", () => {
       query: { filter: null, sort: [] },
       columns: nameColumns,
       registry,
-      uiRegistry,
       getCellValue: () => "OVERRIDDEN",
-      loadIo: async () => ({ writeCsv, writeXlsx: vi.fn() }),
+      io,
     });
 
-    const input = firstWriteCsvInput(writeCsv);
-    expect(input.rows[0]).toEqual(["OVERRIDDEN"]);
+    const input = firstExportInput(buildExportBlob);
+    const first = (input.rows as GridRow[])[0];
+    expect(first?.cells[nameColumns[0]?.key ?? ""]).toBe("OVERRIDDEN");
   });
 
-  it("a missing io package surfaces a clear error message", async () => {
-    await expect(
-      exportCurrentView({
-        format: "csv",
-        dataSource: createInMemoryDataSource(fixtureSchema, [], { user: ADMIN }),
-        query: { filter: null, sort: [] },
-        columns,
-        registry,
-        uiRegistry,
-        // no loadIo override: uses core's real loadIoModule, which resolves
-        // the workspace `@masai/schema-grid-io` package but finds it lacks
-        // writeCsv/writeXlsx.
-      }),
-    ).rejects.toThrow(/does not export writeCsv\/writeXlsx yet/);
+  it("without an injected io, loads the real @masai/schema-grid-io/export and returns a CSV Blob", async () => {
+    const dataSource = createInMemoryDataSource(fixtureSchema, [row("c1", { name: "Csv Row", score: 7 })], { user: ADMIN });
+    const nameAndScore = fixtureSchema.columns.filter((c) => c.id === "name" || c.id === "score");
+
+    const blob = await exportCurrentView({
+      format: "csv",
+      dataSource,
+      query: { filter: null, sort: [] },
+      columns: nameAndScore,
+      registry,
+    });
+
+    expect(blob).toBeInstanceOf(Blob);
+    // jsdom's Blob has no .text(); read it the browser way.
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(blob);
+    });
+    expect(text).toContain("Csv Row");
+    expect(text).toContain("7");
+  });
+
+  it("loads io through a LITERAL import specifier bundlers can resolve", () => {
+    const src = readFileSync(join(__dirname, "..", "..", "src", "export", "exportCurrentView.ts"), "utf8");
+    expect(src).toMatch(/import\(\s*["']@masai\/schema-grid-io\/export["']\s*\)/);
+    const core = readFileSync(join(__dirname, "..", "..", "src", "internal", "core.ts"), "utf8");
+    expect(core).not.toMatch(/import\(\s*\/\*\s*@vite-ignore/);
   });
 });
 

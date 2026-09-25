@@ -17,6 +17,7 @@
  */
 
 import {
+  type Access,
   type AnyFieldType,
   type ChangeResult,
   type ColumnDef,
@@ -393,41 +394,26 @@ export interface SchemaGridEvents<Row extends GridRow = GridRow>
 }
 
 // ============================================================================
-// 8. IO bridge — TODO(io): replace with @masai/schema-grid-io exports once the
-//    import-export plan ships `writeCsv` / `writeXlsx`.
+// 8. IO bridge — structural mirror of `@masai/schema-grid-io/export`'s
+//    `buildExportBlob` (the io package is an optional peer, so its types are
+//    never referenced from this package's public surface).
 // ============================================================================
 
-export interface IoExportColumn {
-  id: string;
-  key: string;
-  label: string;
-  type: string;
+export interface IoExportOptions {
+  /** Columns to export, in order. Every one must be readable in `access`. */
+  columns: ColumnDef[];
+  registry: FieldTypeRegistry;
+  /** Raw rows: io types every cell itself (numbers, dates, hyperlinks...). */
+  rows: GridRow[];
+  format: "csv" | "xlsx";
+  /** Zone datetimes are written in (XLSX wall clock). */
+  tz: string;
+  fileName: string;
+  /** Fail-closed in io: a requested column that is "hidden" or missing throws. */
+  access: ReadonlyMap<string, Access>;
 }
 
-export interface IoWriteInput {
-  columns: IoExportColumn[];
-  /** Already-formatted text cells, one array per row, in `columns` order. */
-  rows: string[][];
-  fileName?: string;
-}
-
-export interface IoModule {
-  writeCsv(input: IoWriteInput): Blob | string | Promise<Blob | string>;
-  writeXlsx(input: IoWriteInput): Blob | ArrayBuffer | Uint8Array | Promise<Blob | ArrayBuffer | Uint8Array>;
-}
-
-const IO_PACKAGE = "@masai/schema-grid-io";
-
-/** Dynamically loads the optional io package; throws a clear error when absent. */
-export async function loadIoModule(): Promise<IoModule> {
-  let mod: Partial<IoModule>;
-  try {
-    mod = (await import(/* @vite-ignore */ IO_PACKAGE)) as Partial<IoModule>;
-  } catch {
-    throw new Error(`XLSX/CSV file export requires the optional peer dependency "${IO_PACKAGE}". Install it to enable exports.`);
-  }
-  if (typeof mod.writeCsv !== "function" || typeof mod.writeXlsx !== "function") {
-    throw new Error(`"${IO_PACKAGE}" is installed but does not export writeCsv/writeXlsx yet.`);
-  }
-  return mod as IoModule;
+/** What `exportCurrentView` needs from io; inject it via the `io` option/prop. */
+export interface IoExportModule {
+  buildExportBlob(opts: IoExportOptions): Promise<Blob>;
 }
