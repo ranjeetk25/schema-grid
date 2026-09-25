@@ -80,6 +80,47 @@ describe("public entry points", () => {
     `);
   });
 
+  it("`./http` exposes exactly the documented runtime names", async () => {
+    const mod = await import("../../src/http/index");
+    expect(Object.keys(mod).sort()).toMatchInlineSnapshot(`
+      [
+        "createGridRouterAdapter",
+        "parseJsonBody",
+        "toExpressHandler",
+        "toHttpResponse",
+        "toLambdaHandler",
+      ]
+    `);
+  });
+
+  it("`./http` does not import drizzle-orm at runtime", async () => {
+    vi.resetModules();
+    vi.doMock("drizzle-orm", () => {
+      throw new Error("drizzle-orm must not be imported by the http entry");
+    });
+    vi.doMock("drizzle-orm/mysql-core", () => {
+      throw new Error("drizzle-orm/mysql-core must not be imported by the http entry");
+    });
+    const mod = await import("../../src/http/index");
+    expect(typeof mod.createGridRouterAdapter).toBe("function");
+    vi.doUnmock("drizzle-orm");
+    vi.doUnmock("drizzle-orm/mysql-core");
+    vi.resetModules();
+  });
+
+  it("package.json maps ./http like the other subpaths", async () => {
+    const { readFileSync } = await import("node:fs");
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+      exports: Record<string, unknown>;
+    };
+    expect(pkg.exports["./http"]).toEqual({
+      development: "./src/http/index.ts",
+      types: "./dist/http/index.d.ts",
+      import: "./dist/http/index.js",
+      require: "./dist/http/index.cjs",
+    });
+  });
+
   it("`.` does not import drizzle-orm at runtime", async () => {
     vi.resetModules();
     vi.doMock("drizzle-orm", () => {
