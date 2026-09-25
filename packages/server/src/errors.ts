@@ -16,10 +16,13 @@ export class SchemaGridServerError extends Error {
 
 export type PermissionUsage = "filter" | "sort" | "groupBy" | "aggregate" | "search" | "edit";
 
+/** `PermissionError` codes: `PERMISSION_DENIED` (hidden / not editable) or `UNSORTABLE_COLUMN` (sort on `sortable: false`). */
+export type PermissionErrorCode = "PERMISSION_DENIED" | "UNSORTABLE_COLUMN";
+
 export class PermissionError extends SchemaGridServerError {
   declare readonly details: { columnIds: string[]; usage: PermissionUsage };
-  constructor(columnIds: string[], usage: PermissionUsage, message?: string) {
-    super("PERMISSION_DENIED", message ?? `Permission denied for ${usage} on ${columnIds.length} column(s)`, {
+  constructor(columnIds: string[], usage: PermissionUsage, message?: string, code: PermissionErrorCode = "PERMISSION_DENIED") {
+    super(code, message ?? `Permission denied for ${usage} on ${columnIds.length} column(s)`, {
       columnIds,
       usage,
     });
