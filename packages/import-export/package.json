@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-io",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "CSV/XLSX import, export and clipboard parsing for Schema Grid.",
   "license": "MIT",
   "author": "Masai School",
@@ -64,12 +64,21 @@
   },
   "typesVersions": {
     "*": {
-      "import": ["./dist/import/index.d.ts"],
-      "export": ["./dist/export/index.d.ts"],
-      "clipboard": ["./dist/clipboard/index.d.ts"]
+      "import": [
+        "./dist/import/index.d.ts"
+      ],
+      "export": [
+        "./dist/export/index.d.ts"
+      ],
+      "clipboard": [
+        "./dist/clipboard/index.d.ts"
+      ]
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-server",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Server side of Schema Grid: permission-checked Drizzle/MySQL queries, change feed, import/export jobs and HTTP adapters.",
   "license": "MIT",
   "author": "Masai School",
@@ -61,7 +61,10 @@
       "require": "./dist/http/index.cjs"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
