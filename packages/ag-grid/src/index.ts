@@ -110,9 +110,11 @@ export { createHttpDataSource, type HttpDataSourceOptions } from "./remote/httpD
 export {
   createRemoteDataSource,
   RemoteDataSourceError,
+  unwrapWireResult,
   type GridTransport,
   type RemoteDataSourceOptions,
   type WireError,
+  type WireResult,
 } from "@masai/schema-grid-core/wire";
 
 // A11y

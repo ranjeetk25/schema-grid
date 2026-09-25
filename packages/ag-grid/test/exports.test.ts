@@ -33,6 +33,7 @@ describe("public barrels", () => {
       "createHttpDataSource",
       "createRemoteDataSource",
       "RemoteDataSourceError",
+      "unwrapWireResult",
     ]) {
       expect(mod, name).toHaveProperty(name);
       expect((mod as Record<string, unknown>)[name], name).toBeDefined();
