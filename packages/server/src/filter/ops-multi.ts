@@ -1,6 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { OperatorTranslator } from "./types";
-import { assertUsableIdList, idListValue, idValue } from "./values";
+import { assertUsableIdList, idListValue, idValue, isEmptyIdList } from "./values";
 
 /** The id array bound as ONE JSON string param, cast to JSON in SQL. */
 function jsonArrayParam(ids: string[]): SQL {
@@ -18,8 +18,9 @@ function overlaps(typed: SQL, ids: string[]): SQL {
  * null rule (`AND NOT empty` / `OR empty`) turns that into the right answer.
  *
  * Lists follow core `asIdList` (non-array → [], items stringified). With no ids
- * `hasAnyOf` / `hasAllOf` / `isAnyOf` never match (FALSE); `hasNoneOf` without a
- * usable id is unusable (FALSE → only empty cells match), as in core.
+ * `hasAnyOf` / `hasAllOf` / `isAnyOf` never match (FALSE); `hasNoneOf []` is
+ * vacuously TRUE (every row); a non-empty `hasNoneOf` list without a usable id
+ * is unusable (FALSE → only empty cells match), as in core.
  */
 export const MULTI_TRANSLATORS: Readonly<Record<string, OperatorTranslator>> = {
   hasAnyOf: ({ expr, value }) => {
@@ -31,6 +32,7 @@ export const MULTI_TRANSLATORS: Readonly<Record<string, OperatorTranslator>> = {
     return ids.length === 0 ? sql`FALSE` : sql`JSON_CONTAINS(${expr.typed}, ${jsonArrayParam(ids)})`;
   },
   hasNoneOf: ({ expr, value }) => {
+    if (isEmptyIdList(value)) return sql`TRUE`;
     assertUsableIdList(value);
     return sql`NOT ${overlaps(expr.typed, idListValue(value))}`;
   },

@@ -459,4 +459,24 @@ describe("matchesFilter: review hardening", () => {
     expect(m(C.fee, "between", { from: null, to: null }, { fee: 3 })).toBe(true);
     expect(m(C.tags, "hasAllOf", [], { tags: ["vip"] })).toBe(false);
   });
+
+  it("empty negative lists are vacuously true: isNoneOf [] / hasNoneOf [] match every row", () => {
+    for (const cells of [{ status: "paid" }, { status: null }, {}]) {
+      expect(m(C.status, "isNoneOf", [], cells)).toBe(true);
+      expect(m(C.status, "isNoneOf", [null], cells)).toBe(true);
+    }
+    expect(m(C.owner, "isNoneOf", [], { owner: { id: "u1" } })).toBe(true);
+    for (const cells of [{ tags: ["vip"] }, { tags: [] }, { tags: null }, {}]) {
+      expect(m(C.tags, "hasNoneOf", [], cells)).toBe(true);
+    }
+    // ...and are the exact negation of the (never-matching) empty positive lists.
+    expect(m(C.status, "isAnyOf", [], { status: "paid" })).toBe(false);
+    expect(m(C.tags, "hasAnyOf", [], { tags: ["vip"] })).toBe(false);
+  });
+
+  it("a non-empty negative list without a usable id stays unusable (only empty cells)", () => {
+    expect(m(C.status, "isNoneOf", [true], { status: "paid" })).toBe(false);
+    expect(m(C.status, "isNoneOf", [true], { status: null })).toBe(true);
+    expect(m(C.tags, "hasNoneOf", "vip", { tags: ["x"] })).toBe(false);
+  });
 });

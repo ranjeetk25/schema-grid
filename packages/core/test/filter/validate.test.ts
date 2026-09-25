@@ -76,6 +76,14 @@ describe("validateFilter", () => {
     expect(validate(cond(C.callDate, "isWithin", { relative: "lastNDays", n: 7 }))).toEqual([]);
   });
 
+  it("accepts an empty list for the negative list operators only (vacuously true)", () => {
+    expect(validate(cond(C.status, "isNoneOf", []))).toEqual([]);
+    expect(validate(cond(C.tags, "hasNoneOf", []))).toEqual([]);
+    expect(validate(cond(C.status, "isAnyOf", [])).map((e) => e.code)).toEqual(["valueKindMismatch"]);
+    expect(validate(cond(C.tags, "hasAllOf", [])).map((e) => e.code)).toEqual(["valueKindMismatch"]);
+    expect(validate(cond(C.status, "isNoneOf", "paid")).map((e) => e.code)).toEqual(["valueKindMismatch"]);
+  });
+
   it("resolves formula operators through resultType", () => {
     expect(validate(cond(C.balance, "gt", 0))).toEqual([]);
     expect(validate(cond(C.balance, "contains", "1"))[0]?.code).toBe("unknownOperator");

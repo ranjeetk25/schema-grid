@@ -53,14 +53,18 @@ function isGroup(node: FilterNode): node is FilterGroup {
   return isObject(node) && "children" in node;
 }
 
+/** Negative list operators accept `[]`: "none of nothing" matches every row (see match.ts). */
+const EMPTY_LIST_OK = new Set(["isNoneOf", "hasNoneOf"]);
+
 /** Returns why `value` doesn't fit `kind`, or null when it does. */
-function valueKindProblem(kind: FilterValueKind, value: unknown): string | null {
+function valueKindProblem(kind: FilterValueKind, value: unknown, operator: string): string | null {
   switch (kind) {
     case "none":
       return value === undefined ? null : "This operator takes no value";
     case "single":
       return value !== null && isPrimitive(value) ? null : "Expected a single value";
     case "multi":
+      if (Array.isArray(value) && value.length === 0 && EMPTY_LIST_OK.has(operator)) return null;
       return Array.isArray(value) && value.length > 0 && value.every(isPrimitive)
         ? null
         : "Expected a non-empty list of values";
@@ -123,7 +127,7 @@ function validateCondition(
     });
     return;
   }
-  const problem = valueKindProblem(def.valueKind, cond.value);
+  const problem = valueKindProblem(def.valueKind, cond.value, def.id);
   if (problem) {
     errors.push({ code: "valueKindMismatch", path, columnId, operator, message: problem });
   }

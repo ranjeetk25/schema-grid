@@ -2,7 +2,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { UnsupportedOperatorError } from "../errors";
 import type { FilterValue } from "../internal/core";
 import type { OperatorTranslator } from "./types";
-import { assertUsableIdList, idListValue, idValue } from "./values";
+import { assertUsableIdList, idListValue, idValue, isEmptyIdList } from "./values";
 
 /**
  * `{ me: true }` is the only accepted payload; it carries no identity. core's
@@ -15,7 +15,8 @@ function assertMeValue(value: FilterValue | undefined, operator: string): void {
 }
 
 function inList(expr: SQL, ids: string[], negate: boolean): SQL {
-  // Empty IN () is invalid SQL; callers only pass [] for the positive form ("any of nothing").
+  // Empty IN () is invalid SQL; callers only pass [] for the positive form ("any of nothing")
+  // — `isNoneOf []` short-circuits to TRUE before reaching here.
   if (ids.length === 0) return sql`FALSE`;
   const params = sql.join(
     ids.map((id) => sql`${id}`),
@@ -28,13 +29,15 @@ function inList(expr: SQL, ids: string[], negate: boolean): SQL {
  * select / creatableSelect (kind "choice") and the shared part of user (kind "ref").
  * Ids compare as strings (core `idOf` / `asIdList`): numbers bind as strings,
  * `{ id }` objects are accepted for `is`. `isAnyOf` with no ids is FALSE;
- * `isNoneOf` without a usable id is unusable (FALSE → matches only empty cells).
+ * `isNoneOf []` is vacuously TRUE (every row, empty cells included); a non-empty
+ * `isNoneOf` list without a usable id is unusable (FALSE → only empty cells).
  */
 export const CHOICE_TRANSLATORS: Readonly<Record<string, OperatorTranslator>> = {
   is: ({ expr, value }) => sql`${expr.typed} = ${idValue(value)}`,
   isNot: ({ expr, value }) => sql`${expr.typed} <> ${idValue(value)}`,
   isAnyOf: ({ expr, value }) => inList(expr.typed, idListValue(value), false),
   isNoneOf: ({ expr, value }) => {
+    if (isEmptyIdList(value)) return sql`TRUE`;
     assertUsableIdList(value);
     return inList(expr.typed, idListValue(value), true);
   },
