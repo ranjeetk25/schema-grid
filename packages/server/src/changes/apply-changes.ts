@@ -147,6 +147,7 @@ export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps:
     const applied: CellChange[] = [];
     const conflicts: ChangeConflict[] = [];
     const errors: ChangeError[] = [...plan.errors];
+    const versions: Record<string, number> = {};
     const log: ChangeLogEntry[] = [];
 
     const rowPlans = [...plan.rowPlans].sort((a, b) => (a.rowId < b.rowId ? -1 : a.rowId > b.rowId ? 1 : 0));
@@ -168,6 +169,8 @@ export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps:
         errors.push(...c.errors);
         continue;
       }
+      // The UPDATE is guarded by `version = baseVersion` and bumps it by exactly one.
+      versions[rowPlan.rowId] = rowPlan.baseVersion + 1;
       for (const s of rowPlan.sets) {
         applied.push({ rowId: rowPlan.rowId, columnId: s.column.id, prev: s.prev, next: s.next });
         log.push({ rowId: rowPlan.rowId, columnId: s.column.id, kind: "cell", prev: s.prev, next: s.remove ? null : s.serialized });
@@ -175,6 +178,6 @@ export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps:
     }
 
     await insertChangeLog(txDeps.db, deps.tables, { gridId: deps.gridId, actor: ctx.user.id, at: now, batchId: batch.id }, log);
-    return { applied, conflicts, errors };
+    return { applied, conflicts, errors, versions };
   });
 }

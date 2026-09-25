@@ -33,7 +33,7 @@ export interface InMemoryOptions {
 }
 
 export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<Required<DataSource<Row>>, "applyChanges"> {
-  /** Also reports the new per-row `versions` (facade `ChangeResult`). */
+  /** Reports the new per-row `versions` (core `ChangeResult`, spec §4.5 addendum). */
   applyChanges(batch: ChangeBatch): Promise<ChangeResult>;
   /** Current server copy. */
   rows(): Row[];
@@ -79,7 +79,6 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
   const scriptedErrors: { rowId: string; columnId: string; message: string }[] = [];
   const wait = () => (opts.delayMs ? new Promise((r) => setTimeout(r, opts.delayMs)) : Promise.resolve());
 
-  const versionOf = (rowId: string): number | undefined => inner.snapshot().find((r) => r.id === rowId)?.version;
 
   async function fetch(query: GridQuery): Promise<QueryResult<Row>> {
     await wait();
@@ -101,15 +100,11 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       if (e) errors.push(e);
       return false;
     });
+    // core's in-memory applyChanges reports the new per-row `versions` itself.
     const result: ChangeResult = changes.length
       ? await inner.applyChanges({ ...batch, changes })
       : { applied: [], conflicts: [], errors: [] };
-    const versions: Record<string, number> = {};
-    for (const c of result.applied) {
-      const v = versionOf(c.rowId);
-      if (v !== undefined) versions[c.rowId] = v;
-    }
-    return { ...result, errors: [...result.errors, ...errors], ...(result.applied.length ? { versions } : {}) };
+    return { ...result, errors: [...result.errors, ...errors] };
   }
 
   async function getChanges(since: string): Promise<ChangeFeedEntry<Row>> {

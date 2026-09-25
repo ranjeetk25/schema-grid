@@ -18,7 +18,7 @@
 
 import {
   type AnyFieldType,
-  type ChangeResult as CoreChangeResult,
+  type ChangeResult,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterNode,
@@ -69,6 +69,7 @@ export type {
   ChangeError,
   ChangeError as CellError,
   ChangeFeedEntry,
+  ChangeResult,
   ChangeSource,
   ColumnDef,
   ColumnPermissions,
@@ -92,15 +93,6 @@ export type {
   UserRef,
   ViewDef,
 } from "@masai/schema-grid-core";
-
-/**
- * ADAPTER: core's ChangeResult plus an optional per-row version map.
- * TODO(core): propose `versions` for spec §4.5 — when absent the edit
- * controller assumes `baseVersion + 1` per applyChanges call.
- */
-export interface ChangeResult extends CoreChangeResult {
-  versions?: Record<string, number>;
-}
 
 export type Pinned = "left" | "right" | null;
 

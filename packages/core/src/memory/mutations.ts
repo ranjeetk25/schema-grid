@@ -84,12 +84,13 @@ function editProblem(column: ColumnDef, access: Access | undefined): string | nu
  * - a row whose base version differs from the server's turns every change on
  *   it into a `conflict` (other rows still apply);
  * - each changed row's version bumps exactly once per batch and formulas
- *   are re-materialised.
+ *   are re-materialised; `versions` reports each written row's new version.
  */
 export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: MutationDeps<Row>): ChangeResult {
   const applied: CellChange[] = [];
   const conflicts: ChangeConflict[] = [];
   const errors: ChangeError[] = [];
+  const versions: Record<string, number> = {};
   const byRow = new Map<string, CellChange[]>();
   for (const change of Array.isArray(batch?.changes) ? batch.changes : []) {
     const list = byRow.get(change.rowId);
@@ -155,11 +156,12 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
       applied.push({ rowId, columnId: change.columnId, prev, next: structuredClone(next) });
     }
     row.version += 1;
+    versions[rowId] = row.version;
     row.updatedAt = deps.env.now.toISOString();
     if (deps.actor) row.updatedBy = structuredClone(deps.actor);
     deps.onRowChanged?.(rowId, false);
   }
-  return { applied, conflicts, errors };
+  return { applied, conflicts, errors, versions };
 }
 
 /** Error thrown (as a rejection) when createRows receives an invalid partial. */
