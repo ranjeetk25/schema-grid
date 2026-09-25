@@ -134,6 +134,18 @@ describe("editing keys (integration)", () => {
     expect(g.handle.current?.api()?.getEditingCells()).toEqual([]);
   });
 
+  it("Enter on a focused (not editing) editable cell starts editing it", async () => {
+    // README keyboard table: "Enter / F2 / typing — start editing the focused editable cell".
+    const g = renderGrid();
+    await g.waitForRows();
+    act(() => g.handle.current?.api()?.setFocusedCell(0, "name"));
+    fireEvent.keyDown(cellEl(g, "r1", "name"), { key: "Enter", code: "Enter" });
+    await waitFor(() =>
+      expect(g.handle.current?.api()?.getEditingCells().map((c) => [c.rowIndex, c.column.getColId()])).toEqual([[0, "name"]]),
+    );
+    expect(g.handle.current?.api()?.getFocusedCell()?.rowIndex).toBe(0);
+  });
+
   it("Esc cancels the edit and restores the value without writing", async () => {
     const g = renderGrid();
     await g.waitForRows();

@@ -1375,7 +1375,9 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       onCellFocused: rangeSelection.onCellFocused,
       onModelUpdated: rangeSelection.onModelUpdated,
       onDisplayedColumnsChanged: rangeSelection.onDisplayedColumnsChanged,
-      enterNavigatesVertically: true,
+      // Enter on a focused cell starts editing (README keyboard table); Enter
+      // while editing commits and moves down. `enterNavigatesVertically` would
+      // turn the first Enter into a plain move down, so it stays off.
       enterNavigatesVerticallyAfterEdit: true,
       stopEditingWhenCellsLoseFocus: true,
       ...(fullWidthCellRenderer ? { isFullWidthRow, fullWidthCellRenderer } : {}),
