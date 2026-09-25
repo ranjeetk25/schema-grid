@@ -106,6 +106,27 @@ export function createRowsTableDDL(options: CreateRowsTableDDLOptions): DdlState
   };
 }
 
+export interface AlterRowsTableIdCollationDDLOptions {
+  table: string;
+}
+
+/**
+ * Upgrade for rows tables created before row ids used a binary collation:
+ * redefines `id` exactly as `createRowsTableDDL` does now, so keyset paging and
+ * the `id` sort tie-break follow code-point order. Safe on existing data (ids
+ * unique under the old case-insensitive collation stay unique under
+ * `utf8mb4_bin`), but MySQL rebuilds the table (ALGORITHM=COPY) — run it in a
+ * maintenance window or through an online schema-change tool on large tables.
+ * Re-running it is harmless.
+ */
+export function alterRowsTableIdCollationDDL(options: AlterRowsTableIdCollationDDLOptions): DdlStatement {
+  const table = assertSafeColumnKey(options.table);
+  return {
+    sql: `ALTER TABLE ${quoteIdent(table)} MODIFY \`id\` ${ID_TYPE} NOT NULL`,
+    description: `Convert \`${table}\`.\`id\` to binary collation (utf8mb4_bin)`,
+  };
+}
+
 export interface CreateChangeLogTableDDLOptions {
   table: string;
 }

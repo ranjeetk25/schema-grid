@@ -29,20 +29,13 @@ export interface FilterValueInputProps {
   error?: string;
 }
 
-export const RELATIVE_DATE_LABELS: Record<RelativeDateKind, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  tomorrow: "Tomorrow",
-  thisWeek: "This week",
-  lastWeek: "Last week",
-  thisMonth: "This month",
-  lastMonth: "Last month",
-  lastNDays: "Last N days",
-  nextNDays: "Next N days",
-};
+/** Picker labels per relative-date kind (core `RELATIVE_DATE_PRESETS`). */
+export const RELATIVE_DATE_LABELS: Record<RelativeDateKind, string> = Object.fromEntries(
+  RELATIVE_DATE_PRESETS.map((p) => [p.kind, p.label]),
+) as Record<RelativeDateKind, string>;
 
-const RELATIVE_DATA = RELATIVE_DATE_PRESETS.map((p) => ({ value: p as string, label: RELATIVE_DATE_LABELS[p] }));
-const N_PRESETS: readonly RelativeDateKind[] = ["lastNDays", "nextNDays"];
+const RELATIVE_DATA = RELATIVE_DATE_PRESETS.map((p) => ({ value: p.kind as string, label: p.label }));
+const N_PRESETS: readonly RelativeDateKind[] = RELATIVE_DATE_PRESETS.filter((p) => p.needsN).map((p) => p.kind);
 
 const OPTION_TYPES = new Set<FieldTypeId>(["select", "creatableSelect", "multiSelect"]);
 const NUMERIC_TYPES = new Set<FieldTypeId>(["number", "currency"]);

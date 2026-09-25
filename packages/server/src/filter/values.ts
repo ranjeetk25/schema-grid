@@ -69,6 +69,15 @@ export function idListValue(value: unknown): string[] {
 }
 
 /**
+ * core `VACUOUS_WHEN_EMPTY_LIST`: an ARRAY whose `asIdList` is empty. For the
+ * negative list operators (`isNoneOf` / `hasNoneOf`) this is vacuously true —
+ * "none of nothing" matches every row, empty cells included.
+ */
+export function isEmptyIdList(value: unknown): boolean {
+  return Array.isArray(value) && idListValue(value).length === 0;
+}
+
+/**
  * core `isUsableValue` for `isAnyOf` / `hasAnyOf` (and so for the negatives
  * `isNoneOf` / `hasNoneOf`): an array with at least one `idOf`-able item.
  */

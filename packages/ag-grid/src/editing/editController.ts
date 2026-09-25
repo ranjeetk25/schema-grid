@@ -15,9 +15,10 @@
  *      `buildBatch` produced is treated as explicit and sent unchanged.
  *   4. applied cells: the row store takes the server's `applied[i].next`
  *      (server-normalised), pending clears as success (dropping old errors).
- *      Row versions become `result.versions[row]` when present, else
- *      `baseVersions[row] + 1` (assumes one bump per applyChanges call), never
- *      lower than the current version.
+ *      Row versions become the server-reported `result.versions[row]` (core
+ *      `ChangeResult.versions`, spec §4.5 addendum); only for a data source
+ *      that omits it do we fall back to `baseVersions[row] + 1` (one bump per
+ *      applyChanges call). Never lower than the current version.
  *   5. errors: the cell reverts to the EARLIEST `prev` of that cell in the
  *      batch and gets the error message.
  *   6. conflicts: revert likewise, call `onRowStale(rowIds)` once, then

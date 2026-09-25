@@ -92,7 +92,7 @@ describe("operator catalog: id order matches spec 4.3", () => {
   });
 
   it("BOOLEAN_OPERATORS", () => {
-    expect(ids(BOOLEAN_OPERATORS)).toEqual(["isTrue", "isFalse"]);
+    expect(ids(BOOLEAN_OPERATORS)).toEqual(["isTrue", "isFalse", "isEmpty", "isNotEmpty"]);
   });
 
   it("LINK_OPERATORS", () => {

@@ -82,6 +82,8 @@ export const MULTI_SELECT_OPERATORS: readonly FilterOperatorDef[] = Object.freez
 export const BOOLEAN_OPERATORS: readonly FilterOperatorDef[] = Object.freeze([
   op("isTrue", "is true", "none"),
   op("isFalse", "is false", "none"),
+  op("isEmpty", "is empty", "none"),
+  op("isNotEmpty", "is not empty", "none"),
 ]);
 
 export const LINK_OPERATORS: readonly FilterOperatorDef[] = Object.freeze([

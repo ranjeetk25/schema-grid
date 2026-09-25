@@ -32,6 +32,7 @@ interface MappedColumn {
 interface ParseContext {
   opts: ValidateRowsOptions;
   newOptions: Record<string, string[]>;
+  unknownOptions: Record<string, string[]>;
 }
 
 function messageOf(err: unknown): string {
@@ -40,15 +41,32 @@ function messageOf(err: unknown): string {
   return "Invalid value";
 }
 
-/** Records `label` as a new option of `columnId`; returns the kept spelling. */
-function recordNewOption(
+function addTo(target: Record<string, string[]>, columnId: string, label: string): string {
+  const list = target[columnId] ?? [];
+  target[columnId] = list;
+  return addNewOption(list, label);
+}
+
+/**
+ * Records unknown `labels` of `columnId` (always) and applies the policy:
+ * "reject" returns the cell error; "create" records them as new options and
+ * returns the kept spellings.
+ */
+function handleUnknown(
   ctx: ParseContext,
   columnId: string,
-  label: string,
-): string {
-  const list = ctx.newOptions[columnId] ?? [];
-  ctx.newOptions[columnId] = list;
-  return addNewOption(list, label);
+  labels: string[],
+  raw: string,
+  single: boolean,
+): { error: CellValidation } | { kept: string[] } {
+  for (const l of labels) addTo(ctx.unknownOptions, columnId, l);
+  if (ctx.opts.unknownOptions === "reject") {
+    const error = single
+      ? `Unknown option "${raw}"`
+      : `Unknown option(s) ${labels.map((u) => `"${u}"`).join(", ")}`;
+    return { error: { value: null, raw, error, errorKind: "unknownOption" } };
+  }
+  return { kept: labels.map((l) => addTo(ctx.newOptions, columnId, l)) };
 }
 
 /** select / creatableSelect: match against config options, then apply the policy. */
@@ -59,10 +77,8 @@ function parseSelectCell(
 ): CellValidation {
   const match = matchOption(raw, getSelectOptions(mapped.column));
   if (match) return { value: match.value, raw };
-  if (ctx.opts.unknownOptions === "reject") {
-    return { value: null, raw, error: `Unknown option "${raw}"` };
-  }
-  return { value: recordNewOption(ctx, mapped.column.id, raw), raw };
+  const r = handleUnknown(ctx, mapped.column.id, [raw], raw, true);
+  return "error" in r ? r.error : { value: r.kept[0], raw };
 }
 
 /** multiSelect: split, match each piece, then apply the policy to unknowns. */
@@ -82,12 +98,8 @@ function parseMultiSelectCell(
   const order = (id: string) => options.findIndex((o) => o.value === id);
   ids.sort((a, b) => order(a) - order(b));
   if (unknown.length === 0) return { value: ids, raw };
-  if (ctx.opts.unknownOptions === "reject") {
-    const names = unknown.map((u) => `"${u}"`).join(", ");
-    return { value: null, raw, error: `Unknown option(s) ${names}` };
-  }
-  const labels = unknown.map((u) => recordNewOption(ctx, mapped.column.id, u));
-  return { value: [...ids, ...labels], raw };
+  const r = handleUnknown(ctx, mapped.column.id, unknown, raw, false);
+  return "error" in r ? r.error : { value: [...ids, ...r.kept], raw };
 }
 
 /** Any other type: the field type's own parse, honouring `pendingOptions`. */
@@ -97,13 +109,10 @@ function parseWithFieldType(
   ctx: ParseContext,
 ): CellValidation {
   const r = unwrapParse(mapped.type.parse(raw, mapped.column.config));
-  if (!r.ok) return { value: null, raw, error: r.error };
+  if (!r.ok) return { value: null, raw, error: r.error, errorKind: "parse" };
   if (r.pendingOptions && r.pendingOptions.length > 0) {
-    if (ctx.opts.unknownOptions === "reject") {
-      const names = r.pendingOptions.map((u) => `"${u}"`).join(", ");
-      return { value: null, raw, error: `Unknown option(s) ${names}` };
-    }
-    for (const p of r.pendingOptions) recordNewOption(ctx, mapped.column.id, p);
+    const handled = handleUnknown(ctx, mapped.column.id, r.pendingOptions, raw, false);
+    if ("error" in handled) return handled.error;
   }
   return { value: r.value, raw };
 }
@@ -129,7 +138,7 @@ function parseCell(
         return parseWithFieldType(mapped, raw, ctx);
     }
   } catch (err) {
-    return { value: null, raw, error: messageOf(err) };
+    return { value: null, raw, error: messageOf(err), errorKind: "parse" };
   }
 }
 
@@ -162,13 +171,9 @@ function normalizedKey(
  * Field types whose formatted value is a lossless, canonical identity and so
  * can serve as an update/upsert key (see `keyOf`).
  */
-const KEY_COLUMN_TYPES: ReadonlySet<string> = new Set([
-  "text",
-  "longText",
-  "email",
-  "phone",
-  "url",
-]);
+export const KEY_COLUMN_TYPES: ReadonlySet<string> = Object.freeze(
+  new Set(["text", "longText", "email", "phone", "url"]),
+);
 
 function resolveMappings(
   mapping: ColumnMapping[],
@@ -261,7 +266,7 @@ export function validateRows(
       ? undefined
       : mapped.find((m) => m.column.id === opts.keyColumnId);
 
-  const ctx: ParseContext = { opts, newOptions: {} };
+  const ctx: ParseContext = { opts, newOptions: {}, unknownOptions: {} };
   const headerRow = parsed.headerRow ?? 1;
   const firstSeenKey = new Map<string, number>();
   const rows: RowValidation[] = [];
@@ -300,6 +305,7 @@ export function validateRows(
         isEmptyValue(cell.value)
       ) {
         cell.error = "Required";
+        cell.errorKind = "required";
       }
       if (cell.error !== undefined) hasCellError = true;
       cells[m.column.id] = cell;
@@ -344,6 +350,12 @@ export function validateRows(
 
   return {
     rows,
-    summary: { valid, invalid, newOptions: ctx.newOptions, unmappedRequired },
+    summary: {
+      valid,
+      invalid,
+      newOptions: ctx.newOptions,
+      unknownOptions: ctx.unknownOptions,
+      unmappedRequired,
+    },
   };
 }

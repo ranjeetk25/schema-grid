@@ -108,6 +108,8 @@ describe("applyChanges", () => {
       },
     ]);
     expect(result.errors).toEqual([{ rowId: "rC", columnId: "fee", message: expect.any(String) }]);
+    // New version of every written row (the guarded UPDATE bumps base → base + 1); none for rB / rC.
+    expect(result.versions).toEqual({ rA: 2 });
 
     const updates = statements().filter((s) => s.sql.startsWith("update"));
     // one UPDATE for A (two cells, one version bump); B's locked version already mismatches → no UPDATE
@@ -135,6 +137,7 @@ describe("applyChanges", () => {
     expect(result.errors).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
     expect(result.conflicts[0]).toMatchObject({ serverValue: "Server", serverVersion: 1 });
+    expect(result.versions).toEqual({});
     expect(statements().some((s) => s.sql.startsWith("insert"))).toBe(false);
   });
 

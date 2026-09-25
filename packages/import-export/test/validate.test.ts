@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { KEY_COLUMN_TYPES } from "../src/import/index";
 import { validateRows } from "../src/import/validate";
 import type {
   CellValidation,
@@ -109,6 +110,7 @@ describe("validateRows: parsing", () => {
       CREATE,
     );
     expect(cellOf(r, 0, "c_boom").error).toBe("kaboom");
+    expect(cellOf(r, 0, "c_boom").errorKind).toBe("parse");
     expect(r.summary.invalid).toBe(1);
   });
 });
@@ -116,7 +118,7 @@ describe("validateRows: parsing", () => {
 describe("validateRows: required", () => {
   it("create mode: empty required cell gets Required", () => {
     const r = run(["Name", "Amount"], ["c_name", "c_amount"], [["  ", "1"]]);
-    expect(cellOf(r, 0, "c_name")).toEqual({ value: null, raw: "", error: "Required" });
+    expect(cellOf(r, 0, "c_name")).toEqual({ value: null, raw: "", error: "Required", errorKind: "required" });
     expect(r.summary.invalid).toBe(1);
   });
 
@@ -273,6 +275,11 @@ describe("validateRows: setup errors", () => {
         }),
       ).toThrow(ImportConfigError);
     }
+  });
+
+  it("KEY_COLUMN_TYPES is exactly the set of types accepted as a key (frozen, exported)", () => {
+    expect([...KEY_COLUMN_TYPES].sort()).toEqual(["email", "longText", "phone", "text", "url"]);
+    expect(Object.isFrozen(KEY_COLUMN_TYPES)).toBe(true);
   });
 
   it("mapping to an unknown column throws", () => {

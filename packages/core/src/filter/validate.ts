@@ -3,6 +3,7 @@ import type { FieldTypeRegistry } from "../field-types/registry";
 import { getColumnById } from "../schema/lookup";
 import type { GridSchema } from "../schema/types";
 import { type FilterValueKind, findOperator } from "./operators";
+import { RELATIVE_DATE_PRESETS } from "./relative-date";
 import type { FilterCondition, FilterGroup, FilterNode, RelativeDateKind } from "./types";
 
 /** A root group is depth 1, a group inside it depth 2; deeper groups are rejected. */
@@ -24,17 +25,8 @@ export interface FilterValidationError {
   message: string;
 }
 
-const RELATIVE_KINDS: readonly RelativeDateKind[] = [
-  "today",
-  "yesterday",
-  "tomorrow",
-  "thisWeek",
-  "lastWeek",
-  "thisMonth",
-  "lastMonth",
-  "lastNDays",
-  "nextNDays",
-];
+const RELATIVE_KINDS: readonly RelativeDateKind[] = RELATIVE_DATE_PRESETS.map((p) => p.kind);
+const N_KINDS: ReadonlySet<RelativeDateKind> = new Set(RELATIVE_DATE_PRESETS.filter((p) => p.needsN).map((p) => p.kind));
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -53,14 +45,18 @@ function isGroup(node: FilterNode): node is FilterGroup {
   return isObject(node) && "children" in node;
 }
 
+/** Negative list operators accept `[]`: "none of nothing" matches every row (see match.ts). */
+const EMPTY_LIST_OK = new Set(["isNoneOf", "hasNoneOf"]);
+
 /** Returns why `value` doesn't fit `kind`, or null when it does. */
-function valueKindProblem(kind: FilterValueKind, value: unknown): string | null {
+function valueKindProblem(kind: FilterValueKind, value: unknown, operator: string): string | null {
   switch (kind) {
     case "none":
       return value === undefined ? null : "This operator takes no value";
     case "single":
       return value !== null && isPrimitive(value) ? null : "Expected a single value";
     case "multi":
+      if (Array.isArray(value) && value.length === 0 && EMPTY_LIST_OK.has(operator)) return null;
       return Array.isArray(value) && value.length > 0 && value.every(isPrimitive)
         ? null
         : "Expected a non-empty list of values";
@@ -72,7 +68,7 @@ function valueKindProblem(kind: FilterValueKind, value: unknown): string | null 
       if (!isObject(value) || !RELATIVE_KINDS.includes(value.relative as RelativeDateKind)) {
         return "Expected a relative date";
       }
-      if (value.relative === "lastNDays" || value.relative === "nextNDays") {
+      if (N_KINDS.has(value.relative as RelativeDateKind)) {
         const n = value.n;
         if (typeof n !== "number" || !Number.isInteger(n) || n <= 0) {
           return "Expected a positive whole number of days";
@@ -123,7 +119,7 @@ function validateCondition(
     });
     return;
   }
-  const problem = valueKindProblem(def.valueKind, cond.value);
+  const problem = valueKindProblem(def.valueKind, cond.value, def.id);
   if (problem) {
     errors.push({ code: "valueKindMismatch", path, columnId, operator, message: problem });
   }

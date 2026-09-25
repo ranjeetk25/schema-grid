@@ -18,10 +18,9 @@
 
 import {
   type AnyFieldType,
-  type ChangeResult as CoreChangeResult,
+  type ChangeResult,
   type ColumnDef,
   type FieldTypeRegistry,
-  type FilterGroup,
   type FilterNode,
   type FilterOperatorDef,
   type FilterValidationError,
@@ -53,7 +52,6 @@ import {
 // ============================================================================
 
 export {
-  SCHEMA_GRID_CORE_VERSION,
   BUILTIN_FIELD_TYPE_IDS,
   BUILTIN_FIELD_TYPE_IDS as BUILT_IN_FIELD_TYPE_IDS,
 } from "@masai/schema-grid-core";
@@ -70,6 +68,7 @@ export type {
   ChangeError,
   ChangeError as CellError,
   ChangeFeedEntry,
+  ChangeResult,
   ChangeSource,
   ColumnDef,
   ColumnPermissions,
@@ -93,15 +92,6 @@ export type {
   UserRef,
   ViewDef,
 } from "@masai/schema-grid-core";
-
-/**
- * ADAPTER: core's ChangeResult plus an optional per-row version map.
- * TODO(core): propose `versions` for spec §4.5 — when absent the edit
- * controller assumes `baseVersion + 1` per applyChanges call.
- */
-export interface ChangeResult extends CoreChangeResult {
-  versions?: Record<string, number>;
-}
 
 export type Pinned = "left" | "right" | null;
 
@@ -186,17 +176,14 @@ export {
   TEXT_OPERATORS,
   USER_OPERATORS,
   findOperator,
+  isFilterCondition,
+  isFilterGroup,
   isNegativeOperator,
   resolveRelativeDate,
 } from "@masai/schema-grid-core";
 
 export const DEFAULT_TZ = DEFAULT_TIME_ZONE;
 export { DEFAULT_TIME_ZONE };
-
-/** LOCAL: type guard for group nodes. */
-export function isFilterGroup(node: FilterNode): node is FilterGroup {
-  return "op" in node && Array.isArray((node as FilterGroup).children);
-}
 
 /** ADAPTER: accepts an array or a set of readable column ids. */
 export function validateFilter(

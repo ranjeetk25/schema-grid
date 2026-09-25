@@ -5,9 +5,10 @@ import type { GridRow } from "../rows/types";
 import { getColumnById } from "../schema/lookup";
 import type { ColumnDef, GridSchema } from "../schema/types";
 import { addCalendarDays, getZonedParts, zonedToInstant } from "../time/zoned";
+import { isFilterGroup } from "./guards";
 import { isNegativeOperator } from "./operators";
 import { resolveRelativeDate } from "./relative-date";
-import type { FilterCondition, FilterGroup, FilterNode, RelativeDate } from "./types";
+import type { FilterCondition, FilterNode, RelativeDate } from "./types";
 
 export interface FilterMatchContext {
   schema: GridSchema;
@@ -26,6 +27,9 @@ const POSITIVE_OF: Record<string, string> = {
   hasNoneOf: "hasAnyOf",
   isNotMe: "isMe",
 };
+
+/** Negative list operators that are vacuously true for an empty list ("none of nothing"). */
+const VACUOUS_WHEN_EMPTY_LIST = new Set(["isNoneOf", "hasNoneOf"]);
 
 const TEXT_TYPES = new Set(["text", "longText", "url", "email", "phone"]);
 const NUMBER_TYPES = new Set(["number", "currency"]);
@@ -49,7 +53,11 @@ const DATE_TYPES = new Set(["date", "datetime"]);
  *   instant uses its start-of-day instant.
  * - Ranges: a null/blank bound is open; both open matches any non-empty cell.
  *   `isBetween` date-only bounds include the whole `to` day.
- * - `hasAllOf []` and `isAnyOf []`/`hasAnyOf []` never match (so the negatives match).
+ * - Lists (`asIdList`: non-array → [], null/undefined items dropped): `hasAllOf []`
+ *   and `isAnyOf []`/`hasAnyOf []` never match. `isNoneOf []`/`hasNoneOf []` match
+ *   EVERY row, empty cells included (vacuous truth: "none of nothing" always
+ *   holds — clearing the list removes the constraint). A non-empty list with no
+ *   usable id (e.g. `isNoneOf [true]`) is unusable like any other bad value.
  */
 export function matchesFilter(node: FilterNode | null, row: GridRow, ctx: FilterMatchContext): boolean {
   if (node === null || node === undefined) return true;
@@ -60,12 +68,8 @@ export function matchesFilter(node: FilterNode | null, row: GridRow, ctx: Filter
   }
 }
 
-function isGroup(node: FilterNode): node is FilterGroup {
-  return typeof node === "object" && node !== null && Array.isArray((node as FilterGroup).children);
-}
-
 function matchNode(node: FilterNode, row: GridRow, ctx: FilterMatchContext): boolean {
-  if (isGroup(node)) {
+  if (isFilterGroup(node)) {
     if (node.op === "and") return node.children.every((child) => matchNode(child, row, ctx));
     if (node.op === "or") return node.children.some((child) => matchNode(child, row, ctx));
     return false;
@@ -89,6 +93,7 @@ function matchCondition(cond: FilterCondition, row: GridRow, ctx: FilterMatchCon
 
   if (op === "isEmpty") return isEmptyValue(cell);
   if (op === "isNotEmpty") return !isEmptyValue(cell);
+  if (VACUOUS_WHEN_EMPTY_LIST.has(op) && Array.isArray(cond.value) && asIdList(cond.value).length === 0) return true;
   const negative = isNegativeOperator(op);
   if (isEmptyValue(cell)) return negative;
 

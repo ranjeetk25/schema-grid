@@ -62,6 +62,11 @@ describe("matchesFilter adapter", () => {
     expect(ids({ columnId: "owner", operator: "isNotMe" })).toEqual(["r2", "r3"]);
   });
 
+  it("an empty isNoneOf list keeps every row (vacuous truth, same as core and server SQL)", () => {
+    expect(ids({ columnId: "payment", operator: "isNoneOf", value: [] })).toEqual(["r1", "r2", "r3", "r4"]);
+    expect(ids({ columnId: "payment", operator: "isAnyOf", value: [] })).toEqual([]);
+  });
+
   it("defaults now/tz when omitted", () => {
     const loose = { schema: fixtureSchema, registry };
     expect(ids({ columnId: "score", operator: "gte", value: 10 }, loose)).toEqual(["r1", "r4"]);

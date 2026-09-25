@@ -41,6 +41,7 @@ type Cell = unknown;
 const SAMPLES: Record<string, { nonEmpty: Cell[]; empty: Cell[] }> = {
   name: { nonEmpty: ["abc", "ABC ", " abc", "x y", "5", "true", "a%b"], empty: [null, ABSENT, "", "  ", " \t\n"] },
   fee: { nonEmpty: [0, 5, -1.5, 100, 5.25], empty: [null, ABSENT] },
+  isActive: { nonEmpty: [true, false], empty: [null, ABSENT] },
   paymentStatus: { nonEmpty: ["paid", "pending", "7"], empty: [null, ABSENT, "", "  "] },
   owner: { nonEmpty: [{ id: "u1" }, { id: "u7" }], empty: [null, ABSENT] },
   tags: { nonEmpty: [["a"], ["a", "b"], ["2"], ["c"]], empty: [null, ABSENT, []] },
@@ -204,19 +205,15 @@ const FALSE_CASES: Case[] = [
   ["paymentStatus", "isAnyOf", v([])],
   ["paymentStatus", "isAnyOf", "paid"],
   ["paymentStatus", "isAnyOf", v([null])],
-  ["paymentStatus", "isNoneOf", v([])],
   ["paymentStatus", "isNoneOf", v([true])],
-  ["paymentStatus", "isNoneOf", v([null])],
   // user
   ["owner", "is", v({ x: 1 })],
   ["owner", "isNot", true],
   ["owner", "isAnyOf", v([])],
-  ["owner", "isNoneOf", v([])],
   // multiSelect
   ["tags", "hasAnyOf", v([])],
   ["tags", "hasAllOf", v([])],
   ["tags", "hasAllOf", "a"],
-  ["tags", "hasNoneOf", v([])],
   ["tags", "hasNoneOf", "a"],
   // link
   ["links", "is", true],
@@ -242,6 +239,15 @@ const TRUE_CASES: Case[] = [
   ["fee", "between", v({ from: "  ", to: null })],
   ["callDate", "isBetween", v({ from: null, to: null })],
   ["calledAt", "isBetween", v({ from: " ", to: null })],
+];
+
+/** Empty negative lists → constant TRUE; core matches EVERY cell, empty ones included (vacuous truth). */
+const ALL_ROWS_CASES: Case[] = [
+  ["paymentStatus", "isNoneOf", v([])],
+  ["paymentStatus", "isNoneOf", v([null])],
+  ["owner", "isNoneOf", v([])],
+  ["tags", "hasNoneOf", v([])],
+  ["tags", "hasNoneOf", v([null, undefined])],
 ];
 
 /** Non-constant comparisons, evaluated by the mini evaluator over the samples. */
@@ -358,6 +364,18 @@ describe("core parity: fully open ranges → constant TRUE (any non-empty cell)"
     const out = translate(n);
     expect(splitWrapper(n, out.sql)).toBe("TRUE");
     for (const cell of SAMPLES[c[0]]?.nonEmpty ?? []) expect(coreMatch(n, cell), JSON.stringify(cell)).toBe(true);
+    expectNullRule(c);
+  });
+});
+
+describe("core parity: empty negative lists → constant TRUE (every row, empty cells included)", () => {
+  it.each(ALL_ROWS_CASES.map((c) => [label(c), c] as const))("%s", (_l, c) => {
+    const n = node(c);
+    const out = translate(n);
+    expect(splitWrapper(n, out.sql)).toBe("TRUE");
+    expect(out.params).toEqual([]);
+    const samples = SAMPLES[c[0]] as { nonEmpty: Cell[]; empty: Cell[] };
+    for (const cell of [...samples.nonEmpty, ...samples.empty]) expect(coreMatch(n, cell), String(cell)).toBe(true);
     expectNullRule(c);
   });
 });

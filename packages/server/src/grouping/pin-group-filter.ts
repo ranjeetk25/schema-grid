@@ -52,8 +52,8 @@ function pinCondition(pin: GroupPin, schema: GridSchema, registry: FieldTypeRegi
  * the caller fetches ROWS (`runRowQuery`) instead of groups.
  *
  * Throws `GroupingError` when pins do not line up with the leading groupBy
- * levels, or a pin has no valid operator (e.g. the empty group of a boolean
- * column, which has no `isEmpty` operator).
+ * levels, or a pin has no valid operator (e.g. the empty group of a custom
+ * field type that offers no `isEmpty` operator).
  */
 export function pinGroupFilter(
   query: GridQuery,

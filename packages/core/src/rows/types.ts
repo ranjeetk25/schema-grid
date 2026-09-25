@@ -44,6 +44,14 @@ export interface ChangeResult {
   applied: CellChange[];
   conflicts: ChangeConflict[];
   errors: ChangeError[];
+  /**
+   * Spec §4.5 addendum: the NEW version of every row this call wrote, keyed by
+   * row id (rows with only conflicts/errors are absent). Optional so older
+   * data sources stay valid; clients that find it missing may assume one bump
+   * per written row (`baseVersions[rowId] + 1`). The in-memory data source and
+   * the server always populate it.
+   */
+  versions?: Record<string, number>;
 }
 
 export interface ChangeFeedEntry<Row extends GridRow = GridRow> {

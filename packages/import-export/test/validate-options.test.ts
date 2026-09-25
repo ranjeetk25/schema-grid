@@ -210,3 +210,53 @@ describe("validateRows: limit", () => {
     expect(r.summary.newOptions).toEqual({});
   });
 });
+
+describe("validateRows: summary.unknownOptions and errorKind", () => {
+  it("lists unknown values per column under BOTH policies; newOptions only under create", () => {
+    const rows = [
+      ["A", "Refunded", "A, Z"],
+      ["B", "refunded", "Y"],
+      ["C", "Paid", "z"],
+    ];
+    const created = run(["Name", "Pay", "Tags"], ["c_name", "c_pay", "c_tags"], rows);
+    expect(created.summary.unknownOptions).toEqual({ c_pay: ["Refunded"], c_tags: ["Z", "Y"] });
+    expect(created.summary.newOptions).toEqual({ c_pay: ["Refunded"], c_tags: ["Z", "Y"] });
+
+    const rejected = run(["Name", "Pay", "Tags"], ["c_name", "c_pay", "c_tags"], rows, {
+      unknownOptions: "reject",
+    });
+    expect(rejected.summary.unknownOptions).toEqual({ c_pay: ["Refunded"], c_tags: ["Z", "Y"] });
+    expect(rejected.summary.newOptions).toEqual({});
+  });
+
+  it("is empty when every value is known", () => {
+    const r = run(["Name", "Pay"], ["c_name", "c_pay"], [["A", "paid"]], { unknownOptions: "reject" });
+    expect(r.summary.unknownOptions).toEqual({});
+  });
+
+  it("tags reject-policy cells with errorKind unknownOption; valid cells have none", () => {
+    const r = run(["Name", "Pay", "Tags"], ["c_name", "c_pay", "c_tags"], [["A", "Refunded", "A, Z"]], {
+      unknownOptions: "reject",
+    });
+    expect(cellOf(r, 0, "c_pay").errorKind).toBe("unknownOption");
+    expect(cellOf(r, 0, "c_tags").errorKind).toBe("unknownOption");
+    expect(cellOf(r, 0, "c_name").errorKind).toBeUndefined();
+    const created = run(["Name", "Pay"], ["c_name", "c_pay"], [["A", "Refunded"]]);
+    expect(cellOf(created, 0, "c_pay").errorKind).toBeUndefined();
+  });
+
+  it("a required multiSelect whose split yields nothing is errorKind required", () => {
+    const cols = makeColumns().map((c) => (c.id === "c_tags" ? { ...c, required: true } : c));
+    const r = validateRows(
+      { headers: ["Name", "Tags"], rows: [["X", ",;"]], truncated: false },
+      [
+        { header: "Name", headerIndex: 0, columnId: "c_name", confidence: 1 },
+        { header: "Tags", headerIndex: 1, columnId: "c_tags", confidence: 1 },
+      ],
+      cols,
+      makeRegistry(),
+      { mode: "create", unknownOptions: "create" },
+    );
+    expect(cellOf(r, 0, "c_tags").errorKind).toBe("required");
+  });
+});

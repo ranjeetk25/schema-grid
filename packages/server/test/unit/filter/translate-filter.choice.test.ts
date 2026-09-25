@@ -42,14 +42,15 @@ describe("translateFilter: choice (select / creatableSelect)", () => {
     expect(r?.params).toEqual(["a", "b"]);
   });
 
-  it("empty isAnyOf is a constant false; empty isNoneOf is unusable (only empty cells match)", () => {
+  it("empty isAnyOf is a constant false; empty isNoneOf is vacuously true (every row matches)", () => {
     const any = t({ columnId: "paymentStatus", operator: "isAnyOf", value: [] });
     expect(any?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
     expect(any?.params).toEqual([]);
-    // core: isNoneOf [] has no usable id → never matches a non-empty cell.
+    // core: "none of nothing" always holds → TRUE for every row, empty cells included.
     const none = t({ columnId: "paymentStatus", operator: "isNoneOf", value: [] });
-    expect(none?.sql).toBe(`(FALSE OR ${PS_EMPTY})`);
+    expect(none?.sql).toBe(`(TRUE OR ${PS_EMPTY})`);
     expect(none?.params).toEqual([]);
+    expect(t({ columnId: "paymentStatus", operator: "isNoneOf", value: [null] })?.sql).toBe(`(TRUE OR ${PS_EMPTY})`);
   });
 
   it("ids compare as strings: numbers bind as strings, { id } objects are accepted for is", () => {
@@ -133,10 +134,12 @@ describe("translateFilter: multiSelect", () => {
     expect(r?.params).toEqual(['["a"]']);
   });
 
-  it("empty lists never match: hasAnyOf / hasAllOf FALSE; hasNoneOf [] is unusable (only empty cells)", () => {
+  it("empty lists: hasAnyOf / hasAllOf FALSE; hasNoneOf [] vacuously TRUE (every row)", () => {
     expect(t({ columnId: "tags", operator: "hasAnyOf", value: [] })?.sql).toBe(`(FALSE AND NOT ${TAGS_EMPTY})`);
     expect(t({ columnId: "tags", operator: "hasAllOf", value: [] })?.sql).toBe(`(FALSE AND NOT ${TAGS_EMPTY})`);
-    expect(t({ columnId: "tags", operator: "hasNoneOf", value: [] })?.sql).toBe(`(FALSE OR ${TAGS_EMPTY})`);
+    expect(t({ columnId: "tags", operator: "hasNoneOf", value: [] })?.sql).toBe(`(TRUE OR ${TAGS_EMPTY})`);
+    // A non-array is not an empty list: still unusable (only empty cells).
+    expect(t({ columnId: "tags", operator: "hasNoneOf", value: "a" })?.sql).toBe(`(FALSE OR ${TAGS_EMPTY})`);
   });
 
   it("list items are stringified like core asIdList (nulls dropped)", () => {

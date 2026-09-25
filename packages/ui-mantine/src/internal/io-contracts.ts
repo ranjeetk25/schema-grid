@@ -13,6 +13,7 @@ import {
 // Import pipeline (browser preview + server job share these)
 export {
   ImportConfigError,
+  KEY_COLUMN_TYPES,
   SheetNotFoundError,
   autoMapColumns,
   buildErrorReportCsv,
@@ -24,6 +25,7 @@ export {
 } from "@masai/schema-grid-io/import";
 export type {
   AutoMapColumnsOptions,
+  CellErrorKind,
   CellValidation,
   ColumnMapping,
   ImportJobState,
@@ -47,13 +49,6 @@ export type { ExportFormat, ExportOptions } from "@masai/schema-grid-io/export";
 
 /** How unknown select values are treated: io's `ValidateRowsOptions.unknownOptions`. */
 export type UnknownOptionsPolicy = ValidateRowsOptions["unknownOptions"];
-
-/**
- * Field types io accepts as an update/upsert key (`validateRows` throws
- * `ImportConfigError` for others). io keeps this set private.
- * TODO(io): replace with an io export if one is added.
- */
-export const KEY_COLUMN_TYPES: ReadonlySet<string> = new Set(["text", "longText", "email", "phone", "url"]);
 
 /**
  * Server-side job progress shown by the wizard's run step. The job runner

@@ -44,6 +44,7 @@ describe("in-memory applyChanges", () => {
       applied: [{ rowId: "r1", columnId: C.name, prev: "Asha Verma", next: "Asha V." }],
       conflicts: [],
       errors: [],
+      versions: { r1: 2 },
     });
     const r1 = await row(ds, "r1");
     expect(r1?.version).toBe(2);
@@ -79,6 +80,8 @@ describe("in-memory applyChanges", () => {
     );
     expect(res.conflicts.map((c) => c.rowId)).toEqual(["r1"]);
     expect(res.applied.map((c) => c.rowId)).toEqual(["r2"]);
+    // Only written rows report a new version.
+    expect(res.versions).toEqual({ r2: 2 });
     expect((await row(ds, "r2"))?.cells.name).toBe("Fresh");
   });
 
@@ -91,6 +94,7 @@ describe("in-memory applyChanges", () => {
       ),
     );
     expect(res.applied).toHaveLength(3);
+    expect(res.versions).toEqual({ r1: 2 });
     expect((await row(ds, "r1"))?.version).toBe(2);
   });
 

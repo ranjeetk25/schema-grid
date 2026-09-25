@@ -1,14 +1,10 @@
 /**
  * Core adapter. The ONLY place ui-mantine imports `@masai/schema-grid-core`
  * from. Everything is re-exported from the real package; the few local
- * helpers at the bottom cover gaps core does not (yet) export.
+ * helpers at the bottom are UI-specific (not gaps in core).
  */
-import type {
-  FilterGroup,
-  FilterNode,
-  FilterValueKind,
-  RelativeDateKind,
-} from "@masai/schema-grid-core";
+import type { FilterValueKind } from "@masai/schema-grid-core";
+import { RELATIVE_DATE_PRESETS } from "@masai/schema-grid-core/filter";
 
 // §4.1 schema, §4.4 query, §4.5 rows, §4.6 data source, common refs
 export type {
@@ -66,8 +62,17 @@ export type {
   FilterValueKind,
   RelativeDate,
   RelativeDateKind,
-} from "@masai/schema-grid-core";
-export { MAX_FILTER_DEPTH, NEGATIVE_OPERATOR_IDS, findOperator, validateFilter } from "@masai/schema-grid-core";
+  RelativeDatePreset,
+} from "@masai/schema-grid-core/filter";
+export {
+  MAX_FILTER_DEPTH,
+  NEGATIVE_OPERATOR_IDS,
+  RELATIVE_DATE_PRESETS,
+  findOperator,
+  isFilterCondition,
+  isFilterGroup,
+  validateFilter,
+} from "@masai/schema-grid-core/filter";
 
 // §4.8 formula
 export type { FormulaError, FormulaNode, FormulaResultType } from "@masai/schema-grid-core";
@@ -76,28 +81,6 @@ export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parse
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API
 // ---------------------------------------------------------------------------
-
-/**
- * Relative-date presets in display order. Core validates against the same
- * list but only exports the `RelativeDateKind` type.
- * TODO(core): replace with a core export if one is added.
- */
-export const RELATIVE_DATE_PRESETS: readonly RelativeDateKind[] = [
-  "today",
-  "yesterday",
-  "tomorrow",
-  "thisWeek",
-  "lastWeek",
-  "thisMonth",
-  "lastMonth",
-  "lastNDays",
-  "nextNDays",
-];
-
-/** Core's validator uses a private `isGroup`; this is the public equivalent. */
-export function isFilterGroup(node: FilterNode): node is FilterGroup {
-  return typeof node === "object" && node !== null && Array.isArray((node as FilterGroup).children);
-}
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFilledPrimitive = (v: unknown) =>
@@ -119,9 +102,9 @@ export function valueMatchesKind(kind: FilterValueKind, value: unknown): boolean
     case "range":
       return isObject(value) && isFilledPrimitive(value.from) && isFilledPrimitive(value.to);
     case "relativeDate": {
-      if (!isObject(value) || !(RELATIVE_DATE_PRESETS as readonly unknown[]).includes(value.relative)) return false;
-      if (value.relative === "lastNDays" || value.relative === "nextNDays")
-        return typeof value.n === "number" && Number.isInteger(value.n) && value.n > 0;
+      const preset = isObject(value) ? RELATIVE_DATE_PRESETS.find((p) => p.kind === value.relative) : undefined;
+      if (!preset || !isObject(value)) return false;
+      if (preset.needsN) return typeof value.n === "number" && Number.isInteger(value.n) && value.n > 0;
       return true;
     }
     case "me":

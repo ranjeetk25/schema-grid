@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveRelativeDate } from "../../src/filter/relative-date";
+import { RELATIVE_DATE_PRESETS, resolveRelativeDate } from "../../src/filter/relative-date";
+import { validateFilter } from "../../src/filter/validate";
+import { createDefaultRegistry } from "../../src/field-types/default-registry";
+import { FIXTURE_COLUMN_IDS, createFixtureSchema } from "../../src/testing/schema";
 import type { DateRange, RelativeDate } from "../../src/filter/types";
 import { getZonedParts } from "../../src/time/zoned";
 
@@ -118,5 +121,38 @@ describe("resolveRelativeDate", () => {
 
   it("getZonedParts reports weekday 5 for 2026-09-25 in Kolkata", () => {
     expect(getZonedParts(NOW, KOLKATA).weekday).toBe(5);
+  });
+});
+
+describe("RELATIVE_DATE_PRESETS", () => {
+  it("lists every kind in display order with a human label and needsN", () => {
+    expect(RELATIVE_DATE_PRESETS).toEqual([
+      { kind: "today", label: "Today", needsN: false },
+      { kind: "yesterday", label: "Yesterday", needsN: false },
+      { kind: "tomorrow", label: "Tomorrow", needsN: false },
+      { kind: "thisWeek", label: "This week", needsN: false },
+      { kind: "lastWeek", label: "Last week", needsN: false },
+      { kind: "thisMonth", label: "This month", needsN: false },
+      { kind: "lastMonth", label: "Last month", needsN: false },
+      { kind: "lastNDays", label: "Last N days", needsN: true },
+      { kind: "nextNDays", label: "Next N days", needsN: true },
+    ]);
+    expect(Object.isFrozen(RELATIVE_DATE_PRESETS)).toBe(true);
+    for (const p of RELATIVE_DATE_PRESETS) expect(Object.isFrozen(p)).toBe(true);
+  });
+
+  it("is exactly what validateFilter and resolveRelativeDate accept", () => {
+    const schema = createFixtureSchema();
+    const registry = createDefaultRegistry();
+    const col = FIXTURE_COLUMN_IDS.callDate;
+    for (const p of RELATIVE_DATE_PRESETS) {
+      const value = p.needsN ? { relative: p.kind, n: 3 } : { relative: p.kind };
+      expect(validateFilter({ columnId: col, operator: "isWithin", value }, schema, registry, new Set([col]))).toEqual([]);
+      expect("error" in resolveRelativeDate(value, NOW, KOLKATA)).toBe(false);
+      if (p.needsN) {
+        const missing = validateFilter({ columnId: col, operator: "isWithin", value: { relative: p.kind } }, schema, registry, new Set([col]));
+        expect(missing.map((e) => e.code)).toEqual(["valueKindMismatch"]);
+      }
+    }
   });
 });

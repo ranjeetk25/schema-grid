@@ -70,6 +70,7 @@ describe("public entry points", () => {
     const mod = await import("../../src/ddl/index");
     expect(Object.keys(mod).sort()).toMatchInlineSnapshot(`
       [
+        "alterRowsTableIdCollationDDL",
         "createChangeLogTableDDL",
         "createRowsTableDDL",
         "diffIndexedColumns",
