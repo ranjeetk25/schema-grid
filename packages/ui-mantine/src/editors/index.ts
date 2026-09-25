@@ -31,7 +31,7 @@ export { UrlRenderer } from "../renderers/UrlRenderer";
 export { FormattedRenderer, createFormattedRenderer } from "../renderers/FormattedRenderer";
 export { FormulaRenderer } from "../renderers/FormulaRenderer";
 
-// Registry (real @masai/schema-grid-ag-grid registry) + widget adapters
+// Registry (real @ranjeetk25/schema-grid-ag-grid registry) + widget adapters
 export {
   POPUP_FIELD_TYPES,
   createMantineUiRegistry,

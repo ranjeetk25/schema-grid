@@ -54,7 +54,7 @@ jobs:
           if [ -f apps/storybook-shadcn/package.json ]; then
             bun run --cwd apps/storybook-shadcn build-storybook
             cp -R apps/storybook-shadcn/storybook-static _site/shadcn
-            shadcn_link='<li><a href="./shadcn/">shadcn/ui</a> &mdash; <code>@masai/schema-grid-ui-shadcn</code></li>'
+            shadcn_link='<li><a href="./shadcn/">shadcn/ui</a> &mdash; <code>@ranjeetk25/schema-grid-ui-shadcn</code></li>'
           fi
           cat > _site/index.html <<EOF
           <!doctype html>
@@ -71,9 +71,9 @@ jobs:
           </head>
           <body>
             <h1>Schema Grid</h1>
-            <p>Component explorer for the <code>@masai/schema-grid-*</code> packages.</p>
+            <p>Component explorer for the <code>@ranjeetk25/schema-grid-*</code> packages.</p>
             <ul>
-              <li><a href="./mantine/">Mantine</a> &mdash; <code>@masai/schema-grid-ui-mantine</code></li>
+              <li><a href="./mantine/">Mantine</a> &mdash; <code>@ranjeetk25/schema-grid-ui-mantine</code></li>
               ${shadcn_link}
             </ul>
             <p><a href="https://github.com/${GITHUB_REPOSITORY}">Source on GitHub</a></p>

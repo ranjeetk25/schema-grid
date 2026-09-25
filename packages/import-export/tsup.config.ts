@@ -14,7 +14,7 @@ export default defineConfig({
   splitting: true,
   treeshake: true,
   external: [
-    "@masai/schema-grid-core",
+    "@ranjeetk25/schema-grid-core",
     "papaparse",
     "exceljs",
     "node:stream",

@@ -192,8 +192,8 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
   tz?: string;
   /**
    * io's export module for `exportCurrentView` / server-mode `exportCsv`
-   * (`import * as io from "@masai/schema-grid-io/export"`). Default: loaded
-   * lazily with a literal `import("@masai/schema-grid-io/export")`.
+   * (`import * as io from "@ranjeetk25/schema-grid-io/export"`). Default: loaded
+   * lazily with a literal `import("@ranjeetk25/schema-grid-io/export")`.
    */
   io?: IoExportModule;
   /** Default 100 (client fetch page size and server block size). */

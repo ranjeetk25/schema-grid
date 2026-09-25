@@ -11,7 +11,7 @@
   `SCHEMA_GRID_MYSQL_IT=1` is set.
 
 The integration suite is the executable check that the SQL adapter behaves
-like core's in-memory datasource (`@masai/schema-grid-core/memory`). Core's
+like core's in-memory datasource (`@ranjeetk25/schema-grid-core/memory`). Core's
 in-memory datasource defines schema-grid semantics.
 
 ## Running locally
@@ -73,7 +73,7 @@ Testcontainers starts MySQL there the same way it does locally.
 
 ### `acceptance.int.test.ts`: §8 acceptance and in-memory parity
 
-This suite uses the `@masai/schema-grid-core/testing` fixture (r1..r5) plus
+This suite uses the `@ranjeetk25/schema-grid-core/testing` fixture (r1..r5) plus
 the server rows r6/r7. The time zone is `Asia/Kolkata` and now is
 `2026-09-25T00:30+05:30`.
 

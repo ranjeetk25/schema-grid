@@ -78,7 +78,7 @@ export function mantineWidgetEntries(fieldTypes: FieldTypeRegistry = createDefau
 }
 
 /**
- * The real `@masai/schema-grid-ag-grid` UI registry with ui-mantine renderers
+ * The real `@ranjeetk25/schema-grid-ag-grid` UI registry with ui-mantine renderers
  * and editors for all 16 built-in types: `createDefaultUiRegistry().extend()`
  * with each widget adapted to AG Grid's cell renderer / editor props (popup
  * types through ag-grid's `createPopupEditor`).

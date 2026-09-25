@@ -1,4 +1,4 @@
-# @masai/schema-grid-core
+# @ranjeetk25/schema-grid-core
 
 Framework-free core of Schema Grid: schema and field types, filter AST, query model,
 permissions, the formula engine, the `DataSource` contract, an in-memory reference
@@ -7,13 +7,13 @@ data source and the transport-neutral wire contract.
 ## Subpath exports
 
 ```
-@masai/schema-grid-core              – schema, field-type ids, query/row/permission types, formulas, filters
-@masai/schema-grid-core/field-types  – built-in field types and registries
-@masai/schema-grid-core/filter       – filter AST, operators, validateFilter, resolveRelativeDate
-@masai/schema-grid-core/formula      – parser, evaluator, dependency graph
-@masai/schema-grid-core/memory       – createInMemoryDataSource (reference semantics)
-@masai/schema-grid-core/testing      – fixture schema/rows used by every package's tests
-@masai/schema-grid-core/wire         – run a DataSource across any transport (below)
+@ranjeetk25/schema-grid-core              – schema, field-type ids, query/row/permission types, formulas, filters
+@ranjeetk25/schema-grid-core/field-types  – built-in field types and registries
+@ranjeetk25/schema-grid-core/filter       – filter AST, operators, validateFilter, resolveRelativeDate
+@ranjeetk25/schema-grid-core/formula      – parser, evaluator, dependency graph
+@ranjeetk25/schema-grid-core/memory       – createInMemoryDataSource (reference semantics)
+@ranjeetk25/schema-grid-core/testing      – fixture schema/rows used by every package's tests
+@ranjeetk25/schema-grid-core/wire         – run a DataSource across any transport (below)
 ```
 
 ## Running a DataSource over the network (`./wire`)
@@ -23,7 +23,7 @@ client half that meet over **any** transport — tRPC, REST, Hono, Lambda, a wor
 `postMessage` — without the grid knowing or caring. No transport is a dependency.
 
 ```ts
-import { createDataSourceHandler, createRemoteDataSource, unwrapWireResult } from "@masai/schema-grid-core/wire";
+import { createDataSourceHandler, createRemoteDataSource, unwrapWireResult } from "@ranjeetk25/schema-grid-core/wire";
 
 // server: (op, untrustedInput) => { ok: true, data } | { ok: false, error, status }. Never throws.
 const handle = createDataSourceHandler(dataSource, { validateOutput: process.env.NODE_ENV !== "production" });
@@ -47,5 +47,5 @@ const remote = createRemoteDataSource(async (op, input) => unwrapWireResult(awai
   `supports[op] !== false`.
 
 Full list of codes, statuses and the HTTP binding: [`docs/wire-contract.md`](../../docs/wire-contract.md).
-Ready-made HTTP pieces: `@masai/schema-grid-server/http` (server) and `createHttpDataSource` in
-`@masai/schema-grid-ag-grid` (browser).
+Ready-made HTTP pieces: `@ranjeetk25/schema-grid-server/http` (server) and `createHttpDataSource` in
+`@ranjeetk25/schema-grid-ag-grid` (browser).

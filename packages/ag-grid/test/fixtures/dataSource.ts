@@ -1,8 +1,8 @@
 /**
- * Test double: core's real in-memory DataSource (`@masai/schema-grid-core/memory`)
+ * Test double: core's real in-memory DataSource (`@ranjeetk25/schema-grid-core/memory`)
  * wrapped with vi.fn spies and scripting helpers.
  */
-import { createInMemoryDataSource as createCoreInMemory } from "@masai/schema-grid-core/memory";
+import { createInMemoryDataSource as createCoreInMemory } from "@ranjeetk25/schema-grid-core/memory";
 import { vi } from "vitest";
 import type {
   ChangeBatch,

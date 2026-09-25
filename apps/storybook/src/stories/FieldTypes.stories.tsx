@@ -1,7 +1,7 @@
 import {
   SchemaGrid,
   createDefaultUiRegistry,
-} from "@masai/schema-grid-ag-grid";
+} from "@ranjeetk25/schema-grid-ag-grid";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo, useState } from "react";
 import { GRID_OPTIONS, Workbench } from "../support/Workbench";

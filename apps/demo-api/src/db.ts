@@ -2,7 +2,7 @@ import {
   type GridDb,
   type GridTables,
   defineGridTables,
-} from "@masai/schema-grid-server/drizzle";
+} from "@ranjeetk25/schema-grid-server/drizzle";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 

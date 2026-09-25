@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
-import type { GridSchema } from "@masai/schema-grid-core";
+import type { GridSchema } from "@ranjeetk25/schema-grid-core";
 
 /**
  * In-memory holder of the grid schema, persisted as JSON to `filePath`

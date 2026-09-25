@@ -3,7 +3,7 @@
  * `createInMemoryDataSource` (the executable definition of schema-grid
  * semantics that adapters like `createDrizzleDataSource` are tested against).
  */
-import { createInMemoryDataSource } from "@masai/schema-grid-core/memory";
+import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 import {
   type FilterNode,
   type GridRow,

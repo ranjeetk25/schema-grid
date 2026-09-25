@@ -1,5 +1,5 @@
 /**
- * The ONLY place this package imports @masai/schema-grid-core.
+ * The ONLY place this package imports @ranjeetk25/schema-grid-core.
  * Everything the server uses from core is re-exported here, so a core API
  * change is absorbed in one file.
  */
@@ -39,17 +39,17 @@ export type {
   SortSpec,
   UserRef,
   ViewDef,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 export {
   DEFAULT_TIME_ZONE,
   createRolePermissionResolver,
   isAggregationAllowed,
   readableColumnIds,
   resolveColumnAccess,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 // ---- field types / registry -------------------------------------------------
-export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@masai/schema-grid-core/field-types";
+export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core/field-types";
 export {
   createDefaultRegistry,
   createFieldTypeRegistry,
@@ -57,7 +57,7 @@ export {
   getColumnOperators,
   getColumnValueFieldType,
   isEmptyValue,
-} from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core/field-types";
 
 // ---- filter -----------------------------------------------------------------
 export type {
@@ -71,7 +71,7 @@ export type {
   FilterValueKind,
   RelativeDate,
   FilterValidationError as CoreFilterValidationError,
-} from "@masai/schema-grid-core/filter";
+} from "@ranjeetk25/schema-grid-core/filter";
 export {
   MAX_FILTER_DEPTH,
   NEGATIVE_OPERATOR_IDS,
@@ -79,7 +79,7 @@ export {
   matchesFilter,
   resolveRelativeDate,
   validateFilter,
-} from "@masai/schema-grid-core/filter";
+} from "@ranjeetk25/schema-grid-core/filter";
 
 // ---- formula ----------------------------------------------------------------
 export type {
@@ -88,7 +88,7 @@ export type {
   FormulaNode,
   FormulaResultType,
   FormulaValue,
-} from "@masai/schema-grid-core/formula";
+} from "@ranjeetk25/schema-grid-core/formula";
 export {
   dependencies,
   detectFormulaCycles,
@@ -96,7 +96,7 @@ export {
   inferResultType,
   isFormulaError,
   parseFormula,
-} from "@masai/schema-grid-core/formula";
+} from "@ranjeetk25/schema-grid-core/formula";
 
 // ---- wire (transport-neutral op contract) -----------------------------------
 export type {
@@ -106,5 +106,5 @@ export type {
   WireError,
   WireOutputOf,
   WireResult,
-} from "@masai/schema-grid-core/wire";
-export { createDataSourceHandler, httpStatusFor, toWireError } from "@masai/schema-grid-core/wire";
+} from "@ranjeetk25/schema-grid-core/wire";
+export { createDataSourceHandler, httpStatusFor, toWireError } from "@ranjeetk25/schema-grid-core/wire";

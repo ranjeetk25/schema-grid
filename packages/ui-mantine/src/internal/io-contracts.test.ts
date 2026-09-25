@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildFixtureAccess, buildFixtureRegistry, buildFixtureSchema, FIXTURE_IDS } from "../test/fixtures";
 import * as io from "./io-contracts";
 
-describe("io-contracts (real @masai/schema-grid-io)", () => {
+describe("io-contracts (real @ranjeetk25/schema-grid-io)", () => {
   it("re-exports the import and export functions", () => {
     for (const name of [
       "parseFile",

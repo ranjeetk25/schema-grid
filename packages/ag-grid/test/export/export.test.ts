@@ -254,7 +254,7 @@ describe("exportCurrentView", () => {
     expect(first?.cells[nameColumns[0]?.key ?? ""]).toBe("OVERRIDDEN");
   });
 
-  it("without an injected io, loads the real @masai/schema-grid-io/export and returns a CSV Blob", async () => {
+  it("without an injected io, loads the real @ranjeetk25/schema-grid-io/export and returns a CSV Blob", async () => {
     const dataSource = createInMemoryDataSource(fixtureSchema, [row("c1", { name: "Csv Row", score: 7 })], { user: ADMIN });
     const nameAndScore = fixtureSchema.columns.filter((c) => c.id === "name" || c.id === "score");
 

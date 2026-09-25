@@ -4,7 +4,7 @@
  * which types every cell itself (XLSX numbers/dates/hyperlinks, CSV text).
  *
  * io is an optional peer. Pass it explicitly (`io`, or the grid's `io` prop)
- * or let the default load `@masai/schema-grid-io/export` through a literal
+ * or let the default load `@ranjeetk25/schema-grid-io/export` through a literal
  * dynamic `import()` that bundlers can resolve and code-split.
  */
 import {
@@ -19,7 +19,7 @@ import {
 } from "../internal/core";
 
 const DEFAULT_PAGE_SIZE = 500;
-const IO_EXPORT = "@masai/schema-grid-io/export";
+const IO_EXPORT = "@ranjeetk25/schema-grid-io/export";
 
 export interface ExportCurrentViewOptions<Row extends GridRow> {
   format: "csv" | "xlsx";
@@ -38,7 +38,7 @@ export interface ExportCurrentViewOptions<Row extends GridRow> {
    * Default: every given column is readable.
    */
   access?: ReadonlyMap<string, Access>;
-  /** io's export module. Default: `import("@masai/schema-grid-io/export")`. */
+  /** io's export module. Default: `import("@ranjeetk25/schema-grid-io/export")`. */
   io?: IoExportModule;
   /** Override cell reads (e.g. computed formula values). */
   getCellValue?(row: Row, column: ColumnDef): unknown;
@@ -48,7 +48,7 @@ export interface ExportCurrentViewOptions<Row extends GridRow> {
 export async function loadIoExport(): Promise<IoExportModule> {
   let mod: Partial<IoExportModule>;
   try {
-    mod = (await import("@masai/schema-grid-io/export")) as Partial<IoExportModule>;
+    mod = (await import("@ranjeetk25/schema-grid-io/export")) as Partial<IoExportModule>;
   } catch {
     throw new Error(`XLSX/CSV file export requires the optional peer dependency "${IO_EXPORT}". Install it to enable exports.`);
   }

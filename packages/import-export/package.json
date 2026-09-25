@@ -1,5 +1,5 @@
 {
-  "name": "@masai/schema-grid-io",
+  "name": "@ranjeetk25/schema-grid-io",
   "version": "0.0.1",
   "description": "CSV/XLSX import, export and clipboard parsing for Schema Grid.",
   "license": "MIT",
@@ -76,7 +76,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@masai/schema-grid-core": "workspace:*",
+    "@ranjeetk25/schema-grid-core": "workspace:*",
     "papaparse": "^5.7.0",
     "exceljs": "^4.4.0"
   },

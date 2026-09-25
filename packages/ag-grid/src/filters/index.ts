@@ -1,4 +1,4 @@
-// Public barrel for `@masai/schema-grid-ag-grid/filters`.
+// Public barrel for `@ranjeetk25/schema-grid-ag-grid/filters`.
 export { DEFAULT_FILTERS } from "./defaultFilters";
 export {
   ConditionFilter,

@@ -1,5 +1,5 @@
 /**
- * `@masai/schema-grid-server/http` — mount a grid `DataSource` behind any
+ * `@ranjeetk25/schema-grid-server/http` — mount a grid `DataSource` behind any
  * transport. Framework-free: the Express and Lambda adapters are typed
  * structurally and import nothing.
  */

@@ -4,19 +4,19 @@ import type {
   FieldTypeRegistry,
   GridRow,
   GridSchema,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 import {
   type ParsedTable,
   autoMapColumns,
   buildErrorReportCsv,
   parseFile,
-} from "@masai/schema-grid-io/import";
+} from "@ranjeetk25/schema-grid-io/import";
 import {
   type ImportJobReport,
   type ImportJobStore,
   PermissionError,
   runImportJob,
-} from "@masai/schema-grid-server";
+} from "@ranjeetk25/schema-grid-server";
 import { HttpError } from "./http-error";
 
 /** Mirrors ui-mantine's `ImportJobStatus` (plus the final report). */

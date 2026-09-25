@@ -2,7 +2,7 @@
  * Tests for the ADAPTER / LOCAL pieces of the core facade (src/internal/core.ts)
  * and the in-memory data source fixture wrapper. Core's own semantics
  * (filters, formulas, field types, relative dates, permissions) are tested in
- * @masai/schema-grid-core; here we only check that our adapters agree with it.
+ * @ranjeetk25/schema-grid-core; here we only check that our adapters agree with it.
  */
 import { describe, expect, it } from "vitest";
 import {

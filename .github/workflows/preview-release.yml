@@ -1,8 +1,8 @@
 name: Preview release
 
 # Label a PR `preview` to publish every package as 0.0.0-pr<N>-<sha7> under the
-# `pr` dist-tag, e.g. `bun add @masai/schema-grid-core@pr` (latest preview of
-# any PR) or `@masai/schema-grid-core@0.0.0-pr42-1a2b3c4` (this exact build).
+# `pr` dist-tag, e.g. `bun add @ranjeetk25/schema-grid-core@pr` (latest preview of
+# any PR) or `@ranjeetk25/schema-grid-core@0.0.0-pr42-1a2b3c4` (this exact build).
 # Re-runs on every push while the label is on. Needs at least one changeset in
 # the PR (snapshots only version packages that have one; the `fixed` group
 # then carries all of them).
@@ -79,7 +79,7 @@ jobs:
           Preview published as \`${VERSION}\` (dist-tag \`pr\`):
 
           \`\`\`bash
-          bun add @masai/schema-grid-core@${VERSION} @masai/schema-grid-ag-grid@${VERSION} @masai/schema-grid-ui-mantine@${VERSION}
+          bun add @ranjeetk25/schema-grid-core@${VERSION} @ranjeetk25/schema-grid-ag-grid@${VERSION} @ranjeetk25/schema-grid-ui-mantine@${VERSION}
           \`\`\`
           EOF
           )

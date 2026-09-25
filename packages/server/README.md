@@ -1,4 +1,4 @@
-# @masai/schema-grid-server
+# @ranjeetk25/schema-grid-server
 
 Node-side Schema Grid: schema validation, permission-checked MySQL queries via
 Drizzle (`createDrizzleDataSource`), change feed, import/export jobs, DDL helpers
@@ -7,10 +7,10 @@ and transport-neutral HTTP adapters.
 ## Subpath exports
 
 ```
-@masai/schema-grid-server         – errors, schema validation, access, cursors, import/export jobs (no drizzle at runtime)
-@masai/schema-grid-server/drizzle – createDrizzleDataSource and the SQL translators
-@masai/schema-grid-server/ddl     – table / generated-column DDL
-@masai/schema-grid-server/http    – mount a DataSource behind any transport (below)
+@ranjeetk25/schema-grid-server         – errors, schema validation, access, cursors, import/export jobs (no drizzle at runtime)
+@ranjeetk25/schema-grid-server/drizzle – createDrizzleDataSource and the SQL translators
+@ranjeetk25/schema-grid-server/ddl     – table / generated-column DDL
+@ranjeetk25/schema-grid-server/http    – mount a DataSource behind any transport (below)
 ```
 
 ## Serving a grid (`./http`)
@@ -20,8 +20,8 @@ the user — into one `handle(op, input, ctx)` function. Every transport is a fe
 lines around it; none is a dependency of this package.
 
 ```ts
-import { createDrizzleDataSource } from "@masai/schema-grid-server/drizzle";
-import { createGridRouterAdapter, toExpressHandler, toLambdaHandler } from "@masai/schema-grid-server/http";
+import { createDrizzleDataSource } from "@ranjeetk25/schema-grid-server/drizzle";
+import { createGridRouterAdapter, toExpressHandler, toLambdaHandler } from "@ranjeetk25/schema-grid-server/http";
 
 const grid = createGridRouterAdapter((ctx: { user: PermissionUser }) =>
   createDrizzleDataSource({ db, gridId: "admissions", schema, registry, resolver, user: ctx.user }),
@@ -61,7 +61,7 @@ app.post("/grid/:op", async (c) => {
 ```
 
 All three answer `200 { data }` or `<status> { error }`; the browser side is `createHttpDataSource({ baseUrl })`
-from `@masai/schema-grid-ag-grid`.
+from `@ranjeetk25/schema-grid-ag-grid`.
 
 ### tRPC (a mapping, not a dependency)
 
@@ -79,7 +79,7 @@ export const gridRouter = router({
 const dataSource = createRemoteDataSource(async (op, input) => unwrapWireResult(await trpc.grid.call.mutate({ op, input })));
 ```
 
-`createDataSourceHandler` (from `@masai/schema-grid-core/wire`) is the same thing without the per-request
+`createDataSourceHandler` (from `@ranjeetk25/schema-grid-core/wire`) is the same thing without the per-request
 factory, if you already have a `DataSource` in hand.
 
 ## Upgrading
@@ -98,7 +98,7 @@ accents, and the order can disagree with client-side sorting.
 change an existing table. Run the migration once per rows table:
 
 ```ts
-import { alterRowsTableIdCollationDDL } from "@masai/schema-grid-server/ddl";
+import { alterRowsTableIdCollationDDL } from "@ranjeetk25/schema-grid-server/ddl";
 
 const stmt = alterRowsTableIdCollationDDL({ table: "grid_rows" });
 await connection.query(stmt.sql); // e.g. a mysql2 connection

@@ -41,7 +41,7 @@ export function isWireError(value: unknown): value is WireError {
 }
 
 /**
- * Error codes raised by `@masai/schema-grid-server` (upper case) and the
+ * Error codes raised by `@ranjeetk25/schema-grid-server` (upper case) and the
  * in-memory data source (camel case), mapped to wire codes. Matched by
  * duck-typing so core never imports the server.
  */

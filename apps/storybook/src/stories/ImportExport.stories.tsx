@@ -1,18 +1,18 @@
 import { Button, Code, Group, Stack, Text } from "@mantine/core";
-import { SchemaGrid, type SchemaGridHandle } from "@masai/schema-grid-ag-grid";
+import { SchemaGrid, type SchemaGridHandle } from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type ColumnDef,
   type GridRow,
   resolveColumnAccess,
-} from "@masai/schema-grid-core";
-import { buildExportBlob, exportFileName } from "@masai/schema-grid-io/export";
-import { toChangeBatches, validateRows } from "@masai/schema-grid-io/import";
+} from "@ranjeetk25/schema-grid-core";
+import { buildExportBlob, exportFileName } from "@ranjeetk25/schema-grid-io/export";
+import { toChangeBatches, validateRows } from "@ranjeetk25/schema-grid-io/import";
 import {
   ExportDialog,
   type ExportRequest,
   ImportWizard,
-} from "@masai/schema-grid-ui-mantine";
-import type { ImportJobStatus } from "@masai/schema-grid-ui-mantine";
+} from "@ranjeetk25/schema-grid-ui-mantine";
+import type { ImportJobStatus } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo, useRef, useState } from "react";
 import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";

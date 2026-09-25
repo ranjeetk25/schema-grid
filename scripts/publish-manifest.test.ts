@@ -95,11 +95,11 @@ describe("repo packages", () => {
   it("finds the publishable packages", () => {
     expect(packages.map((p) => p.manifest.name)).toEqual(
       expect.arrayContaining([
-        "@masai/schema-grid-ag-grid",
-        "@masai/schema-grid-core",
-        "@masai/schema-grid-io",
-        "@masai/schema-grid-server",
-        "@masai/schema-grid-ui-mantine",
+        "@ranjeetk25/schema-grid-ag-grid",
+        "@ranjeetk25/schema-grid-core",
+        "@ranjeetk25/schema-grid-io",
+        "@ranjeetk25/schema-grid-server",
+        "@ranjeetk25/schema-grid-ui-mantine",
       ]),
     );
   });
@@ -114,7 +114,7 @@ describe("repo packages", () => {
 
   it("the raw workspace manifests would NOT be publishable (the transform is load-bearing)", () => {
     const core = packages.find(
-      (p) => p.manifest.name === "@masai/schema-grid-core",
+      (p) => p.manifest.name === "@ranjeetk25/schema-grid-core",
     );
     expect(
       publishManifestProblems(core?.manifest as Manifest).join("\n"),

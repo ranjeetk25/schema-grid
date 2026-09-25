@@ -277,7 +277,7 @@ describe("createServerGroupsController", () => {
   }
 
   /**
-   * `@masai/schema-grid-server` pages the GROUPS of a grouping query by
+   * `@ranjeetk25/schema-grid-server` pages the GROUPS of a grouping query by
    * `page` (rows: [], nextCursor while more groups exist), where core's
    * in-memory source returns every group and pages `rows`. Found by the
    * apps/storybook Playwright server-mode grouping scenario (§12): asking for

@@ -1,12 +1,12 @@
-import type { DataSource, FilterNode, GridQuery, GridRow } from "@masai/schema-grid-core";
-import { createInMemoryDataSource } from "@masai/schema-grid-core/memory";
+import type { DataSource, FilterNode, GridQuery, GridRow } from "@ranjeetk25/schema-grid-core";
+import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 import {
   createFixtureRows,
   createFixtureSchema,
   FIXTURE_COLUMN_IDS as C,
   FIXTURE_NOW,
   FIXTURE_USERS,
-} from "@masai/schema-grid-core/testing";
+} from "@ranjeetk25/schema-grid-core/testing";
 import { describe, expect, it, vi } from "vitest";
 import {
   CursorError,

@@ -1,7 +1,7 @@
 import type { Access, ColumnDef, ColumnState, FieldTypeRegistry, GridRow, GridSchema, QueryResult } from "../internal/core";
 
 /**
- * What the writer receives. It is shaped like `@masai/schema-grid-io`'s
+ * What the writer receives. It is shaped like `@ranjeetk25/schema-grid-io`'s
  * `ExportOptions` minus `tz` / `fileName`, so a writer can hand it straight to
  * io's `buildExportStream({ ...input, tz, fileName })`, which types every cell
  * itself (XLSX numbers, dates, hyperlinks; CSV text).
@@ -23,7 +23,7 @@ export interface ExportWriterInput {
 
 /**
  * Injected generator that turns columns + raw rows into bytes. The real
- * implementation lives in `@masai/schema-grid-io`; this package never imports
+ * implementation lives in `@ranjeetk25/schema-grid-io`; this package never imports
  * it, so callers must always supply one.
  */
 export type ExportWriter = (input: ExportWriterInput) => AsyncIterable<Uint8Array>;

@@ -1,4 +1,4 @@
-// Public barrel for `@masai/schema-grid-ag-grid/sync`.
+// Public barrel for `@ranjeetk25/schema-grid-ag-grid/sync`.
 export {
   usePollingSync,
   type UsePollingSyncOptions,

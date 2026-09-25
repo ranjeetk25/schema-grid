@@ -10,12 +10,12 @@ import {
   type GridSchema,
   type PermissionUser,
   createRolePermissionResolver,
-} from "@masai/schema-grid-core";
-import { createDefaultRegistry } from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core";
+import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 import {
   type InMemoryDataSource,
   createInMemoryDataSource,
-} from "@masai/schema-grid-core/memory";
+} from "@ranjeetk25/schema-grid-core/memory";
 import {
   FIXTURE_NOW,
   FIXTURE_TIME_ZONE,
@@ -23,7 +23,7 @@ import {
   createFixtureLinkTargets,
   createFixtureRows,
   createFixtureSchema,
-} from "@masai/schema-grid-core/testing";
+} from "@ranjeetk25/schema-grid-core/testing";
 
 export {
   FIXTURE_NOW,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * `@masai/schema-grid-io/export`'s `buildExportBlob` is the browser entry the
+ * `@ranjeetk25/schema-grid-io/export`'s `buildExportBlob` is the browser entry the
  * grid's `exportCurrentView` calls: it must work in a DOM runtime without
  * ever loading `node:stream`, and must type XLSX cells from raw values.
  */

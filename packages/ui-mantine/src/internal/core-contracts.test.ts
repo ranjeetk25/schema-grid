@@ -45,7 +45,7 @@ const schema: GridSchema = {
   ],
 };
 
-describe("core-contracts (real @masai/schema-grid-core)", () => {
+describe("core-contracts (real @ranjeetk25/schema-grid-core)", () => {
   it("re-exports the default registry with all 16 built-ins", () => {
     expect(registry.list().map((t) => t.id)).toEqual([...BUILTIN_FIELD_TYPE_IDS]);
     expect(registry.get("select")?.operators.find((o) => o.id === "isNot")?.negative).toBe(true);

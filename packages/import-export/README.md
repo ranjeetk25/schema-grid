@@ -1,17 +1,17 @@
-# @masai/schema-grid-io
+# @ranjeetk25/schema-grid-io
 
 CSV/XLSX import and export for Schema Grid, plus the TSV clipboard format used by
-`@masai/schema-grid-ag-grid`. The package runs in the browser (for previews and small
+`@ranjeetk25/schema-grid-ag-grid`. The package runs in the browser (for previews and small
 exports) and in Node (for server import/export jobs).
 
 ## Entry points
 
 | Subpath | Runs in | Heavy deps | Exports |
 |---|---|---|---|
-| `@masai/schema-grid-io/import` | browser + Node | papaparse, exceljs | `parseFile`, `autoMapColumns`, `validateRows`, `toChangeBatches`, `keyOf`, `chunkRows`, `createImportJobState`, `recordChunkResult`, `buildErrorReportCsv`, `KEY_COLUMN_TYPES`, `SheetNotFoundError`, `ImportConfigError` |
-| `@masai/schema-grid-io/export` | browser (Blob) + Node (stream) | papaparse, exceljs | `buildExport`, `buildExportBlob`, `buildExportStream`, `exportFileName`, `exportMimeType`, `HiddenColumnError` |
-| `@masai/schema-grid-io/clipboard` | anywhere | **none** | `formatForClipboard`, `formatMatrixForClipboard`, `parseClipboard` |
-| `@masai/schema-grid-io` | | | everything above |
+| `@ranjeetk25/schema-grid-io/import` | browser + Node | papaparse, exceljs | `parseFile`, `autoMapColumns`, `validateRows`, `toChangeBatches`, `keyOf`, `chunkRows`, `createImportJobState`, `recordChunkResult`, `buildErrorReportCsv`, `KEY_COLUMN_TYPES`, `SheetNotFoundError`, `ImportConfigError` |
+| `@ranjeetk25/schema-grid-io/export` | browser (Blob) + Node (stream) | papaparse, exceljs | `buildExport`, `buildExportBlob`, `buildExportStream`, `exportFileName`, `exportMimeType`, `HiddenColumnError` |
+| `@ranjeetk25/schema-grid-io/clipboard` | anywhere | **none** | `formatForClipboard`, `formatMatrixForClipboard`, `parseClipboard` |
+| `@ranjeetk25/schema-grid-io` | | | everything above |
 
 `./clipboard` has no runtime dependencies, so the grid can import it without
 pulling in exceljs or papaparse. `node:stream` is only loaded with a dynamic
@@ -88,7 +88,7 @@ its field type's `format`.
 
 ## Core integration
 
-Every core contract comes from `@masai/schema-grid-core` through one shim,
+Every core contract comes from `@ranjeetk25/schema-grid-core` through one shim,
 `src/internal/core.ts` (the only file allowed to import core). It imports **types only**,
 so no core code is bundled into `./clipboard`.
 

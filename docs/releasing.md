@@ -1,6 +1,6 @@
 # Releasing
 
-The five `@masai/schema-grid-*` packages are published to npmjs.com as public,
+The five `@ranjeetk25/schema-grid-*` packages are published to npmjs.com as public,
 MIT-licensed packages by [Changesets](https://github.com/changesets/changesets)
 running in GitHub Actions. Nobody runs `npm publish` by hand.
 
@@ -22,7 +22,7 @@ running in GitHub Actions. Nobody runs `npm publish` by hand.
         into its npm form (below)
      4. `bun scripts/prepare-publish.ts --check`
      5. `changeset publish`: `npm publish --provenance` per package, git tags
-        `@masai/schema-grid-core@x.y.z`, and GitHub Releases
+        `@ranjeetk25/schema-grid-core@x.y.z`, and GitHub Releases
 3. The workflow summary lists what was published.
 
 ### Why the manifests are rewritten at publish time
@@ -34,7 +34,7 @@ build. That condition must not reach npm:
 - `src/` is not in `files`, so it is not in the tarball.
 - Vite and webpack turn the `development` condition on in dev mode.
 
-A consumer's dev server would therefore resolve `@masai/schema-grid-core` to
+A consumer's dev server would therefore resolve `@ranjeetk25/schema-grid-core` to
 `./src/index.ts`, find no such file, and fail. Production builds would work, so
 the bug would only show up on developer machines.
 
@@ -75,7 +75,7 @@ automatically, and fails these checks until it has the same metadata block
 
 ### Why one version for everything (`fixed`)
 
-`.changeset/config.json` puts `@masai/schema-grid-*` in one `fixed` group. Any
+`.changeset/config.json` puts `@ranjeetk25/schema-grid-*` in one `fixed` group. Any
 release bumps every package to the same version, even packages that did not
 change.
 
@@ -83,7 +83,7 @@ change.
   depends on `ag-grid`, `core` and `io`, and the wire contract is shared by
   `core`, `server` and `ag-grid`. Mixed versions are the most likely way to
   break a consumer, and the hardest to debug.
-- Consumers only need one rule: "all `@masai/schema-grid-*` at the same
+- Consumers only need one rule: "all `@ranjeetk25/schema-grid-*` at the same
   version". Renovate or Dependabot can group them with one pattern.
 - Internal dependencies are published as exact versions, so installs always
   get a set that was tested together.
@@ -124,7 +124,7 @@ bun install && bun run typecheck && bun run test && bun run build && bun run ver
 git diff    # review, then commit on a branch and open a PR
 ```
 
-The script only rewrites `@masai/schema-grid…` tokens in git-tracked text
+The script only rewrites `@ranjeetk25/schema-grid…` tokens in git-tracked text
 files. It updates package names, imports, docs, the changeset `fixed` glob and
 the changeset front-matter. Anything else under `@masai/` is left alone. Update
 the scope in the admissions app's imports the same way.
@@ -211,12 +211,12 @@ package from 0.0.1 to **0.1.0**.
    package goes to `0.1.0` and gets a `CHANGELOG.md`.
 3. Merge that PR. `release.yml` runs again and publishes the 5 packages.
 4. Verify:
-   - <https://www.npmjs.com/package/@masai/schema-grid-core> shows 0.1.0 with a
+   - <https://www.npmjs.com/package/@ranjeetk25/schema-grid-core> shows 0.1.0 with a
      **Provenance** badge.
-   - `npm view @masai/schema-grid-core@0.1.0 exports` has no `development` key.
-   - `npm view @masai/schema-grid-ui-mantine@0.1.0 dependencies` shows
-     `@masai/schema-grid-core: 0.1.0`, not `workspace:*`.
-   - The repo has tags `@masai/schema-grid-*@0.1.0` and GitHub Releases.
+   - `npm view @ranjeetk25/schema-grid-core@0.1.0 exports` has no `development` key.
+   - `npm view @ranjeetk25/schema-grid-ui-mantine@0.1.0 dependencies` shows
+     `@ranjeetk25/schema-grid-core: 0.1.0`, not `workspace:*`.
+   - The repo has tags `@ranjeetk25/schema-grid-*@0.1.0` and GitHub Releases.
 5. Install it in the admissions monorepo, following
    [consuming.md](./consuming.md).
 
@@ -232,7 +232,7 @@ that are already on npm and publishes the rest.
 | Test a PR in the admissions app | add the `preview` label; the bot comments `bun add …@0.0.0-pr<N>-<sha7>` |
 | Change that needs no release (tests, docs inside a package) | `bun run changeset --empty`, or the `skip-changeset` label |
 | Pre-release channel (`1.0.0-beta.N`) | `bunx changeset pre enter beta`, commit, and release as usual. `bunx changeset pre exit` when done. |
-| Deprecate a bad version | `npm deprecate @masai/schema-grid-core@0.3.1 "broken: use 0.3.2"` for each package (needs an npm login with publish rights). Do not unpublish. |
+| Deprecate a bad version | `npm deprecate @ranjeetk25/schema-grid-core@0.3.1 "broken: use 0.3.2"` for each package (needs an npm login with publish rights). Do not unpublish. |
 
 Never run `npm publish` from a package folder. It would ship the
 `workspace:*`/`development` manifest. Only the release scripts publish.

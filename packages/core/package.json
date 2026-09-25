@@ -1,5 +1,5 @@
 {
-  "name": "@masai/schema-grid-core",
+  "name": "@ranjeetk25/schema-grid-core",
   "version": "0.0.1",
   "description": "Schema-driven data grid core: schemas, field types, filters, formulas and the wire contract. Zero UI dependencies.",
   "license": "MIT",

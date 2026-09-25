@@ -1,6 +1,6 @@
 /**
- * `@masai/schema-grid-server` root entry — Node-only, drizzle-free at runtime.
- * SQL/Drizzle APIs live in `@masai/schema-grid-server/drizzle`, DDL helpers in `/ddl`.
+ * `@ranjeetk25/schema-grid-server` root entry — Node-only, drizzle-free at runtime.
+ * SQL/Drizzle APIs live in `@ranjeetk25/schema-grid-server/drizzle`, DDL helpers in `/ddl`.
  */
 export const SCHEMA_GRID_SERVER_VERSION = "0.0.1";
 

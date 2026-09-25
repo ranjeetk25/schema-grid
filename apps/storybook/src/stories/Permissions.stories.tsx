@@ -1,6 +1,6 @@
 import { Badge, Stack, Table, Text, Title } from "@mantine/core";
-import { SchemaGrid } from "@masai/schema-grid-ag-grid";
-import { type Access, resolveColumnAccess } from "@masai/schema-grid-core";
+import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
+import { type Access, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo } from "react";
 import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";

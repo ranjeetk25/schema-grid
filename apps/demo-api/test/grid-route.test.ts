@@ -1,13 +1,13 @@
-import type { DataSource, GridRow } from "@masai/schema-grid-core";
-import { createFixtureSchema } from "@masai/schema-grid-core/testing";
+import type { DataSource, GridRow } from "@ranjeetk25/schema-grid-core";
+import { createFixtureSchema } from "@ranjeetk25/schema-grid-core/testing";
 import {
   CursorError,
   FilterValidationError,
   PermissionError,
   RowValidationError,
   SchemaValidationError,
-} from "@masai/schema-grid-server";
-import type { GridDb } from "@masai/schema-grid-server/drizzle";
+} from "@ranjeetk25/schema-grid-server";
+import type { GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type GridRequestContext, createApp } from "../src/app";
 import { gridTables } from "../src/db";

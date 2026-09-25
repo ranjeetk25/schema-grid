@@ -11,5 +11,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ["@masai/schema-grid-core", "drizzle-orm", "mysql2", "@masai/schema-grid-io"],
+  external: ["@ranjeetk25/schema-grid-core", "drizzle-orm", "mysql2", "@ranjeetk25/schema-grid-io"],
 });

@@ -1,6 +1,6 @@
-# @masai/schema-grid-ag-grid
+# @ranjeetk25/schema-grid-ag-grid
 
-An AG Grid (Community) binding for `@masai/schema-grid-core`: point it at a `GridSchema`, a `DataSource` and a
+An AG Grid (Community) binding for `@ranjeetk25/schema-grid-core`: point it at a `GridSchema`, a `DataSource` and a
 `GridUser`, and it compiles columns, wires permissions, editing, filtering, client/server row models and
 optimistic writes on top of AG Grid, entirely inside the free Community tier.
 
@@ -10,9 +10,9 @@ polling are all wired into the grid; see "Interaction features" and "Keyboard an
 ## Install
 
 ```bash
-bun add @masai/schema-grid-ag-grid ag-grid-community ag-grid-react react react-dom
+bun add @ranjeetk25/schema-grid-ag-grid ag-grid-community ag-grid-react react react-dom
 # optional, only needed for CSV/XLSX file export:
-bun add @masai/schema-grid-io
+bun add @ranjeetk25/schema-grid-io
 ```
 
 ### Peer dependencies
@@ -22,7 +22,7 @@ bun add @masai/schema-grid-io
 | `react` / `react-dom` | `^18.3.0` |
 | `ag-grid-community` | `^36.0.0` |
 | `ag-grid-react` | `^36.0.0` |
-| `@masai/schema-grid-io` | any (**optional** — only required if you call `exportCurrentView`) |
+| `@ranjeetk25/schema-grid-io` | any (**optional** — only required if you call `exportCurrentView`) |
 
 ## Enterprise-free guarantee
 
@@ -47,7 +47,7 @@ filter modules (our filters are custom), and anything from `ag-grid-enterprise`.
 ## Quick start
 
 ```tsx
-import { SchemaGrid } from "@masai/schema-grid-ag-grid";
+import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
 
 <SchemaGrid
   schema={schema}
@@ -61,7 +61,7 @@ around it):
 
 ```tsx
 import { AgGridReact } from "ag-grid-react";
-import { useSchemaGrid } from "@masai/schema-grid-ag-grid";
+import { useSchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
 
 function MyGrid() {
   const { gridProps } = useSchemaGrid({ schema, dataSource, user });
@@ -92,7 +92,7 @@ interface SchemaGridProps<Row extends GridRow = GridRow> {
   events?: SchemaGridEvents<Row>;
   mode?: "client" | "server";                // default "client"; must not change after mount
   tz?: string;                               // default DEFAULT_TZ
-  io?: { buildExportBlob };                  // io's export module; default: import("@masai/schema-grid-io/export")
+  io?: { buildExportBlob };                  // io's export module; default: import("@ranjeetk25/schema-grid-io/export")
   pageSize?: number;                         // default 100
   pageMode?: "offset" | "cursor";            // default "offset"; server mode only
   externalFilter?: FilterNode | null;
@@ -191,13 +191,13 @@ Server mode supports two paging strategies via `pageMode`:
 ## Talking to a server: `createHttpDataSource` / `createRemoteDataSource`
 
 The grid only needs a `DataSource`; it does not care how that data source reaches your backend. Two helpers
-build one over the transport-neutral wire contract (`@masai/schema-grid-core/wire`,
+build one over the transport-neutral wire contract (`@ranjeetk25/schema-grid-core/wire`,
 [`docs/wire-contract.md`](../../docs/wire-contract.md)):
 
 ```ts
-import { createHttpDataSource, createRemoteDataSource, unwrapWireResult } from "@masai/schema-grid-ag-grid";
+import { createHttpDataSource, createRemoteDataSource, unwrapWireResult } from "@ranjeetk25/schema-grid-ag-grid";
 
-// REST / Express / Hono / API Gateway — anything mounted with @masai/schema-grid-server/http
+// REST / Express / Hono / API Gateway — anything mounted with @ranjeetk25/schema-grid-server/http
 const dataSource = createHttpDataSource({
   baseUrl: "/api/grid",                       // POST /api/grid/fetch, /api/grid/applyChanges, ...
   headers: async () => ({ authorization: `Bearer ${await getToken()}` }),
@@ -302,7 +302,7 @@ swap in your own date-picker but keep the default renderer/filter), branch it wi
 returns a **new** registry, it never mutates the one you called it on:
 
 ```ts
-import { createDefaultUiRegistry } from "@masai/schema-grid-ag-grid";
+import { createDefaultUiRegistry } from "@ranjeetk25/schema-grid-ag-grid";
 
 const uiRegistry = createDefaultUiRegistry().extend({
   date: { editor: MyDatePickerEditor },
@@ -320,7 +320,7 @@ const uiRegistry = createDefaultUiRegistry().extend({
 handling focus retention, Enter/Tab/Esc forwarding, and commit/cancel plumbing for you:
 
 ```tsx
-import { createPopupEditor } from "@masai/schema-grid-ag-grid/editors";
+import { createPopupEditor } from "@ranjeetk25/schema-grid-ag-grid/editors";
 
 const MyPopupEditor = createPopupEditor<string>(({ value, onChange, commit, cancel }) => (
   <MySelect value={value} onChange={onChange} onConfirm={commit} onEscape={cancel} />
@@ -357,16 +357,16 @@ overlays that aren't Mantine.
 ## Subpath exports
 
 ```
-@masai/schema-grid-ag-grid          – SchemaGrid, useSchemaGrid, compileColumns, createDefaultUiRegistry,
+@ranjeetk25/schema-grid-ag-grid          – SchemaGrid, useSchemaGrid, compileColumns, createDefaultUiRegistry,
                                        UiFieldTypeRegistry types, captureViewState/applyViewState,
                                        exportCsv/exportCurrentView, createSchemaGridTheme, SG_CLASSES,
                                        SCHEMA_GRID_CLIENT_MODULES / SCHEMA_GRID_INFINITE_MODULES,
                                        store factories, planPaste/planFill, parseTsv/serializeTsv, createUndoStack,
                                        createHttpDataSource, createRemoteDataSource, RemoteDataSourceError,
                                        unwrapWireResult
-@masai/schema-grid-ag-grid/editors  – the built-in editors, createPopupEditor, ComboboxEditor
-@masai/schema-grid-ag-grid/filters  – the built-in filter components, filterModelToAst / astToFilterModel
-@masai/schema-grid-ag-grid/sync     – usePollingSync, planRemotePatch, useDocumentVisible
+@ranjeetk25/schema-grid-ag-grid/editors  – the built-in editors, createPopupEditor, ComboboxEditor
+@ranjeetk25/schema-grid-ag-grid/filters  – the built-in filter components, filterModelToAst / astToFilterModel
+@ranjeetk25/schema-grid-ag-grid/sync     – usePollingSync, planRemotePatch, useDocumentVisible
 ```
 
 Importing `./filters` does not pull in the grid component itself — pick the subpath that matches what you
@@ -410,16 +410,16 @@ CSS as a plain stylesheet instead.
   registry's `exportFormat`, falling back to the field type's `format`). Server mode: delegates to
   `exportCurrentView("csv", fileName)` and triggers a browser download of the result.
 - **`exportCurrentView(format, fileName?)`** — pages the **full current query** through `dataSource.fetch`
-  (not just the loaded/visible rows) and hands the **raw** rows + `ColumnDef`s to `@masai/schema-grid-io`'s
+  (not just the loaded/visible rows) and hands the **raw** rows + `ColumnDef`s to `@ranjeetk25/schema-grid-io`'s
   browser-safe `buildExportBlob({ columns, registry, rows, format, tz, fileName, access })`, which types the
   cells itself (XLSX numbers, dates, hyperlinks). Resolves to that `Blob`.
 
-`@masai/schema-grid-io` is an **optional peer dependency** — only `exportCurrentView` (and therefore
+`@ranjeetk25/schema-grid-io` is an **optional peer dependency** — only `exportCurrentView` (and therefore
 server-mode `exportCsv`, and any XLSX export) needs it. By default it is loaded with a literal
-`import("@masai/schema-grid-io/export")` (bundlers resolve and code-split it); to avoid any lookup, pass it in:
+`import("@ranjeetk25/schema-grid-io/export")` (bundlers resolve and code-split it); to avoid any lookup, pass it in:
 
 ```tsx
-import * as io from "@masai/schema-grid-io/export";
+import * as io from "@ranjeetk25/schema-grid-io/export";
 <SchemaGrid io={io} ... />; // or exportCurrentView({ ..., io })
 ```
 

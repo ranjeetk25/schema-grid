@@ -1,4 +1,4 @@
-// Public barrel for `@masai/schema-grid-ag-grid/editors`.
+// Public barrel for `@ranjeetk25/schema-grid-ag-grid/editors`.
 export { DEFAULT_EDITORS } from "./defaultEditors";
 export {
   createPopupEditor,

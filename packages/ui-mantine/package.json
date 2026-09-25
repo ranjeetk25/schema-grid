@@ -1,5 +1,5 @@
 {
-  "name": "@masai/schema-grid-ui-mantine",
+  "name": "@ranjeetk25/schema-grid-ui-mantine",
   "version": "0.0.1",
   "description": "Mantine v8 UI for Schema Grid: cell editors, filter and column builders, import wizard and export dialog.",
   "license": "MIT",
@@ -73,9 +73,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@masai/schema-grid-ag-grid": "workspace:*",
-    "@masai/schema-grid-core": "workspace:*",
-    "@masai/schema-grid-io": "workspace:*",
+    "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+    "@ranjeetk25/schema-grid-core": "workspace:*",
+    "@ranjeetk25/schema-grid-io": "workspace:*",
     "@tabler/icons-react": "^3.48.0"
   },
   "peerDependencies": {

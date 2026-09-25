@@ -1,6 +1,6 @@
 /**
  * Server fixture, built on top of core's shared fixture
- * (`@masai/schema-grid-core/testing`). Core owns the canonical admissions-style
+ * (`@ranjeetk25/schema-grid-core/testing`). Core owns the canonical admissions-style
  * schema + r1..r5 rows (all 16 built-in field types, permission split between
  * `FIXTURE_USERS.admin`/`counsellor`, and the §8 IST/UTC "yesterday" boundary).
  *
@@ -33,7 +33,7 @@ import {
   createFixtureSchema,
   fixtureRows,
   fixtureSchema,
-} from "@masai/schema-grid-core/testing";
+} from "@ranjeetk25/schema-grid-core/testing";
 
 export {
   FIXTURE_COLUMN_IDS,

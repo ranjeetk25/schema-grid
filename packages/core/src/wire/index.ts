@@ -1,4 +1,4 @@
-// `@masai/schema-grid-core/wire` — transport-neutral contract for running a
+// `@ranjeetk25/schema-grid-core/wire` — transport-neutral contract for running a
 // DataSource across a network boundary (tRPC, REST, Hono, Lambda, ...).
 export {
   GRID_OPERATIONS,
