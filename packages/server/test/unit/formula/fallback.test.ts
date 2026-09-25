@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createServerContext, type ServerWarning } from "../../../src/context";
-import { FormulaQueryLimitError, PermissionError } from "../../../src/errors";
+import { CursorError, FormulaQueryLimitError, PermissionError } from "../../../src/errors";
 import { splitFilterForPushdown } from "../../../src/formula/fallback";
 import { planFormulaColumns } from "../../../src/formula/formula-plan";
 import {
@@ -9,6 +9,7 @@ import {
   createDefaultRegistry,
   createRolePermissionResolver,
 } from "../../../src/internal/core";
+import { encodeCursor, queryFingerprint } from "../../../src/pagination/cursor";
 import { runRowQuery } from "../../../src/query/run-query";
 import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
 import { col, tables } from "../../helpers/schemas";
@@ -133,6 +134,16 @@ describe("runRowQuery fallback path", () => {
     await expect(runRowQuery(q({ sort: [{ columnId: "salary", dir: "asc" }, { columnId: "activeFee", dir: "asc" }] }), scope, db)).rejects.toBeInstanceOf(
       PermissionError,
     );
+    expect(warnings).toEqual([]);
+    expect(statements()).toHaveLength(0);
+  });
+
+  it("a keyset cursor on a fallback query throws CursorError and emits no warning", async () => {
+    const { db, scope, warnings, statements } = setup();
+    const query = q({ sort: [{ columnId: "activeFee", dir: "asc" }] });
+    const fp = queryFingerprint(query, schema.schemaVersion);
+    const cursor = encodeCursor({ v: 1, mode: "keyset", fp, keys: [], id: "a" });
+    await expect(runRowQuery({ ...query, page: { cursor, limit: 10 } }, scope, db)).rejects.toBeInstanceOf(CursorError);
     expect(warnings).toEqual([]);
     expect(statements()).toHaveLength(0);
   });

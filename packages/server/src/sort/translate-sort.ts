@@ -41,11 +41,14 @@ export function translateSort(sort: SortSpec[], scope: SqlScope): { orderBy: SQL
     }
 
     const nullFlag = sql`(CASE WHEN ${resolved.empty} THEN 1 ELSE 0 END)`;
+    // NULL for every empty form ('' included), so inside the empty group rows are ordered by id only —
+    // exactly what the keyset predicate assumes.
+    const expr = sql`(CASE WHEN ${resolved.empty} THEN NULL ELSE ${resolved.typed} END)`;
     const dirSql = spec.dir === "desc" ? sql`DESC` : sql`ASC`;
 
     orderBy.push(sql`${nullFlag} ASC`);
-    orderBy.push(sql`${resolved.typed} ${dirSql}`);
-    keys.push({ columnId: column.id, dir: spec.dir, expr: resolved.typed, nullFlag, kind: resolved.kind });
+    orderBy.push(sql`${expr} ${dirSql}`);
+    keys.push({ columnId: column.id, dir: spec.dir, expr, nullFlag, kind: resolved.kind });
   }
 
   orderBy.push(ID_ASC);

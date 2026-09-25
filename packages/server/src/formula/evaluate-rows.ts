@@ -47,7 +47,8 @@ export function evaluateFormulaCells<Row extends GridRow>(rows: Row[], access: A
   if (formulas.length === 0 || rows.length === 0) return rows;
   const asts = formulaAsts(schema);
   const env = { now: ctx.now(), tz: ctx.tz };
-  return rows.map((row) => {
+  const failures = new Map<string, { count: number; message: string }>();
+  const out = rows.map((row) => {
     const cells: Record<string, unknown> = { ...row.cells };
     for (const column of formulas) {
       delete cells[column.key];
@@ -56,11 +57,16 @@ export function evaluateFormulaCells<Row extends GridRow>(rows: Row[], access: A
       if (!ast) continue;
       const value = evaluate(ast, row, schema, env);
       if (isFormulaError(value)) {
-        console.error(`[schema-grid-server] formula ${column.id} failed on row ${row.id}: ${value.message}`);
+        const f = failures.get(column.id);
+        failures.set(column.id, { count: (f?.count ?? 0) + 1, message: f?.message ?? value.message });
         continue;
       }
       if (!isEmptyValue(value)) cells[column.key] = value;
     }
     return { ...row, cells };
   });
+  for (const [columnId, f] of failures) {
+    console.error(`[schema-grid-server] formula ${columnId} failed on ${f.count} row(s): ${f.message}`);
+  }
+  return out;
 }

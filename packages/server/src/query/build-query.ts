@@ -6,7 +6,7 @@ import { translateFilter } from "../filter/translate-filter";
 import { planFormulaColumns } from "../formula/formula-plan";
 import type { GridQuery } from "../internal/core";
 import { assertCursorMatches, decodeCursor, queryFingerprint } from "../pagination/cursor";
-import { keysetPredicate } from "../pagination/keyset";
+import { keysetPredicate, sortKeySelect } from "../pagination/keyset";
 import { offsetClause } from "../pagination/offset";
 import { translateSearch } from "../search/translate-search";
 import type { FormulaPlan, SqlScope } from "../sql/scope";
@@ -93,7 +93,7 @@ export function buildQuery(query: GridQuery, scope: GridSqlScope, db: SelectCapa
   const formulaPlans = scope.formulaPlans ?? planFormulaColumns(scope);
   const planned: GridSqlScope = { ...scope, formulaPlans };
 
-  const fingerprint = queryFingerprint(query);
+  const fingerprint = queryFingerprint(query, planned.ctx.schema.schemaVersion);
   const paging = resolvePaging(query, fingerprint);
 
   const rows = planned.tables.rows;
@@ -108,7 +108,7 @@ export function buildQuery(query: GridQuery, scope: GridSqlScope, db: SelectCapa
 
   const projection: ProjectionSelect = projectionSql(planned.ctx.schema, resolvedAccess, planned.tables);
   let select = db
-    .select(projection)
+    .select({ ...projection, ...sortKeySelect(sortKeys) })
     .from(rows)
     .where(and(...baseWhere, keyset))
     .orderBy(...orderBy)

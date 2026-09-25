@@ -7,7 +7,7 @@ import {
   queryFingerprint,
   type CursorPayload,
 } from "../../../src/pagination/cursor";
-import { MAX_PAGE_LIMIT, hasNextPage, offsetClause, trimPage } from "../../../src/pagination/offset";
+import { MAX_OFFSET, MAX_PAGE_LIMIT, hasNextPage, offsetClause, trimPage } from "../../../src/pagination/offset";
 
 describe("encodeCursor / decodeCursor", () => {
   it("round-trips a keyset payload", () => {
@@ -31,6 +31,19 @@ describe("encodeCursor / decodeCursor", () => {
     expect(() => decodeCursor(bad)).toThrow(CursorError);
     const missingFp = Buffer.from(JSON.stringify({ v: 1, mode: "offset" }), "utf8").toString("base64url");
     expect(() => decodeCursor(missingFp)).toThrow(CursorError);
+  });
+
+  it("throws CursorError when a key is an object", () => {
+    const bad = Buffer.from(
+      JSON.stringify({ v: 1, mode: "keyset", fp: "abc", keys: [{ nope: 1 }], id: "r1" }),
+      "utf8",
+    ).toString("base64url");
+    expect(() => decodeCursor(bad)).toThrow(CursorError);
+  });
+
+  it("throws CursorError on a negative offset", () => {
+    const bad = Buffer.from(JSON.stringify({ v: 1, mode: "offset", fp: "abc", offset: -1 }), "utf8").toString("base64url");
+    expect(() => decodeCursor(bad)).toThrow(CursorError);
   });
 });
 
@@ -73,5 +86,13 @@ describe("offsetClause / hasNextPage / trimPage", () => {
 
     expect(hasNextPage(rows, 4)).toBe(false);
     expect(trimPage(rows, 10)).toEqual({ rows, hasMore: false });
+  });
+
+  it("clamps a huge offset to MAX_OFFSET", () => {
+    expect(offsetClause({ limit: 10, offset: 5_000_000_000 })).toEqual({ limit: 10, offset: MAX_OFFSET });
+  });
+
+  it("an Infinity limit clamps to MAX_PAGE_LIMIT", () => {
+    expect(offsetClause({ limit: Number.POSITIVE_INFINITY })).toEqual({ limit: MAX_PAGE_LIMIT, offset: 0 });
   });
 });

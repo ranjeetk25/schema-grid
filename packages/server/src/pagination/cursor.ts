@@ -42,17 +42,27 @@ function isCursorPayload(value: unknown): value is CursorPayload {
   if (p.v !== 1) return false;
   if (p.mode !== "keyset" && p.mode !== "offset") return false;
   if (typeof p.fp !== "string") return false;
-  if (p.keys !== undefined && !Array.isArray(p.keys)) return false;
+  if (p.keys !== undefined) {
+    if (!Array.isArray(p.keys)) return false;
+    const ok = p.keys.every(
+      (k) => k === null || typeof k === "string" || typeof k === "boolean" || (typeof k === "number" && Number.isFinite(k)),
+    );
+    if (!ok) return false;
+  }
   if (p.id !== undefined && typeof p.id !== "string") return false;
-  if (p.offset !== undefined && typeof p.offset !== "number") return false;
+  if (p.offset !== undefined && (typeof p.offset !== "number" || !Number.isSafeInteger(p.offset) || p.offset < 0)) return false;
   return true;
 }
 
 type FingerprintInput = Pick<GridQuery, "filter" | "sort" | "search" | "groupBy">;
 
-/** Stable short hash of filter + sort + search + groupBy, used to invalidate stale cursors. */
-export function queryFingerprint(query: FingerprintInput): string {
+/**
+ * Stable short hash of filter + sort + search + groupBy (+ schemaVersion when given),
+ * used to invalidate stale cursors — including after a schema change.
+ */
+export function queryFingerprint(query: FingerprintInput, schemaVersion?: number): string {
   const canonical = canonicalize({
+    schemaVersion: schemaVersion ?? null,
     filter: query.filter ?? null,
     sort: query.sort ?? [],
     search: query.search ?? "",

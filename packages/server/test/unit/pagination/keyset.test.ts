@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { queryFingerprint } from "../../../src/pagination/cursor";
-import { cursorFromRow, keysetPredicate } from "../../../src/pagination/keyset";
+import { cursorFromDbRow, keysetPredicate } from "../../../src/pagination/keyset";
 import { translateSort } from "../../../src/sort/translate-sort";
 import { allTypesSchema, makeCtx, makeScope } from "../../helpers/schemas";
 import { renderSql } from "../../helpers/sql";
@@ -20,7 +20,7 @@ describe("keysetPredicate", () => {
     const { sql: rendered, params } = renderSql(keysetPredicate(keys, { keys: [120, "bob"], id: "row1" }));
 
     expect(rendered).toMatchInlineSnapshot(
-      `"((((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 1 OR (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) < ?)) OR (((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 0 AND (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) = ?) AND ((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN 1 ELSE 0 END) = 1 OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci > ?)) OR (((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 0 AND (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) = ?) AND ((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN 1 ELSE 0 END) = 0 AND IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = ?) AND \`id\` > ?))"`,
+      `"((((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 1 OR (CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN NULL ELSE (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) END) < ?)) OR (((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 0 AND (CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN NULL ELSE (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) END) = ?) AND ((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN 1 ELSE 0 END) = 1 OR (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci END) > ?)) OR (((CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) = 0 AND (CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN NULL ELSE (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) END) = ?) AND ((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN 1 ELSE 0 END) = 0 AND (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '') THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci END) = ?) AND \`id\` > ?))"`,
     );
     expect(params).toEqual([120, 120, "bob", 120, "bob", "row1"]);
   });
@@ -52,8 +52,8 @@ describe("keysetPredicate", () => {
   });
 });
 
-describe("cursorFromRow", () => {
-  it("builds the next cursor from the last row's cell values", () => {
+describe("cursorFromDbRow", () => {
+  it("builds the next cursor from the last DB row's raw sort-key select values", () => {
     const { keys } = translateSort(
       [
         { columnId: "fee", dir: "desc" },
@@ -62,33 +62,30 @@ describe("cursorFromRow", () => {
       scope,
     );
     const fp = queryFingerprint({ filter: null, sort: [], search: undefined, groupBy: [] });
-    const row = {
-      id: "row1",
-      version: 1,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      cells: { fee: 120, name: "bob" },
-    };
-    const payload = cursorFromRow(row, keys, scope, fp);
+    const dbRow = { id: "row1", __sk0: 120, __sn0: 0, __sk1: "bob", __sn1: 0 };
+    const payload = cursorFromDbRow(dbRow, keys, fp);
     expect(payload).toEqual({ v: 1, mode: "keyset", fp, keys: [120, "bob"], id: "row1" });
   });
 
-  it("normalizes empty values (undefined/''/[]) to null", () => {
+  it("treats a null flag of 1 as a null key regardless of the raw value", () => {
     const { keys } = translateSort([{ columnId: "name", dir: "asc" }], scope);
     const fp = "fp1";
-    const row = { id: "row2", version: 1, updatedAt: "2026-01-01T00:00:00.000Z", cells: { name: "" } };
-    const payload = cursorFromRow(row, keys, scope, fp);
+    const dbRow = { id: "row2", __sk0: "", __sn0: 1 };
+    const payload = cursorFromDbRow(dbRow, keys, fp);
     expect(payload.keys).toEqual([null]);
   });
 
   it("keeps datetime values as ISO strings", () => {
     const { keys } = translateSort([{ columnId: "calledAt", dir: "asc" }], scope);
-    const row = {
-      id: "row3",
-      version: 1,
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      cells: { calledAt: "2026-02-03T04:05:06.000Z" },
-    };
-    const payload = cursorFromRow(row, keys, scope, "fp1");
+    const dbRow = { id: "row3", __sk0: "2026-02-03T04:05:06.000Z", __sn0: 0 };
+    const payload = cursorFromDbRow(dbRow, keys, "fp1");
     expect(payload.keys).toEqual(["2026-02-03T04:05:06.000Z"]);
+  });
+
+  it("preserves a raw DECIMAL string exactly, without float rounding", () => {
+    const { keys } = translateSort([{ columnId: "fee", dir: "asc" }], scope);
+    const dbRow = { id: "row4", __sk0: "1.2345678901", __sn0: 0 };
+    const payload = cursorFromDbRow(dbRow, keys, "fp1");
+    expect(payload.keys).toEqual(["1.2345678901"]);
   });
 });

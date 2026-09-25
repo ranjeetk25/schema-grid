@@ -1,7 +1,7 @@
 import { type SQL, and, eq, isNull } from "drizzle-orm";
 import { projectRow, projectionSql } from "../access/projection";
 import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
-import { FormulaQueryLimitError } from "../errors";
+import { CursorError, FormulaQueryLimitError } from "../errors";
 import { translateFilter } from "../filter/translate-filter";
 import { type FilterNode, type GridQuery, type GridRow, type QueryResult, compareRows, matchesFilter } from "../internal/core";
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
@@ -75,18 +75,20 @@ export async function executeFallbackQuery(
   const planned: GridSqlScope = { ...scope, formulaPlans: plans };
   const columnIds = fallbackColumnIds(query, plans);
   const cap = ctx.formulaFallbackRowCap;
-  ctx.onWarning?.({ code: "FORMULA_FALLBACK", columnIds, rowCap: cap });
 
-  const fingerprint = queryFingerprint(query);
+  const fingerprint = queryFingerprint(query, ctx.schema.schemaVersion);
   let offset = 0;
   let limit: number;
   if (typeof query.page.cursor === "string" && query.page.cursor !== "") {
     const payload = decodeCursor(query.page.cursor);
     assertCursorMatches(payload, fingerprint);
+    if (payload.mode !== "offset") throw new CursorError("Formula fallback queries page with offset cursors only");
     ({ limit, offset } = offsetClause({ limit: query.page.limit, offset: payload.offset ?? 0 }));
   } else {
     ({ limit, offset } = offsetClause({ limit: query.page.limit, offset: query.page.offset ?? 0 }));
   }
+
+  ctx.onWarning?.({ code: "FORMULA_FALLBACK", columnIds, rowCap: cap });
 
   const { sqlPart, memoryPart } = splitFilterForPushdown(query.filter, plans);
   const rowsTable = planned.tables.rows;

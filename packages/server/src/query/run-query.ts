@@ -1,4 +1,4 @@
-import { type AccessMap, resolveAccess } from "../access/query-access";
+import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import { executeFallbackQuery, fallbackColumnIds } from "../formula/fallback";
 import { planFormulaColumns } from "../formula/formula-plan";
@@ -17,6 +17,8 @@ export async function runRowQuery(
   db: SelectCapableDb,
   access: AccessMap = resolveAccess(scope.ctx),
 ): Promise<QueryResult<GridRow>> {
+  // Validate/permission-check before anything inspects the query shape.
+  assertQueryAccess(query, scope.ctx, access);
   const formulaPlans = scope.formulaPlans ?? planFormulaColumns(scope);
   const planned: GridSqlScope = { ...scope, formulaPlans };
   if (fallbackColumnIds(query, formulaPlans).length > 0) {

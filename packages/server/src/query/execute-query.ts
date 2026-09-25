@@ -1,7 +1,7 @@
 import { projectRow } from "../access/projection";
 import type { GridRow, QueryResult } from "../internal/core";
 import { encodeCursor } from "../pagination/cursor";
-import { cursorFromRow } from "../pagination/keyset";
+import { cursorFromDbRow } from "../pagination/keyset";
 import { trimPage } from "../pagination/offset";
 import { hydrateRow } from "../storage/hydrate";
 import type { BuiltQuery, GridSqlScope } from "./build-query";
@@ -34,11 +34,12 @@ export async function executeQuery(
 
   const result: QueryResult<GridRow> = { rows };
   if (hasMore) {
-    const last = rows.at(-1);
+    const lastDb = page.at(-1);
     if (built.pageMode === "keyset") {
-      if (last) {
-        const planned = { ...scope, formulaPlans: built.formulaPlans };
-        result.nextCursor = encodeCursor(cursorFromRow(last, built.sortKeys, planned, built.fingerprint));
+      if (lastDb) {
+        result.nextCursor = encodeCursor(
+          cursorFromDbRow(lastDb as unknown as Record<string, unknown>, built.sortKeys, built.fingerprint),
+        );
       }
     } else {
       result.nextCursor = encodeCursor({ v: 1, mode: "offset", fp: built.fingerprint, offset: built.offset + built.limit });

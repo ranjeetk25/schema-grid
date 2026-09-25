@@ -21,7 +21,7 @@ describe("translateSort", () => {
   it("a number sort uses the DECIMAL cast", () => {
     const { orderBy } = translateSort([{ columnId: "fee", dir: "asc" }], makeScope());
     expect(orderSql(orderBy).sql).toMatchInlineSnapshot(
-      `"(CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) ASC, (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) ASC, \`id\` ASC"`,
+      `"(CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) ASC, (CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN NULL ELSE (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) END) ASC, \`id\` ASC"`,
     );
   });
 
@@ -30,7 +30,7 @@ describe("translateSort", () => {
     const rendered = orderSql(orderBy).sql;
     expect(rendered.startsWith("(CASE WHEN")).toBe(true);
     expect(rendered).toContain(
-      "ASC, CAST(IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')), NULL) AS DATE) DESC",
+      "THEN NULL ELSE CAST(IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')), NULL) AS DATE) END) DESC",
     );
     expect(rendered.endsWith("`id` ASC")).toBe(true);
     expect(keys[0]?.dir).toBe("desc");
@@ -53,14 +53,16 @@ describe("translateSort", () => {
   it("a physical-source column sorts on the table column", () => {
     const { orderBy } = translateSort([{ columnId: "contactEmail", dir: "asc" }], makeScope());
     expect(orderSql(orderBy).sql).toBe(
-      "(CASE WHEN (`email_addr` IS NULL OR `email_addr` = '') THEN 1 ELSE 0 END) ASC, `email_addr` ASC, `id` ASC",
+      "(CASE WHEN (`email_addr` IS NULL OR `email_addr` = '') THEN 1 ELSE 0 END) ASC, " +
+        "(CASE WHEN (`email_addr` IS NULL OR `email_addr` = '') THEN NULL ELSE `email_addr` END) ASC, `id` ASC",
     );
   });
 
   it("an indexed column sorts on gc_<key>", () => {
     const { orderBy } = translateSort([{ columnId: "indexedFee", dir: "asc" }], makeScope());
     expect(orderSql(orderBy).sql).toBe(
-      "(CASE WHEN (`gc_indexedFee` IS NULL) THEN 1 ELSE 0 END) ASC, `gc_indexedFee` ASC, `id` ASC",
+      "(CASE WHEN (`gc_indexedFee` IS NULL) THEN 1 ELSE 0 END) ASC, " +
+        "(CASE WHEN (`gc_indexedFee` IS NULL) THEN NULL ELSE `gc_indexedFee` END) ASC, `id` ASC",
     );
   });
 
@@ -75,6 +77,13 @@ describe("translateSort", () => {
 
   it("an unknown column id throws UnsupportedOperatorError", () => {
     expect(() => translateSort([{ columnId: "nope", dir: "asc" }], makeScope())).toThrow(UnsupportedOperatorError);
+  });
+
+  it("the value term is NULL for empty rows (CASE WHEN <empty> THEN NULL ELSE <typed> END)", () => {
+    const { keys } = translateSort([{ columnId: "fee", dir: "asc" }], makeScope());
+    const rendered = renderSql(keys[0]!.expr).sql;
+    expect(rendered).toMatch(/^\(CASE WHEN .+ THEN NULL ELSE .+ END\)$/);
+    expect(rendered).toContain("THEN NULL ELSE");
   });
 
   it("SortKey carries columnId, dir, expr and nullFlag", () => {

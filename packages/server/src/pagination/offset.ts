@@ -10,7 +10,10 @@ export function offsetClause(page: OffsetPage): { limit: number; offset: number 
   return { limit: clampLimit(page.limit), offset: clampOffset(page.offset) };
 }
 
+export const MAX_OFFSET = 1_000_000_000;
+
 function clampLimit(limit: number): number {
+  if (limit === Number.POSITIVE_INFINITY) return MAX_PAGE_LIMIT;
   const n = Math.trunc(limit);
   if (!Number.isFinite(n) || n < 1) return 1;
   if (n > MAX_PAGE_LIMIT) return MAX_PAGE_LIMIT;
@@ -21,7 +24,7 @@ function clampOffset(offset: number | undefined): number {
   if (offset === undefined) return 0;
   const n = Math.trunc(offset);
   if (!Number.isFinite(n) || n < 0) return 0;
-  return n;
+  return Math.min(n, MAX_OFFSET);
 }
 
 /** True when more rows exist beyond `limit` (call with `limit + 1` rows fetched). */

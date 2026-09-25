@@ -39,7 +39,7 @@ describe("buildGroupQuery", () => {
     expect(q.sql).toMatchInlineSnapshot(`"select (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci = '') THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci END) as \`sg_group_key\`, MAX(CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci = '') THEN 1 ELSE 0 END) as \`sg_group_empty\`, COUNT(*) as \`sg_count\`, COUNT(*) as \`sg_agg_0\`, SUM((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)) as \`sg_agg_1\`, SUM(CASE WHEN (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL) THEN 1 ELSE 0 END) as \`sg_agg_2\` from \`grid_rows\` where (\`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`deleted_at\` is null) group by \`sg_group_key\` order by \`sg_group_empty\` ASC, \`sg_group_key\` ASC limit ?"`);
     expect(q.params).toEqual(["grid_all", 51]);
     expect(built.count).toBeUndefined();
-    expect(built.fingerprint).toBe(queryFingerprint(BY_STATUS));
+    expect(built.fingerprint).toBe(queryFingerprint(BY_STATUS, schema.schemaVersion));
     expect(built.limit).toBe(50);
     expect(built.offset).toBe(0);
   });
@@ -129,7 +129,7 @@ describe("buildGroupQuery", () => {
   });
 
   it("offset cursors must match the query fingerprint; keyset cursors are rejected", () => {
-    const fp = queryFingerprint(BY_STATUS);
+    const fp = queryFingerprint(BY_STATUS, schema.schemaVersion);
     const ok = encodeCursor({ v: 1, mode: "offset", fp, offset: 50 });
     const q = renderQuery(buildGroupQuery({ ...BY_STATUS, page: { cursor: ok, limit: 50 } }, scopeFor(), mockDb()).select);
     expect(q.params).toEqual(["grid_all", 51, 50]);

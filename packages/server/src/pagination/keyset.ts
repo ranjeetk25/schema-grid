@@ -1,9 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
-import type { GridRow } from "../internal/core";
 import { ident } from "../sql/column-expr";
-import type { SqlScope } from "../sql/scope";
 import type { StorageKind } from "../sql/storage-kind";
-import { storageKindOf } from "../sql/storage-kind";
 import type { SortKey } from "../sort/translate-sort";
 import type { CursorPayload } from "./cursor";
 
@@ -62,26 +59,35 @@ export function keysetPredicate(keys: readonly SortKey[], cursor: KeysetCursor):
   return sql`(${sql.join(branches, sql` OR `)})`;
 }
 
-function normalizeCellValue(raw: unknown, kind: StorageKind, subPath: string | undefined): CursorKeyValue {
-  if (raw === null || raw === undefined || raw === "") return null;
-  if (Array.isArray(raw) && raw.length === 0) return null;
+/** Select-map aliases carrying each sort key's SQL value / empty flag (see `sortKeySelect`). */
+export const sortValueAlias = (i: number) => `__sk${i}`;
+export const sortNullAlias = (i: number) => `__sn${i}`;
 
-  if (subPath === "id" && raw !== null && typeof raw === "object") {
-    const id = (raw as Record<string, unknown>).id;
-    return typeof id === "string" ? id : null;
-  }
-
-  if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return raw;
-  return null;
+/** Extra select fields so the next cursor is built from the exact SQL sort values, not JS values. */
+export function sortKeySelect(keys: readonly SortKey[]): Record<string, SQL> {
+  const out: Record<string, SQL> = {};
+  keys.forEach((k, i) => {
+    out[sortValueAlias(i)] = k.expr;
+    out[sortNullAlias(i)] = k.nullFlag;
+  });
+  return out;
 }
 
-/** Builds the next keyset cursor payload from the last row of a page. */
-export function cursorFromRow(row: GridRow, keys: readonly SortKey[], scope: SqlScope, fp: string): CursorPayload {
-  const values = keys.map((key) => {
-    const column = scope.ctx.schema.columns.find((c) => c.id === key.columnId);
-    if (!column) return null;
-    const info = storageKindOf(column, scope.ctx.registry, scope.storageOverrides);
-    return normalizeCellValue(row.cells[column.key], info.kind, info.subPath);
-  });
-  return { v: 1, mode: "keyset", fp, keys: values, id: row.id };
+function rawKeyValue(v: unknown): CursorKeyValue {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "boolean") return v;
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (v instanceof Date) return v.toISOString();
+  // DECIMAL/bigint come back as strings from mysql2; anything else is stringified for an exact re-bind.
+  return String(v);
+}
+
+/** Next keyset cursor from the last DB row of a page, using the `sortKeySelect` values. */
+export function cursorFromDbRow(
+  dbRow: Record<string, unknown>,
+  keys: readonly SortKey[],
+  fp: string,
+): CursorPayload {
+  const values = keys.map((_, i) => (Number(dbRow[sortNullAlias(i)]) === 1 ? null : rawKeyValue(dbRow[sortValueAlias(i)])));
+  return { v: 1, mode: "keyset", fp, keys: values, id: String(dbRow.id) };
 }

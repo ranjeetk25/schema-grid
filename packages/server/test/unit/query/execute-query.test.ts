@@ -9,7 +9,7 @@ import { allTypesSchema, col, makeCtx, makeScope } from "../../helpers/schemas";
 const ADMIN_ONLY = { read: { roles: ["admin"] }, edit: { roles: ["admin"] } };
 const schema = allTypesSchema([col("salary", "number", { permissions: ADMIN_ONLY })]);
 const COUNSELLOR = { id: "c1", roles: ["counsellor"] };
-const FIELDS = ["id", "version", "updatedAt", "updatedBy", "email_addr", "cells"];
+const FIELDS = ["id", "version", "updatedAt", "updatedBy", "email_addr", "cells", "__sk0", "__sn0"];
 
 const scopeFor = (user = { id: "u1", roles: ["admin"] }) => ({ ...makeScope(makeCtx(schema, { user })), gridId: "grid_all" });
 
@@ -64,7 +64,11 @@ describe("executeQuery", () => {
   });
 
   it("returns a keyset nextCursor from the last kept row when limit + 1 rows came back", async () => {
-    const { db } = fakeWith([dbRow("r1", { fee: 900 }), dbRow("r2", { fee: 500 }), dbRow("r3", { fee: 100 })]);
+    const { db } = fakeWith([
+      dbRow("r1", { fee: 900 }, { __sk0: 900, __sn0: 0 }),
+      dbRow("r2", { fee: 500 }, { __sk0: 500, __sn0: 0 }),
+      dbRow("r3", { fee: 100 }, { __sk0: 100, __sn0: 0 }),
+    ]);
     const scope = scopeFor();
     const fp = buildQuery(sorted(2), scope, db).fingerprint;
     const cursor = encodeCursor({ v: 1, mode: "keyset", fp, keys: [1000], id: "r0" });
@@ -74,6 +78,31 @@ describe("executeQuery", () => {
     expect(res.rows.map((r) => r.id)).toEqual(["r1", "r2"]);
     expect(res.nextCursor).toBeDefined();
     expect(decodeCursor(res.nextCursor as string)).toEqual({ v: 1, mode: "keyset", fp: built.fingerprint, keys: [500], id: "r2" });
+  });
+
+  it("a keyset nextCursor carries the RAW DB decimal string, and a null key when __sn0 is 1", async () => {
+    const { db } = fakeWith([
+      dbRow("r1", { fee: 900 }, { __sk0: "900", __sn0: 0 }),
+      dbRow("r2", { fee: 1.23456789012345 }, { __sk0: "1.2345678901", __sn0: 0 }),
+      dbRow("r3", {}, { __sk0: null, __sn0: 1 }),
+    ]);
+    const scope = scopeFor();
+    const built = buildQuery(sorted(2, { page: { cursor: "", limit: 2 } }), scope, db);
+    expect(built.pageMode).toBe("keyset");
+    const res = await executeQuery(built, scope);
+    // last kept row (limit=2) is r2: the raw DECIMAL string is preserved exactly, not parsed to a float.
+    expect(decodeCursor(res.nextCursor as string)).toEqual({
+      v: 1,
+      mode: "keyset",
+      fp: built.fingerprint,
+      keys: ["1.2345678901"],
+      id: "r2",
+    });
+
+    const { db: db2 } = fakeWith([dbRow("r1", { fee: 900 }, { __sk0: null, __sn0: 1 }), dbRow("r2", {}, { __sk0: null, __sn0: 1 })]);
+    const built2 = buildQuery(sorted(1, { page: { cursor: "", limit: 1 } }), scope, db2);
+    const res2 = await executeQuery(built2, scope);
+    expect(decodeCursor(res2.nextCursor as string)).toEqual({ v: 1, mode: "keyset", fp: built2.fingerprint, keys: [null], id: "r1" });
   });
 
   it("returns an offset nextCursor for offset paging", async () => {

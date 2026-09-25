@@ -200,7 +200,7 @@ export function buildGroupQuery(
     fields[aggAlias(i)] = built.sql.as(aggAlias(i));
   });
 
-  const fingerprint = queryFingerprint(query);
+  const fingerprint = queryFingerprint(query, scope.ctx.schema.schemaVersion);
   const paging = resolvePaging(query, fingerprint);
 
   const rows = planned.tables.rows;
