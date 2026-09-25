@@ -28,18 +28,6 @@ export type {
   ViewDef,
 } from "./schema/types";
 export type {
-  DateRange,
-  FilterCondition,
-  FilterGroup,
-  FilterMeValue,
-  FilterNode,
-  FilterPrimitive,
-  FilterRangeValue,
-  FilterValue,
-  RelativeDate,
-  RelativeDateKind,
-} from "./filter/types";
-export type {
   AggregationId,
   GridQuery,
   GroupAggregateValue,
@@ -95,3 +83,7 @@ export {
   isAggregationAllowed,
   UNIVERSAL_AGGREGATIONS,
 } from "./query/aggregate";
+export { DEFAULT_TIME_ZONE } from "./time/zoned";
+// Filter and formula public APIs (also available from ./filter and ./formula).
+export * from "./filter/index";
+export * from "./formula/index";
