@@ -1,5 +1,7 @@
 import type { StorageKind } from "../sql/storage-kind";
 import { BOOLEAN_TRANSLATORS } from "./ops-boolean";
+import { CHOICE_TRANSLATORS, REF_TRANSLATORS } from "./ops-choice";
+import { MULTI_TRANSLATORS } from "./ops-multi";
 import { NUMBER_TRANSLATORS } from "./ops-number";
 import { TEXT_TRANSLATORS } from "./ops-text";
 import type { OperatorTranslator } from "./types";
@@ -14,6 +16,9 @@ function registerAll(kind: StorageKind, translators: Readonly<Record<string, Ope
 registerAll("text", TEXT_TRANSLATORS);
 registerAll("number", NUMBER_TRANSLATORS);
 registerAll("boolean", BOOLEAN_TRANSLATORS);
+registerAll("choice", CHOICE_TRANSLATORS);
+registerAll("ref", REF_TRANSLATORS);
+registerAll("multi", MULTI_TRANSLATORS);
 
 /**
  * Plug in a translator for a (storage kind, operator id) pair — e.g. for custom
