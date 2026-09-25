@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createChangeLogTableDDL, createRowsTableDDL } from "../../../src/ddl/tables-ddl";
+import {
+  alterRowsTableIdCollationDDL,
+  createChangeLogTableDDL,
+  createRowsTableDDL,
+} from "../../../src/ddl/tables-ddl";
 
 describe("createRowsTableDDL", () => {
   it("emits the fixed rows table DDL", () => {
@@ -120,5 +124,22 @@ describe("row id collation", () => {
     const bin = "VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL";
     expect(createRowsTableDDL({ table: "grid_rows" }).sql).toContain(`\`id\` ${bin},`);
     expect(createChangeLogTableDDL({ table: "grid_change_log" }).sql).toContain(`\`row_id\` ${bin},`);
+  });
+});
+
+describe("alterRowsTableIdCollationDDL", () => {
+  it("modifies `id` in place to the binary-collation type createRowsTableDDL uses", () => {
+    const stmt = alterRowsTableIdCollationDDL({ table: "grid_rows" });
+    expect(stmt.sql).toMatchInlineSnapshot(
+      `"ALTER TABLE \`grid_rows\` MODIFY \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL"`,
+    );
+    expect(stmt.description).toMatchInlineSnapshot(`"Convert \`grid_rows\`.\`id\` to binary collation (utf8mb4_bin)"`);
+    // Same column definition as a fresh install.
+    const createIdLine = createRowsTableDDL({ table: "grid_rows" }).sql.split("\n")[1]?.trim().replace(/,$/, "");
+    expect(stmt.sql.endsWith(createIdLine ?? "<missing>")).toBe(true);
+  });
+
+  it("rejects unsafe table names", () => {
+    expect(() => alterRowsTableIdCollationDDL({ table: "grid_rows; DROP TABLE x" })).toThrow();
   });
 });

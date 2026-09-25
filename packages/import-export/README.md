@@ -8,7 +8,7 @@ exports) and in Node (for server import/export jobs).
 
 | Subpath | Runs in | Heavy deps | Exports |
 |---|---|---|---|
-| `@masai/schema-grid-io/import` | browser + Node | papaparse, exceljs | `parseFile`, `autoMapColumns`, `validateRows`, `toChangeBatches`, `keyOf`, `chunkRows`, `createImportJobState`, `recordChunkResult`, `buildErrorReportCsv`, `SheetNotFoundError`, `ImportConfigError` |
+| `@masai/schema-grid-io/import` | browser + Node | papaparse, exceljs | `parseFile`, `autoMapColumns`, `validateRows`, `toChangeBatches`, `keyOf`, `chunkRows`, `createImportJobState`, `recordChunkResult`, `buildErrorReportCsv`, `KEY_COLUMN_TYPES`, `SheetNotFoundError`, `ImportConfigError` |
 | `@masai/schema-grid-io/export` | browser (Blob) + Node (stream) | papaparse, exceljs | `buildExport`, `buildExportBlob`, `buildExportStream`, `exportFileName`, `exportMimeType`, `HiddenColumnError` |
 | `@masai/schema-grid-io/clipboard` | anywhere | **none** | `formatForClipboard`, `formatMatrixForClipboard`, `parseClipboard` |
 | `@masai/schema-grid-io` | | | everything above |
