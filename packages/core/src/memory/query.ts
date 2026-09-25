@@ -1,0 +1,162 @@
+import { isEmptyValue } from "../field-types/empty";
+import type { FieldTypeRegistry } from "../field-types/registry";
+import { matchesFilter } from "../filter/match";
+import { validateFilter } from "../filter/validate";
+import type { Access } from "../permissions/types";
+import type { GridQuery, QueryResult, SortSpec } from "../query/types";
+import type { GridRow } from "../rows/types";
+import { getColumnById } from "../schema/lookup";
+import type { ColumnDef, GridSchema } from "../schema/types";
+import { projectRow } from "./materialize";
+import { InMemoryQueryError } from "./types";
+
+export interface MemoryQueryContext {
+  schema: GridSchema;
+  registry: FieldTypeRegistry;
+  access: ReadonlyMap<string, Access>;
+  now: Date;
+  tz: string;
+  userId?: string;
+}
+
+const idCollator = new Intl.Collator(undefined, { numeric: true });
+
+export function readableColumns(ctx: MemoryQueryContext): ColumnDef[] {
+  return ctx.schema.columns.filter((c) => {
+    const a = ctx.access.get(c.id);
+    return a === "read" || a === "edit";
+  });
+}
+
+/** Resolves a column id that must exist and be readable, or throws InMemoryQueryError. */
+export function requireReadableColumn(
+  columnId: string,
+  ctx: MemoryQueryContext,
+  what: string,
+): ColumnDef {
+  const column = getColumnById(ctx.schema, columnId);
+  if (!column) {
+    throw new InMemoryQueryError("unknownColumn", `Cannot ${what} by an unknown column`);
+  }
+  const a = ctx.access.get(column.id);
+  if (a !== "read" && a !== "edit") {
+    throw new InMemoryQueryError("unreadableColumn", `Cannot ${what} by a column you cannot read`);
+  }
+  return column;
+}
+
+function matchesSearch(row: GridRow, needle: string, columns: ColumnDef[], ctx: MemoryQueryContext): boolean {
+  for (const column of columns) {
+    const type = ctx.registry.get(column.type);
+    const value = row.cells[column.key];
+    if (isEmptyValue(value)) continue;
+    let text: string;
+    try {
+      text = type ? type.format(value, column.config) : String(value);
+    } catch {
+      text = String(value);
+    }
+    if (text.toLowerCase().includes(needle)) return true;
+  }
+  return false;
+}
+
+/** Stable multi-key sort; empties last in both directions; row id is the final tie-break. */
+export function sortRows<Row extends GridRow>(rows: Row[], sort: SortSpec[], ctx: MemoryQueryContext): Row[] {
+  const keys = sort.map((s) => {
+    const column = requireReadableColumn(s.columnId, ctx, "sort");
+    return { column, type: ctx.registry.get(column.type), sign: s.dir === "desc" ? -1 : 1 };
+  });
+  return [...rows].sort((a, b) => {
+    for (const { column, type, sign } of keys) {
+      const va = a.cells[column.key];
+      const vb = b.cells[column.key];
+      const ea = isEmptyValue(va);
+      const eb = isEmptyValue(vb);
+      if (ea || eb) {
+        if (ea && eb) continue;
+        return ea ? 1 : -1;
+      }
+      let c = 0;
+      try {
+        c = type ? type.compare(va, vb, column.config) : idCollator.compare(String(va), String(vb));
+      } catch {
+        c = 0;
+      }
+      if (c !== 0) return c * sign;
+    }
+    return idCollator.compare(a.id, b.id);
+  });
+}
+
+const CURSOR_PREFIX = "sgm:";
+
+export function encodeOffsetCursor(offset: number): string {
+  return `${CURSOR_PREFIX}${offset.toString(36)}`;
+}
+
+function decodeOffsetCursor(cursor: string): number {
+  if (typeof cursor === "string" && cursor.startsWith(CURSOR_PREFIX)) {
+    const n = Number.parseInt(cursor.slice(CURSOR_PREFIX.length), 36);
+    if (Number.isInteger(n) && n >= 0 && encodeOffsetCursor(n) === cursor) return n;
+  }
+  throw new InMemoryQueryError("invalidCursor", "Invalid page cursor");
+}
+
+function resolvePage(query: GridQuery): { offset: number; limit: number } {
+  const page = query.page;
+  const limit = page?.limit;
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit <= 0) {
+    throw new InMemoryQueryError("invalidPage", "page.limit must be a positive integer");
+  }
+  if (typeof page.cursor === "string") return { offset: decodeOffsetCursor(page.cursor), limit };
+  const offset = page.offset ?? 0;
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new InMemoryQueryError("invalidPage", "page.offset must be a non-negative integer");
+  }
+  return { offset, limit };
+}
+
+/**
+ * Filters / searches / sorts / pages already-materialised rows. Throws
+ * InMemoryQueryError for invalid queries (the data source turns that into a
+ * rejected promise). Returned rows are projected copies.
+ */
+export function runQuery<Row extends GridRow>(
+  rows: readonly Row[],
+  query: GridQuery,
+  ctx: MemoryQueryContext,
+): QueryResult<Row> {
+  const readable = readableColumns(ctx);
+  const readableIds = new Set(readable.map((c) => c.id));
+
+  const filterErrors = validateFilter(query.filter ?? null, ctx.schema, ctx.registry, readableIds);
+  const firstError = filterErrors[0];
+  if (firstError) {
+    throw new InMemoryQueryError(firstError.code, "Invalid filter", filterErrors);
+  }
+  for (const g of query.groupBy ?? []) requireReadableColumn(g.columnId, ctx, "group");
+  const { offset, limit } = resolvePage(query);
+
+  const matchCtx = {
+    schema: ctx.schema,
+    registry: ctx.registry,
+    now: ctx.now,
+    tz: ctx.tz,
+    ...(ctx.userId !== undefined ? { userId: ctx.userId } : {}),
+  };
+  let result = rows.filter((row) => matchesFilter(query.filter ?? null, row, matchCtx));
+
+  const needle = query.search?.trim().toLowerCase();
+  if (needle) result = result.filter((row) => matchesSearch(row, needle, readable, ctx));
+
+  result = sortRows(result, query.sort ?? [], ctx);
+
+  const total = result.length;
+  const pageRows = result.slice(offset, offset + limit);
+  const readableKeys = new Set(readable.map((c) => c.key));
+  const out: QueryResult<Row> = { rows: pageRows.map((r) => projectRow(r, readableKeys)) };
+  if (query.includeTotal) out.total = total;
+  if (offset + limit < total) out.nextCursor = encodeOffsetCursor(offset + limit);
+  return out;
+}
