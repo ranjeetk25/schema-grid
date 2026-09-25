@@ -29,18 +29,23 @@ const allScenarios: Scenario[] = [
     name: "column-builder",
     story: "3-client-grid--full-toolbar",
     act: async (page) => {
-      await page.getByRole("button", { name: "Add column" }).click();
-      await page.getByRole("dialog", { name: "Add column" }).waitFor();
+      await page.getByRole("button", { name: "Add column", exact: true }).click();
+      await page.getByRole("dialog", { name: "New column" }).waitFor();
     },
   },
   {
     name: "column-builder-config",
     story: "3-client-grid--full-toolbar",
     act: async (page) => {
-      await page.getByRole("button", { name: "Add column" }).click();
-      const dialog = page.getByRole("dialog", { name: "Add column" });
-      await dialog.getByRole("button", { name: "Select", exact: true }).click();
-      await dialog.getByRole("button", { name: "Next" }).click();
+      await page.getByRole("button", { name: "Add column", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "New column" });
+      await dialog.getByRole("textbox", { name: "Name" }).fill("Priority");
+      await dialog.getByRole("button", { name: /^Type:/ }).click();
+      await page
+        .getByRole("listbox", { name: "Field types" })
+        .getByRole("option", { name: "Select", exact: true })
+        .click();
+      await dialog.getByRole("button", { name: "Add option" }).click();
     },
   },
   {
@@ -81,7 +86,9 @@ const allScenarios: Scenario[] = [
   },
 ];
 
-const scenarios = ONLY ? allScenarios.filter((s) => ONLY.includes(s.name)) : allScenarios;
+const scenarios = ONLY
+  ? allScenarios.filter((s) => ONLY.includes(s.name))
+  : allScenarios;
 
 async function openColumnFilter(page: Page, colId: string) {
   const header = page.locator(`.ag-header-cell[col-id="${colId}"]`).first();

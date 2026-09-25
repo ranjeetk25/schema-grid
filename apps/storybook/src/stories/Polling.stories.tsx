@@ -2,6 +2,7 @@ import { Button, Code, Group, Text } from "@mantine/core";
 import type { ChangeFeedEntry, GridRow } from "@ranjeetk25/schema-grid-core";
 import { RemoteChangedBadge } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
+import { IconUserEdit } from "@tabler/icons-react";
 import { useCallback, useMemo, useState } from "react";
 import { Workbench } from "../support/Workbench";
 import {
@@ -45,16 +46,18 @@ function PollingDemo() {
   }, []);
   return (
     <Workbench
+      title="Admissions"
+      description="Polling sync · 500ms change feed"
       dataSource={ds}
       schema={schema}
       user={USERS.admin}
-      height={300}
       poll={{ intervalMs: 500, enabled: true }}
       onRemoteChanges={onRemoteChanges}
       toolbar={() => (
         <Group gap="xs">
           <Button
-            color="grape"
+            variant="default"
+            leftSection={<IconUserEdit size={16} stroke={1.75} />}
             onClick={async () => {
               const next = paid + 1000;
               remoteRows.add("r2");

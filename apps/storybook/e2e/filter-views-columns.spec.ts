@@ -91,18 +91,20 @@ test("ui§4 removing a chip updates the grid", async ({ page }) => {
     .toBeGreaterThan(2);
 });
 
-test("ui§6 column builder creates a select column that appears in the grid and is editable", async ({
+test("ui§6 column panel creates a select column that appears in the grid and is editable", async ({
   page,
 }) => {
   await openStory(page, STORIES.clientFixture);
-  await page.getByRole("button", { name: "Add column" }).click();
-  const dialog = page.getByRole("dialog", { name: "Add column" });
-  await dialog.getByRole("button", { name: "Select", exact: true }).click();
-  await dialog.getByRole("button", { name: "Next" }).click();
-  await dialog.getByRole("textbox", { name: "Label" }).fill("Priority");
-  await expect(dialog.getByRole("textbox", { name: "Key" })).toHaveValue(
-    "priority",
-  );
+  await page.getByRole("button", { name: "Add column", exact: true }).click();
+  // The column panel: one form (Name → Type → settings), one primary action.
+  const dialog = page.getByRole("dialog", { name: "New column" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Priority");
+  await expect(dialog.getByTestId("column-key")).toHaveText("priority");
+  await dialog.getByRole("button", { name: /^Type:/ }).click();
+  await page
+    .getByRole("listbox", { name: "Field types" })
+    .getByRole("option", { name: "Select", exact: true })
+    .click();
   for (const [i, label] of ["High", "Low"].entries()) {
     await dialog.getByRole("button", { name: "Add option" }).click();
     await dialog
@@ -110,9 +112,7 @@ test("ui§6 column builder creates a select column that appears in the grid and 
       .nth(i)
       .fill(label);
   }
-  await dialog.getByRole("button", { name: "Next" }).click(); // permissions
-  await dialog.getByRole("button", { name: "Next" }).click(); // preview
-  await dialog.getByRole("button", { name: "Save column" }).click();
+  await dialog.getByRole("button", { name: "Create column" }).click();
   await expect(dialog).toHaveCount(0);
 
   const header = page
@@ -149,6 +149,28 @@ test("ui§4 nested selects in the FilterButton popover don't close it (group + O
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await expect.poll(() => renderedRowIds(page)).toEqual(["r3", "r4", "r5"]);
+});
+
+test("live filtering: the grid follows the builder while it is still open (no Apply)", async ({
+  page,
+}) => {
+  await openStory(page, STORIES.clientFixture);
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: /^Filter/ });
+  await dialog.getByRole("button", { name: "Add condition" }).click();
+  await pickOption(page, dialog, "Column", 0, "Payment status");
+  await pickOption(page, dialog, "Operator", 0, "is");
+  // Incomplete (no value yet): nothing is applied.
+  await expect
+    .poll(() => renderedRowIds(page))
+    .toEqual(["r1", "r2", "r3", "r4", "r5"]);
+  await pickOption(page, dialog, "Value", 0, "Paid");
+  // Applied after the debounce with the popover still open.
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => renderedRowIds(page)).toEqual(["r1", "r5"]);
+  await expect(
+    dialog.getByRole("button", { name: "Apply filter" }),
+  ).toHaveCount(0);
 });
 
 test("§14 client-mode 'Export CSV' downloads the filtered view with formatted values", async ({

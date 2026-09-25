@@ -105,7 +105,7 @@ test("counsellor role: hidden column absent, read-only fee", async ({
   page,
 }) => {
   await openServerStory(page);
-  await page.getByText("counsellor", { exact: true }).click();
+  await page.getByText("Counsellor", { exact: true }).click();
   await page.locator('.ag-header-cell[col-id="col_name"]').first().waitFor();
   await expect(page.locator('.ag-header-cell[col-id="col_notes"]')).toHaveCount(
     0,
@@ -183,8 +183,11 @@ test("§12 server-mode grouping: collapsed group rows, expanding fetches that gr
   page,
 }) => {
   await openServerStory(page, "&sgPoll=off");
+  // Grouping lives in the "Group" popover (ui-mantine GroupByBar).
+  await page.getByRole("button", { name: "Group", exact: true }).click();
   await page.getByRole("textbox", { name: "Add group" }).click();
   await page.getByRole("option", { name: "Payment status" }).click();
+  await page.keyboard.press("Escape");
   const groups = page.locator(".sg-group-row");
   await expect(groups).toHaveCount(4);
   await expect(

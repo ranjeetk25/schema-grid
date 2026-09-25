@@ -31,10 +31,11 @@ function ClientGrid({ rows }: { rows: number }) {
   }, [memory]);
   return (
     <Workbench
+      title="Admissions"
+      description={`Client mode · ${rows + 5} rows`}
       dataSource={ds}
       schema={schema}
       user={USERS.admin}
-      height={520}
       onSchemaChange={(next) => {
         memory.setSchema(next);
         return next;

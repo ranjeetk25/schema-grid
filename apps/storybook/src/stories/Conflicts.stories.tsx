@@ -1,5 +1,6 @@
 import { Button, Code, Text } from "@mantine/core";
 import type { Meta, StoryObj } from "@storybook/react";
+import { IconUserEdit } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Workbench } from "../support/Workbench";
 import {
@@ -32,14 +33,16 @@ function ConflictDemo() {
   const [remoteCount, setRemoteCount] = useState(0);
   return (
     <Workbench
+      title="Admissions"
+      description="Conflict prompt · stale-version edits"
       dataSource={ds}
       schema={schema}
       user={USERS.admin}
-      height={300}
       toolbar={() => (
         <>
           <Button
-            color="grape"
+            variant="default"
+            leftSection={<IconUserEdit size={16} stroke={1.75} />}
             onClick={async () => {
               const n = remoteCount + 1;
               remoteRows.add("r1");
@@ -50,7 +53,10 @@ function ConflictDemo() {
             Remote edit r1 Name
           </Button>
           <Text size="xs" c="dimmed">
-            Remote edits: <Code data-testid="remote-count">{remoteCount}</Code>
+            Remote edits{" "}
+            <Code fz={11} data-testid="remote-count">
+              {remoteCount}
+            </Code>
           </Text>
         </>
       )}

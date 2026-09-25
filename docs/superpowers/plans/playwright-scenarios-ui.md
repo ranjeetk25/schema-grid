@@ -35,11 +35,14 @@ covers it, or why it is not implemented.
    multi-line textarea; IME composition does not trigger or corrupt insertion.
    **Not implemented:** no formula-column story yet, and IME composition
    cannot be driven faithfully from Playwright/Chromium.
-6. **Column builder modal** — focus trap, Stepper keyboard navigation, colour
-   swatch popover inside the modal; creating a select column shows the new
-   column in the grid.
+6. **Column panel** (right-side `ColumnPanel`, dialog "New column"; the
+   stepper modal is now a deprecated wrapper) — name → type picker
+   ("Type: …" → listbox "Field types") → option editor → "Create column";
+   creating a select column shows the new column in the grid.
    **Implemented (create + edit the new column):** `filter-views-columns.spec.ts`.
-   **Not implemented:** focus-trap / Stepper keyboard / swatch assertions.
+   **Not implemented:** focus-trap / swatch assertions, ghost-column preview.
+   Live filtering (FilterBuilder applies while open, incomplete conditions
+   never applied) is covered by the "live filtering" test in the same spec.
 7. **Import wizard** — real CSV and XLSX via the native FileButton picker,
    a large-file job whose progress is polled, and the error report download.
    **Implemented (CSV via the native file chooser, auto-map, preview counts,

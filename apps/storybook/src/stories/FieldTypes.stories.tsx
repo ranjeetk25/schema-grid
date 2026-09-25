@@ -32,10 +32,11 @@ function MantineFieldTypes() {
   }, [schema]);
   return (
     <Workbench
+      title="Field types"
+      description="Every built-in type with the Mantine widgets"
       dataSource={ds}
       schema={schema}
       user={USERS.admin}
-      height={330}
     />
   );
 }

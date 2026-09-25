@@ -1,5 +1,5 @@
-import { Button, Code, Group, Stack, Text } from "@mantine/core";
-import { SchemaGrid, type SchemaGridHandle } from "@ranjeetk25/schema-grid-ag-grid";
+import { Button, Code, Tooltip, VisuallyHidden } from "@mantine/core";
+import type { SchemaGridHandle } from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type ColumnDef,
   type GridRow,
@@ -15,7 +15,8 @@ import {
 import type { ImportJobStatus } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo, useRef, useState } from "react";
-import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";
+import { IconDownload, IconUpload } from "@tabler/icons-react";
+import { Workbench } from "../support/Workbench";
 import {
   FIXTURE_TIME_ZONE,
   USERS,
@@ -26,6 +27,8 @@ import {
   registry,
   resolver,
 } from "../support/data";
+
+const ICON = { size: 16, stroke: 1.75 } as const;
 
 /**
  * Story 5 — ImportWizard (browser-side: io parse → map → validate →
@@ -67,7 +70,7 @@ function ImportExportDemo() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [job, setJob] = useState<ImportJobStatus | undefined>(undefined);
-  const [lastExport, setLastExport] = useState<string>("none");
+  const [lastExport, setLastExport] = useState<string | null>(null);
 
   const visibleColumns = (): ColumnDef[] => {
     const state = grid.current?.api()?.getColumnState() ?? [];
@@ -116,34 +119,54 @@ function ImportExportDemo() {
     download(blob, fileName);
   };
 
+  const jobText =
+    job?.state === "running"
+      ? `Importing ${job.processed}/${job.total}…`
+      : job?.state === "done"
+        ? `Imported ${job.total - job.errorCount} of ${job.total} rows${job.errorCount ? ` · ${job.errorCount} rejected` : ""}`
+        : null;
+
   return (
-    <Stack gap="xs">
-      <Group gap="xs">
-        <Button onClick={() => setImportOpen(true)}>Import…</Button>
-        <Button variant="default" onClick={() => setExportOpen(true)}>
-          Export…
-        </Button>
-        <Text size="xs" c="dimmed">
-          Last export: <Code data-testid="last-export">{lastExport}</Code>
-        </Text>
-        <Text size="xs" c="dimmed">
-          Job:{" "}
-          <Code data-testid="import-job">
-            {job ? JSON.stringify(job) : "none"}
-          </Code>
-        </Text>
-      </Group>
-      <SchemaGrid
-        ref={grid}
-        schema={schema}
+    <>
+      <Workbench
+        title="Admissions"
+        description="Import a spreadsheet or export the current view"
         dataSource={ds}
+        schema={schema}
         user={user}
-        registry={registry}
-        resolver={resolver}
-        uiRegistry={uiRegistry}
-        height={360}
-        gridOptions={GRID_OPTIONS}
+        onHandle={(h) => {
+          grid.current = h;
+        }}
+        toolbar={() => (
+          <>
+            <Tooltip label="Import rows from CSV or XLSX">
+              <Button
+                variant="subtle"
+                color="gray"
+                leftSection={<IconUpload {...ICON} />}
+                onClick={() => setImportOpen(true)}
+              >
+                Import…
+              </Button>
+            </Tooltip>
+            <Tooltip label="Export as CSV or XLSX">
+              <Button
+                variant="subtle"
+                color="gray"
+                leftSection={<IconDownload {...ICON} />}
+                onClick={() => setExportOpen(true)}
+              >
+                Export…
+              </Button>
+            </Tooltip>
+          </>
+        )}
+        status={[lastExport ? `Exported ${lastExport}` : null, jobText]}
       />
+      <VisuallyHidden>
+        <Code data-testid="last-export">{lastExport ?? ""}</Code>
+        <Code data-testid="import-job">{job ? JSON.stringify(job) : ""}</Code>
+      </VisuallyHidden>
       <ImportWizard
         opened={importOpen}
         onClose={() => {
@@ -207,7 +230,7 @@ function ImportExportDemo() {
           setExportOpen(false);
         }}
       />
-    </Stack>
+    </>
   );
 }
 

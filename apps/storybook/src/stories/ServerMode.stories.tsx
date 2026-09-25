@@ -75,29 +75,23 @@ function ServerGrid() {
   }
   if (!schema) return <Loader />;
   return (
-    <Stack gap="xs">
-      <SegmentedControl
-        data={["admin", "counsellor", "viewer"]}
-        value={role}
-        onChange={(v) => setRole(v as UserKey)}
-        w={320}
-      />
-      <Workbench
-        key={role}
-        dataSource={ds}
-        schema={schema}
-        user={user}
-        mode="server"
-        height={420}
-        poll={{ intervalMs: 3000, enabled: pollEnabled }}
-        persistViewsKey="schema-grid-demo-api-views"
-        onSchemaChange={async (next) => {
-          const saved = await putSchema(client, next);
-          setSchema(saved);
-          return saved;
-        }}
-      />
-    </Stack>
+    <Workbench
+      key={role}
+      title="Admissions"
+      description="Server mode · demo-api"
+      dataSource={ds}
+      schema={schema}
+      user={user}
+      onRoleChange={setRole}
+      mode="server"
+      poll={{ intervalMs: 3000, enabled: pollEnabled }}
+      persistViewsKey="schema-grid-demo-api-views"
+      onSchemaChange={async (next) => {
+        const saved = await putSchema(client, next);
+        setSchema(saved);
+        return saved;
+      }}
+    />
   );
 }
 
