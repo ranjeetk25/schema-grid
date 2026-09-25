@@ -1,5 +1,5 @@
 {
-  "name": "@masai/schema-grid-ag-grid",
+  "name": "@ranjeetk25/schema-grid-ag-grid",
   "version": "0.0.1",
   "description": "AG Grid Community binding for Schema Grid: column compiler, editors, range selection, clipboard and fill handle.",
   "license": "MIT",
@@ -67,17 +67,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@masai/schema-grid-core": "workspace:*"
+    "@ranjeetk25/schema-grid-core": "workspace:*"
   },
   "peerDependencies": {
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "ag-grid-community": "^36.0.0",
     "ag-grid-react": "^36.0.0",
-    "@masai/schema-grid-io": "*"
+    "@ranjeetk25/schema-grid-io": "*"
   },
   "peerDependenciesMeta": {
-    "@masai/schema-grid-io": {
+    "@ranjeetk25/schema-grid-io": {
       "optional": true
     }
   },
@@ -86,6 +86,6 @@
     "react-dom": "^18.3.0",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",
-    "@masai/schema-grid-io": "workspace:*"
+    "@ranjeetk25/schema-grid-io": "workspace:*"
   }
 }

@@ -10,7 +10,7 @@ import {
   SchemaGrid,
   type SchemaGridHandle,
   type SchemaGridPollOptions,
-} from "@masai/schema-grid-ag-grid";
+} from "@ranjeetk25/schema-grid-ag-grid";
 import type {
   ChangeFeedEntry,
   ColumnDef,
@@ -21,8 +21,8 @@ import type {
   GroupSpec,
   PermissionUser,
   ViewDef,
-} from "@masai/schema-grid-core";
-import { resolveColumnAccess } from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
+import { resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
 import {
   ColumnBuilderModal,
   ConflictPopover,
@@ -32,8 +32,8 @@ import {
   ViewSwitcher,
   notifyClipboardReport,
   useMantineConflictPrompt,
-} from "@masai/schema-grid-ui-mantine";
-import { createMantineUiRegistry } from "@masai/schema-grid-ui-mantine/editors";
+} from "@ranjeetk25/schema-grid-ui-mantine";
+import { createMantineUiRegistry } from "@ranjeetk25/schema-grid-ui-mantine/editors";
 import {
   type ReactNode,
   useCallback,

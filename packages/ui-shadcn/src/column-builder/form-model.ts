@@ -1,4 +1,5 @@
 import type { ColumnDef, FieldTypeRegistry, GridSchema } from "../internal/core-contracts";
+import type { GridDraftColumn } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 import { type ColumnDraft, type ColumnDraftErrors, buildColumnDef } from "./model";
 
@@ -10,8 +11,12 @@ export interface Requirement {
   message: string;
 }
 
-/** A column draft the grid can render as a live preview; `insertAt` = index among visible columns. */
-export type DraftColumn = ColumnDef & { insertAt?: number };
+/**
+ * ag-grid's `SchemaGrid.draftColumn`: "create" renders a read-only ghost column
+ * at `insertAt` (index among displayed columns, or next to a column id);
+ * "edit" re-renders the real column with the draft's label/config.
+ */
+export type DraftColumn = GridDraftColumn;
 
 const OPTION_REQUIRED = new Set(["select", "multiSelect"]);
 
@@ -59,7 +64,7 @@ const DRAFT_ID = "__draft__";
  */
 export function draftPreviewColumn(
   draft: ColumnDraft,
-  { schema, registry, insertAt }: { schema: GridSchema; registry: FieldTypeRegistry; insertAt?: number },
+  { schema, registry, insertAt }: { schema: GridSchema; registry: FieldTypeRegistry; insertAt?: DraftColumn["insertAt"] },
 ): DraftColumn | null {
   if (!draft.type || !registry.get(draft.type)) return null;
   const keyOk = /^[a-z][a-z0-9_]*$/.test(draft.key) && !draft.existingKeys.includes(draft.key);
@@ -70,7 +75,8 @@ export function draftPreviewColumn(
   };
   try {
     const def = buildColumnDef(renderable, { schema, registry, now: draft.original?.updatedAt ?? "", generateId: () => DRAFT_ID });
-    return insertAt === undefined ? def : { ...def, insertAt };
+    const mode = draft.mode === "edit" ? "edit" : "create";
+    return insertAt === undefined ? { column: def, mode } : { column: def, insertAt, mode };
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 /**
  * Core shim: the ONLY file in this package allowed to depend on
- * `@masai/schema-grid-core`. Everything else imports core types/helpers from
+ * `@ranjeetk25/schema-grid-core`. Everything else imports core types/helpers from
  * here. Only TYPES are imported from core, so runtime bundles (notably
  * `./clipboard`) never pull core code in.
  */
@@ -25,13 +25,13 @@ export type {
   Option,
   ParseResult,
   RoleRule,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 import type {
   AnyFieldType,
   ColumnDef,
   FieldTypeRegistry,
   GridSchema,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Helpers

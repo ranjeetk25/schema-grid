@@ -15,9 +15,9 @@ export default defineConfig({
   // Everything in dependencies/peerDependencies is external by default; listed
   // explicitly for the ones reached through subpaths.
   external: [
-    "@masai/schema-grid-core",
-    "@masai/schema-grid-ag-grid",
-    "@masai/schema-grid-io",
+    "@ranjeetk25/schema-grid-core",
+    "@ranjeetk25/schema-grid-ag-grid",
+    "@ranjeetk25/schema-grid-io",
     "ag-grid-community",
     "ag-grid-react",
     "react",

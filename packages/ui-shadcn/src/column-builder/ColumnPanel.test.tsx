@@ -210,7 +210,7 @@ describe("ColumnPanel", () => {
     const { user, rerender } = renderUi(<ColumnPanel {...props} />);
     await user.type(name(), "Lead score");
     await pickType(user, /^Number/);
-    await waitFor(() => expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ label: "Lead score", key: "lead_score", type: "number", insertAt: 2 })));
+    await waitFor(() => expect(onDraftChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "create", insertAt: 2, column: expect.objectContaining({ label: "Lead score", key: "lead_score", type: "number" }) })));
     rerender(<ColumnPanel {...props} opened={false} />);
     expect(onDraftChange).toHaveBeenLastCalledWith(null);
   });

@@ -1,6 +1,6 @@
 # demo-api
 
-Hono + Bun demo backend for Schema Grid, on MySQL via `@masai/schema-grid-server`.
+Hono + Bun demo backend for Schema Grid, on MySQL via `@ranjeetk25/schema-grid-server`.
 It seeds core's admissions fixture (r1..r5) and pins the clock to `FIXTURE_NOW` so the
 spec §8 scenario is deterministic.
 
@@ -35,11 +35,11 @@ CORS allows any origin and exposes `content-disposition`.
 ## Routes
 
 `POST /grid/:op` is the wire contract ([`docs/wire-contract.md`](../../docs/wire-contract.md)),
-served by `createGridRouterAdapter` from `@masai/schema-grid-server/http`: the JSON body **is**
+served by `createGridRouterAdapter` from `@ranjeetk25/schema-grid-server/http`: the JSON body **is**
 the op input, the answer is `200 { data }` or `<status> { error: { code, message, details? } }`.
 The headers above become the adapter context (`{ user, now }`) that builds the per-request
 Drizzle data source. The browser side is `createHttpDataSource({ baseUrl: ".../grid" })` from
-`@masai/schema-grid-ag-grid`.
+`@ranjeetk25/schema-grid-ag-grid`.
 
 | Route | Body / query | 200 response |
 |---|---|---|

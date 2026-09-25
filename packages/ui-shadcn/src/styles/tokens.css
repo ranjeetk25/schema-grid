@@ -1,9 +1,9 @@
 /*
- * @masai/schema-grid-ui-shadcn design tokens.
+ * @ranjeetk25/schema-grid-ui-shadcn design tokens.
  *
  * Near-monochrome zinc with ONE accent (indigo #5e6ad2, docs/design/README.md).
  * Kit tokens are `--sg-ui-*`; the `--sg-*-color` block at the bottom is the
- * cross-package contract `@masai/schema-grid-ag-grid`'s theme reads, derived
+ * cross-package contract `@ranjeetk25/schema-grid-ag-grid`'s theme reads, derived
  * from the kit tokens so the grid follows the kit (and `.dark`) automatically.
  *
  * Declared on `:root` as well as `.sg-ui` so Radix portal content (rendered

@@ -1,5 +1,5 @@
-import type { GridSchema } from "@masai/schema-grid-core";
-import { ToggleGroup, ToggleGroupItem } from "@masai/schema-grid-ui-shadcn";
+import type { GridSchema } from "@ranjeetk25/schema-grid-core";
+import { ToggleGroup, ToggleGroupItem } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { CircleAlertIcon, LoaderCircleIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

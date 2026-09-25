@@ -6,7 +6,7 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import type { GridSchema } from "@masai/schema-grid-core";
+import type { GridSchema } from "@ranjeetk25/schema-grid-core";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useMemo, useState } from "react";
 import { Workbench } from "../support/Workbench";

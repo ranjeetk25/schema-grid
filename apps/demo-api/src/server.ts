@@ -2,7 +2,7 @@ import { join } from "node:path";
 import {
   FIXTURE_NOW,
   createFixtureSchema,
-} from "@masai/schema-grid-core/testing";
+} from "@ranjeetk25/schema-grid-core/testing";
 import { createApp } from "./app";
 import { bootstrap } from "./bootstrap";
 import { DEFAULT_DATABASE_URL, connect, gridTables } from "./db";

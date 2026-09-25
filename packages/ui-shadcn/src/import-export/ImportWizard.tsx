@@ -39,7 +39,7 @@ export interface ImportWizardProps {
   schema: GridSchema;
   registry: FieldTypeRegistry;
   access: AccessMap;
-  /** Injectable io functions; missing ones fall back to `@masai/schema-grid-io`. */
+  /** Injectable io functions; missing ones fall back to `@ranjeetk25/schema-grid-io`. */
   io?: Partial<IoFunctions>;
   /** Server-mode override for the preview; replaces the local `validateRows`. */
   onPreview?(plan: ImportWizardPlan): Promise<ValidationReport>;

@@ -1,6 +1,6 @@
 import { Button, Code, Group, Text } from "@mantine/core";
-import type { ChangeFeedEntry, GridRow } from "@masai/schema-grid-core";
-import { RemoteChangedBadge } from "@masai/schema-grid-ui-mantine";
+import type { ChangeFeedEntry, GridRow } from "@ranjeetk25/schema-grid-core";
+import { RemoteChangedBadge } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useCallback, useMemo, useState } from "react";
 import { Workbench } from "../support/Workbench";

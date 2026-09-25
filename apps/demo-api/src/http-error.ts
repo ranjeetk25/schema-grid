@@ -8,7 +8,7 @@ import {
   type SchemaGridServerError,
   SchemaValidationError,
   UnsupportedOperatorError,
-} from "@masai/schema-grid-server";
+} from "@ranjeetk25/schema-grid-server";
 import { z } from "zod";
 
 /** Wire error code for the statuses this app raises (see docs/wire-contract.md). */

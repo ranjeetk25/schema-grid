@@ -1,10 +1,10 @@
-# @masai/schema-grid-ui-mantine Implementation Plan
+# @ranjeetk25/schema-grid-ui-mantine Implementation Plan
 
 > **REQUIRED SUB-SKILL:** superpowers:subagent-driven-development
 
-**Goal:** Build `@masai/schema-grid-ui-mantine`: Mantine v8 editor and renderer widgets registered through `createMantineUiRegistry()`, a filter builder with chips and a button, a column builder modal with a Zod-driven auto-form and formula editor, a view switcher, a group-by bar, a conflict prompt, an import wizard, an export dialog, a clipboard-report toast and a theme bridge. Each area ships as its own subpath export.
+**Goal:** Build `@ranjeetk25/schema-grid-ui-mantine`: Mantine v8 editor and renderer widgets registered through `createMantineUiRegistry()`, a filter builder with chips and a button, a column builder modal with a Zod-driven auto-form and formula editor, a view switcher, a group-by bar, a conflict prompt, an import wizard, an export dialog, a clipboard-report toast and a theme bridge. Each area ships as its own subpath export.
 
-**Architecture:** The package holds only UI. All logic comes from `@masai/schema-grid-core`: field types, operators, `validateFilter`, the formula parser, `format`, and the permission types. Grid integration goes through `@masai/schema-grid-ag-grid`: `UiFieldTypeRegistry`, `createPopupEditor`, and the clipboard/conflict types. File parsing and mapping go through `@masai/schema-grid-io`. Two small adapter files (`src/internal/grid-contracts.ts`, `src/internal/io-contracts.ts`) are the only places that import from ag-grid or io. If an export is missing at implementation time, the adapter defines a local type alias or a minimal fallback with a `TODO(spec §4.x)` comment. It does not block. **Dependency direction: ui-mantine depends on ag-grid; ag-grid must never import ui-mantine.**
+**Architecture:** The package holds only UI. All logic comes from `@ranjeetk25/schema-grid-core`: field types, operators, `validateFilter`, the formula parser, `format`, and the permission types. Grid integration goes through `@ranjeetk25/schema-grid-ag-grid`: `UiFieldTypeRegistry`, `createPopupEditor`, and the clipboard/conflict types. File parsing and mapping go through `@ranjeetk25/schema-grid-io`. Two small adapter files (`src/internal/grid-contracts.ts`, `src/internal/io-contracts.ts`) are the only places that import from ag-grid or io. If an export is missing at implementation time, the adapter defines a local type alias or a minimal fallback with a `TODO(spec §4.x)` comment. It does not block. **Dependency direction: ui-mantine depends on ag-grid; ag-grid must never import ui-mantine.**
 
 Stateful widgets are split into a pure model (reducer or helper functions, unit-tested without DOM) and thin Mantine components (tested with Testing Library). All popup editors keep their dropdown DOM inside the editor, using `withinPortal={false}` or `comboboxProps={{ withinPortal:false }}`, and are wrapped with `createPopupEditor`.
 
@@ -14,7 +14,7 @@ The reason is AG Grid's own behaviour. A Mantine portal renders into `document.b
 
 **Mantine v8 facts (verified):** `@mantine/dates` v8 uses **string values** (`YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`), not `Date`. `DateTimePicker` needs `popoverProps` and `timePickerProps.popoverProps` set to `{ withinPortal: false }`. Select/MultiSelect/TagsInput take `comboboxProps={{ withinPortal:false }}`; Combobox/Popover/Menu take `withinPortal`. Creatable pattern = Combobox + `useCombobox` with a `$create` sentinel. `MantineProvider env="test"` turns off portals and transitions. Vitest setup must mock `matchMedia`, `ResizeObserver`, `scrollIntoView`, `getComputedStyle`. `cssVariablesResolver` exists on the provider. `FileButton` has `accept` and `resetRef`.
 
-**Commands (run after every task):** `bun run --filter @masai/schema-grid-ui-mantine test` and `bun run --filter @masai/schema-grid-ui-mantine typecheck`. Never run `check:fix` or `format` automatically.
+**Commands (run after every task):** `bun run --filter @ranjeetk25/schema-grid-ui-mantine test` and `bun run --filter @ranjeetk25/schema-grid-ui-mantine typecheck`. Never run `check:fix` or `format` automatically.
 
 **Rules for every task:** Write the failing test first, run it and see it fail, write the minimum implementation, run test and typecheck and see them pass, then commit. No `any` in public types. Row generic is `<Row extends GridRow>`. Double quotes. Commit messages must end with the repo's attribution trailer.
 
@@ -26,7 +26,7 @@ The reason is AG Grid's own behaviour. A Mantine portal renders into `document.b
 
 Everything lives under `packages/ui-mantine/`.
 
-- `package.json`: name `@masai/schema-grid-ui-mantine`.
+- `package.json`: name `@ranjeetk25/schema-grid-ui-mantine`.
   - Exports: `.`, `./editors`, `./filter-builder`, `./column-builder`, `./import-export`, each with a `development` condition pointing at `src`.
   - Dependencies: core, ag-grid and io as `workspace:*`.
   - Peers: react ^18, react-dom ^18, @mantine/core ^8, @mantine/hooks ^8, @mantine/dates ^8, dayjs, zod `^3.25 || ^4`, and optional @mantine/notifications ^8 (`peerDependenciesMeta`).
@@ -110,12 +110,12 @@ ALL ─► T31 (exports, build, Playwright doc, changeset)
 - Tests: `src/internal/grid-contracts.test.ts`, `src/internal/io-contracts.test.ts`
 
 **API, grid-contracts:**
-- Re-exports `UiFieldTypeRegistry`, `createPopupEditor`, `ClipboardReport`, `ConflictResolution` from `@masai/schema-grid-ag-grid`.
+- Re-exports `UiFieldTypeRegistry`, `createPopupEditor`, `ClipboardReport`, `ConflictResolution` from `@ranjeetk25/schema-grid-ag-grid`.
 - Defines the editor, renderer and filter-input prop types used by this package.
 - `UiEditorProps<TValue, TConfig>`: `value`, `onChange`, `onCommit`, `onCancel`, `column: ColumnDef`, `config: TConfig`, `dataSource?`, `autoFocus?`, `error?`, `onOptionCreate?`.
 - `UiRendererProps<TValue, TConfig>`: `value`, `column`, `config`, `row?`, `fieldType`.
 - `UiFilterInputProps`: `column`, `operator: FilterOperatorDef`, `value`, `onChange`, `dataSource?`.
-- If ag-grid lacks any of these, define a local alias. The local `UiFieldTypeRegistry` shape is `register(id, { renderer?, editor?, filterComponent? })`, `get`, `has`, `list`. The local `createPopupEditor` fallback returns the component tagged with a static `isPopup` marker. Each fallback carries `// TODO(spec §4.2 / ag-grid plan): import from @masai/schema-grid-ag-grid`.
+- If ag-grid lacks any of these, define a local alias. The local `UiFieldTypeRegistry` shape is `register(id, { renderer?, editor?, filterComponent? })`, `get`, `has`, `list`. The local `createPopupEditor` fallback returns the component tagged with a static `isPopup` marker. Each fallback carries `// TODO(spec §4.2 / ag-grid plan): import from @ranjeetk25/schema-grid-ag-grid`.
 
 **API, io-contracts:**
 - Same pattern for `parseFile`, `autoMapColumns`, `validateRows`, `buildExport` and their result types.
@@ -740,7 +740,7 @@ ALL ─► T31 (exports, build, Playwright doc, changeset)
 
 **Tests (`exports.test.ts`):**
 - Each subpath module imports and exposes its named exports: `createMantineUiRegistry`, `FilterBuilder`, `FilterChips`, `FilterButton`, `ColumnBuilderModal`, `ZodForm`, `ImportWizard`, `ExportDialog`, `ViewSwitcher`, `GroupByBar`, `ConflictPopover`, `RemoteChangedBadge`, `useGridThemeFromMantine`, `notifyClipboardReport`.
-- `bun run --filter @masai/schema-grid-ui-mantine build` produces ESM, CJS and `.d.ts` for all 5 entries. This is a manual check noted in the task.
+- `bun run --filter @ranjeetk25/schema-grid-ui-mantine build` produces ESM, CJS and `.d.ts` for all 5 entries. This is a manual check noted in the task.
 
 **Playwright doc contents** (behaviour jsdom cannot prove; run in apps/storybook):
 1. Every popup editor inside a real AG Grid: clicking a dropdown option commits, and the edit does not stop early. Covers select, multi, creatable, date, datetime (including the time dropdown), user and link.
@@ -755,7 +755,7 @@ ALL ─► T31 (exports, build, Playwright doc, changeset)
 10. Theme: toggling Mantine dark mode repaints the grid live.
 11. The notifications toast appears for a paste report when `<Notifications />` is mounted, and nothing breaks when it is absent.
 
-**Changeset:** minor bump for `@masai/schema-grid-ui-mantine` ("initial release").
+**Changeset:** minor bump for `@ranjeetk25/schema-grid-ui-mantine` ("initial release").
 
 **Commit:** `chore(ui-mantine): finalize subpath exports, playwright scenario notes, changeset`
 

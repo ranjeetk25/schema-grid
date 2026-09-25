@@ -1,19 +1,19 @@
 /**
  * apps/demo-api client helpers. The grid itself talks to `POST /grid/:op`
- * through `createHttpDataSource` from `@masai/schema-grid-ag-grid` (the wire
+ * through `createHttpDataSource` from `@ranjeetk25/schema-grid-ag-grid` (the wire
  * contract, docs/wire-contract.md); this file only builds its options (the
  * demo's fake-auth headers) and wraps the non-grid REST routes (`/schema`).
  */
 import {
   type HttpDataSourceOptions,
   createHttpDataSource,
-} from "@masai/schema-grid-ag-grid";
+} from "@ranjeetk25/schema-grid-ag-grid";
 import type {
   DataSource,
   GridRow,
   GridSchema,
   PermissionUser,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 export const DEMO_API_URL =
   (import.meta as unknown as { env?: Record<string, string | undefined> }).env

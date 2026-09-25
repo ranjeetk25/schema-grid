@@ -1,6 +1,36 @@
 {
-  "name": "@masai/schema-grid-ui-shadcn",
+  "name": "@ranjeetk25/schema-grid-ui-shadcn",
   "version": "0.0.1",
+  "description": "shadcn/ui (Radix + Tailwind v4) UI for Schema Grid: cell editors, column filters, filter builder, column panel, import wizard and export dialog.",
+  "license": "MIT",
+  "author": "Masai School",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranjeetk25/schema-grid.git",
+    "directory": "packages/ui-shadcn"
+  },
+  "homepage": "https://github.com/ranjeetk25/schema-grid/tree/main/packages/ui-shadcn#readme",
+  "bugs": {
+    "url": "https://github.com/ranjeetk25/schema-grid/issues"
+  },
+  "keywords": [
+    "shadcn",
+    "radix",
+    "tailwindcss",
+    "react",
+    "data-grid",
+    "ag-grid",
+    "filter-builder",
+    "column-builder",
+    "schema-grid"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -56,7 +86,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@masai/schema-grid-core": "workspace:*",
+    "@ranjeetk25/schema-grid-core": "workspace:*",
     "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-checkbox": "^1.3.11",
     "@radix-ui/react-dialog": "^1.1.23",
@@ -80,8 +110,8 @@
     "tailwind-merge": "^3.7.0"
   },
   "peerDependencies": {
-    "@masai/schema-grid-ag-grid": "*",
-    "@masai/schema-grid-io": "*",
+    "@ranjeetk25/schema-grid-ag-grid": "*",
+    "@ranjeetk25/schema-grid-io": "*",
     "ag-grid-community": "^36.0.0",
     "ag-grid-react": "^36.0.0",
     "react": "^18.3.0",
@@ -95,8 +125,8 @@
     }
   },
   "devDependencies": {
-    "@masai/schema-grid-ag-grid": "workspace:*",
-    "@masai/schema-grid-io": "workspace:*",
+    "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+    "@ranjeetk25/schema-grid-io": "workspace:*",
     "@tailwindcss/cli": "^4",
     "@testing-library/user-event": "^14.6.1",
     "ag-grid-community": "^36.2.0",

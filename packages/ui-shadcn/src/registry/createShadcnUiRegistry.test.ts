@@ -24,7 +24,11 @@ describe("createShadcnUiRegistry", () => {
       expect(resolveRendererWidget(ui.get(id).renderer), id).toBeTypeOf("function");
     }
     expect(resolveRendererWidget(ui.get("select").renderer)).toBe(SelectRenderer);
-    expect(resolveRendererWidget(ui.get("boolean").renderer)).toBe(BooleanRenderer);
+  });
+
+  it("leaves boolean cells to ag-grid's in-place toggle renderer (never an opened editor)", () => {
+    expect(ui.get("boolean").renderer).toBe(createDefaultUiRegistry().get("boolean").renderer);
+    expect(resolveRendererWidget(ui.get("boolean").renderer)).not.toBe(BooleanRenderer);
   });
 
   it("registers a ui-shadcn editor for every type except formula", () => {

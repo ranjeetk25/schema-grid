@@ -13,8 +13,8 @@ export default defineConfig({
   sourcemap: true,
   tsconfig: "tsconfig.build.json",
   external: [
-    "@masai/schema-grid-core",
-    "@masai/schema-grid-io",
+    "@ranjeetk25/schema-grid-core",
+    "@ranjeetk25/schema-grid-io",
     "react",
     "react-dom",
     "ag-grid-community",

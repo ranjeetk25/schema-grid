@@ -6,7 +6,7 @@ import { formatFileSize } from "../import-model";
 import { InlineAlert, Spinner } from "../parts";
 
 /**
- * `.xls` (legacy BIFF) is deliberately absent: `@masai/schema-grid-io`'s
+ * `.xls` (legacy BIFF) is deliberately absent: `@ranjeetk25/schema-grid-io`'s
  * parser reads only CSV and OOXML workbooks.
  */
 export const IMPORT_ACCEPT =

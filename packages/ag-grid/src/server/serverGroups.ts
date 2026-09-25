@@ -199,7 +199,7 @@ export function createServerGroupsController<Row extends GridRow = GridRow>(
 
   /**
    * Every group of a grouping query. core's in-memory source returns all
-   * groups and pages `rows`; `@masai/schema-grid-server` pages the groups
+   * groups and pages `rows`; `@ranjeetk25/schema-grid-server` pages the groups
    * themselves (`rows: []`, `nextCursor` while more exist), so a one-row page
    * would show only the first group. Follow `nextCursor` for that shape only.
    */

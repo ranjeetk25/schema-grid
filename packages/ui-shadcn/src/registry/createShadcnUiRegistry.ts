@@ -21,7 +21,6 @@ import {
   type WidgetEntry,
   createDefaultUiRegistry,
   extendWithWidgets,
-  toInlineToggleGridEditor,
 } from "../internal/grid-contracts";
 import { BooleanRenderer } from "../renderers/BooleanRenderer";
 import { createFormattedRenderer } from "../renderers/FormattedRenderer";
@@ -99,7 +98,7 @@ function shadcnFilterOverrides(ids: readonly FieldTypeId[]): Partial<Record<Fiel
 }
 
 /**
- * The real `@masai/schema-grid-ag-grid` UI registry with ui-shadcn renderers,
+ * The real `@ranjeetk25/schema-grid-ag-grid` UI registry with ui-shadcn renderers,
  * editors AND column filters for all 16 built-in types:
  * `createDefaultUiRegistry().extend()` with each widget adapted to AG Grid's
  * cell renderer / editor props (popup types through ag-grid's
@@ -109,7 +108,7 @@ function shadcnFilterOverrides(ids: readonly FieldTypeId[]): Partial<Record<Fiel
  * Radix `filterComponent` — `ShadcnSetFilter` for select / multiSelect /
  * user / boolean, `ShadcnConditionFilter` elsewhere — emitting the same core
  * `FilterCondition` model as ag-grid's own filters. `floatingFilter` stays
- * ag-grid's default. The boolean editor toggles in place on open.
+ * ag-grid's default. Booleans use ag-grid's in-place toggle + renderer.
  */
 export function createShadcnUiRegistry(options: CreateShadcnUiRegistryOptions = {}): UiFieldTypeRegistry<GridRow> {
   const widgets = shadcnWidgetEntries(options.fieldTypes);
@@ -121,9 +120,12 @@ export function createShadcnUiRegistry(options: CreateShadcnUiRegistryOptions = 
     .list()
     .map((t) => t.id);
   const partials = shadcnFilterOverrides(ids);
-  // Our own checkbox widget toggles in place (Space / click opens and flips at once).
-  if (widgets.boolean?.editor === BooleanEditor) {
-    partials.boolean = { ...partials.boolean, editor: toInlineToggleGridEditor(BooleanEditor), editorPopup: false };
+  // Booleans toggle IN PLACE in ag-grid (click / Space / Enter on the cell;
+  // `editable` is always false for them), drawn by ag-grid's own 16px
+  // `.sg-bool` renderer which knows the cell's read-only state. Our
+  // BooleanEditor widget stays registered for forms and filter inputs only.
+  if (widgets.boolean?.renderer === BooleanRenderer) {
+    partials.boolean = { ...partials.boolean, renderer: createDefaultUiRegistry<GridRow>().get("boolean").renderer };
   }
   registry = registry.extend(partials);
   return options.overrides ? registry.extend(options.overrides) : registry;

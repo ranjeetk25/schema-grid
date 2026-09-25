@@ -10,11 +10,11 @@ import type {
   GridRow,
   GridSchema,
   QueryResult,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 import {
   FIXTURE_NOW,
   createFixtureSchema,
-} from "@masai/schema-grid-core/testing";
+} from "@ranjeetk25/schema-grid-core/testing";
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CreatedApp, createApp } from "../src/app";

@@ -30,18 +30,18 @@ describe("form model", () => {
     expect(reqs(d, true)).toEqual([]);
   });
 
-  it("builds a renderable preview column as soon as a type is chosen", () => {
+  it("builds ag-grid's DraftColumn ({ column, insertAt, mode }) as soon as a type is chosen", () => {
     expect(draftPreviewColumn(fresh(), { schema, registry })).toBeNull();
     const d = columnDraftReducer(fresh(), { type: "setType", fieldType: "number", registry });
     expect(draftPreviewColumn(d, { schema, registry, insertAt: 3 })).toMatchObject({
-      id: "__draft__",
-      key: "__draft__",
-      label: "Untitled",
-      type: "number",
+      mode: "create",
       insertAt: 3,
+      column: { id: "__draft__", key: "__draft__", label: "Untitled", type: "number" },
     });
     const named = columnDraftReducer(d, { type: "setLabel", label: "Score" });
-    expect(draftPreviewColumn(named, { schema, registry })).toMatchObject({ key: "score", label: "Score" });
+    const preview = draftPreviewColumn(named, { schema, registry });
+    expect(preview).toMatchObject({ mode: "create", column: { key: "score", label: "Score" } });
+    expect(preview).not.toHaveProperty("insertAt");
   });
 
   it("tracks dirtiness by content", () => {

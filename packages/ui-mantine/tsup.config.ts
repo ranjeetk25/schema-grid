@@ -13,9 +13,9 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   external: [
-    "@masai/schema-grid-core",
-    "@masai/schema-grid-ag-grid",
-    "@masai/schema-grid-io",
+    "@ranjeetk25/schema-grid-core",
+    "@ranjeetk25/schema-grid-ag-grid",
+    "@ranjeetk25/schema-grid-io",
     "react",
     "react-dom",
     "react/jsx-runtime",

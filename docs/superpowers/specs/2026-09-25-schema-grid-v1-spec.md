@@ -30,24 +30,24 @@ No off-the-shelf React component does runtime columns + permissions + field-type
 ```
 schema-grid/
   packages/
-    core/           @masai/schema-grid-core      — schema, field-type registry, filter AST, query model,
+    core/           @ranjeetk25/schema-grid-core      — schema, field-type registry, filter AST, query model,
                                                     permissions, formula engine, change/patch model.
                                                     ZERO deps on React, AG Grid, Mantine, Drizzle.
-    server/         @masai/schema-grid-server    — filter AST → Drizzle/MySQL, permission enforcement,
+    server/         @ranjeetk25/schema-grid-server    — filter AST → Drizzle/MySQL, permission enforcement,
                                                     schema validation, formula evaluation, grouping
                                                     queries, change-feed cursor, import/export jobs.
                                                     Node only. Depends on core.
-    ag-grid/        @masai/schema-grid-ag-grid   — schema→ColDef compiler, custom editors/filters/
+    ag-grid/        @ranjeetk25/schema-grid-ag-grid   — schema→ColDef compiler, custom editors/filters/
                                                     renderers, infinite datasource adapter, range
                                                     selection, clipboard, fill handle, undo/redo,
                                                     client-side grouping, polling sync.
                                                     Peer: react, ag-grid-community, ag-grid-react.
-    ui-mantine/     @masai/schema-grid-ui-mantine — column builder, filter builder, chips, view
+    ui-mantine/     @ranjeetk25/schema-grid-ui-mantine — column builder, filter builder, chips, view
                                                     switcher, import wizard, export dialog, conflict
                                                     prompt, Mantine-based editor widgets.
                                                     Peer: react, @mantine/core ^8, @mantine/hooks,
                                                     @mantine/dates, dayjs.
-    import-export/  @masai/schema-grid-io        — CSV/XLSX parse + generate (Papaparse, ExcelJS),
+    import-export/  @ranjeetk25/schema-grid-io        — CSV/XLSX parse + generate (Papaparse, ExcelJS),
                                                     column auto-mapping, row validation via field types.
                                                     Isomorphic (browser preview + server job).
   apps/

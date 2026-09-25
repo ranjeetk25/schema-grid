@@ -1,5 +1,5 @@
-import type { ChangeFeedEntry, GridRow } from "@masai/schema-grid-core";
-import { Button, RemoteChangedBadge } from "@masai/schema-grid-ui-shadcn";
+import type { ChangeFeedEntry, GridRow } from "@ranjeetk25/schema-grid-core";
+import { Button, RemoteChangedBadge } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { UserRoundPenIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";

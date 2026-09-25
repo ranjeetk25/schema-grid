@@ -7,17 +7,17 @@ import type {
   GridRow,
   GridSchema,
   QueryResult,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 import {
   buildExportStream,
   exportFileName,
   exportMimeType,
-} from "@masai/schema-grid-io/export";
+} from "@ranjeetk25/schema-grid-io/export";
 import {
   type ExportWriter,
   iterateQuery,
   streamExport,
-} from "@masai/schema-grid-server";
+} from "@ranjeetk25/schema-grid-server";
 
 /**
  * Adapts io's `buildExportStream` to the server's `ExportWriter`: the server

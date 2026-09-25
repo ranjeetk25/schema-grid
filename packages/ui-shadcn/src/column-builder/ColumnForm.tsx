@@ -32,12 +32,16 @@ export interface ColumnBuilderProps {
   dataSource?: DataSource;
   /** Rows the formula editor evaluates for its live preview (first 3). */
   sampleRows?: GridRow[];
-  /** Where the new column goes (index among visible columns); carried on the draft preview. */
-  insertAt?: number;
   /**
-   * Live preview hook: called (debounced ~150ms) with the draft as a renderable
-   * ColumnDef whenever it is valid enough to show, and with `null` on close.
-   * Hosts pass it to the grid's `draftColumn` prop.
+   * Where the new column goes: an index among the displayed columns, or
+   * `{ afterColumnId }` / `{ beforeColumnId }` (header menu "Insert left/right").
+   * Carried on the draft preview.
+   */
+  insertAt?: DraftColumn["insertAt"];
+  /**
+   * Live preview hook: called (debounced ~150ms) with ag-grid's `DraftColumn`
+   * (`{ column, insertAt, mode }`) whenever the draft can render, and with
+   * `null` on close. Pass it straight to `SchemaGrid`'s `draftColumn` prop.
    */
   onDraftChange?(draft: DraftColumn | null): void;
   /** Type pre-selected for a new column. */

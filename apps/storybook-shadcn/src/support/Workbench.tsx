@@ -10,7 +10,8 @@ import {
   SchemaGrid,
   type SchemaGridHandle,
   type SchemaGridPollOptions,
-} from "@masai/schema-grid-ag-grid";
+  type SchemaGridProps,
+} from "@ranjeetk25/schema-grid-ag-grid";
 import type {
   ChangeFeedEntry,
   ColumnDef,
@@ -21,8 +22,8 @@ import type {
   GroupSpec,
   PermissionUser,
   ViewDef,
-} from "@masai/schema-grid-core";
-import { resolveColumnAccess } from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
+import { resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
 import {
   Button,
   ColumnPanel,
@@ -31,13 +32,14 @@ import {
   FilterChips,
   GroupByBar,
   Separator,
+  ShadcnHeaderMenu,
   Tooltip,
   ViewSwitcher,
   notifyClipboardReport,
   useGridThemeFromShadcn,
   useShadcnConflictPrompt,
-} from "@masai/schema-grid-ui-shadcn";
-import { createShadcnUiRegistry } from "@masai/schema-grid-ui-shadcn/editors";
+} from "@ranjeetk25/schema-grid-ui-shadcn";
+import { createShadcnUiRegistry } from "@ranjeetk25/schema-grid-ui-shadcn/editors";
 import { DownloadIcon, PlusIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { registry, resolver } from "./shared";
@@ -59,6 +61,8 @@ export const GRID_OPTIONS = { suppressColumnVirtualisation: true } as const;
 
 const comparable = (v: ViewDef | null | undefined) =>
   v ? JSON.stringify({ f: v.filter, s: v.sort, q: v.search ?? "", g: v.groupBy }) : "";
+
+type InsertAt = NonNullable<SchemaGridProps["draftColumn"]>["insertAt"];
 
 const MOD = typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform) ? "⌘" : "Ctrl+";
 
@@ -90,6 +94,20 @@ function loadViews(key: string | undefined): ViewDef[] | null {
   } catch {
     return null;
   }
+}
+
+/** Places a new column by `insertAt` (header menu "Insert left/right"), else at the end; renumbers `order`. */
+function insertColumn(columns: ColumnDef[], column: ColumnDef, at: InsertAt | undefined): ColumnDef[] {
+  const sorted = [...columns].sort((a, b) => a.order - b.order);
+  let index = sorted.length;
+  if (typeof at === "number") index = Math.max(0, Math.min(sorted.length, at));
+  else if (at?.afterColumnId) index = sorted.findIndex((c) => c.id === at.afterColumnId) + 1 || sorted.length;
+  else if (at?.beforeColumnId) {
+    const i = sorted.findIndex((c) => c.id === at.beforeColumnId);
+    if (i >= 0) index = i;
+  }
+  sorted.splice(index, 0, column);
+  return sorted.map((c, order) => ({ ...c, order }));
 }
 
 /** A 32px ghost icon button with a Linear-style tooltip. */
@@ -161,6 +179,8 @@ export function Workbench({
   const [clipboard, setClipboard] = useState<ClipboardReport | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [editColumn, setEditColumn] = useState<ColumnDef | null>(null);
+  const [insertAt, setInsertAt] = useState<InsertAt | undefined>(undefined);
+  const [draftColumn, setDraftColumn] = useState<SchemaGridProps["draftColumn"]>(null);
   const [sampleRows, setSampleRows] = useState<GridRow[]>([]);
   const [feedCount, setFeedCount] = useState(0);
   const [saved, setSaved] = useState(0);
@@ -181,8 +201,9 @@ export function Workbench({
     handleRef.current?.stores.query.setGroupBy(next);
   };
 
-  const openPanel = (column: ColumnDef | null) => {
+  const openPanel = (column: ColumnDef | null, at?: InsertAt) => {
     setEditColumn(column);
+    setInsertAt(at);
     setPanelOpen(true);
     dataSource
       .fetch({ filter: null, sort: [], page: { offset: 0, limit: 3 } })
@@ -197,9 +218,7 @@ export function Workbench({
 
   const saveColumn = async (column: ColumnDef) => {
     const exists = schema.columns.some((c) => c.id === column.id);
-    const columns = exists
-      ? schema.columns.map((c) => (c.id === column.id ? column : c))
-      : [...schema.columns, { ...column, order: schema.columns.length }];
+    const columns = exists ? schema.columns.map((c) => (c.id === column.id ? column : c)) : insertColumn(schema.columns, column, insertAt);
     await commitSchema({ ...schema, schemaVersion: schema.schemaVersion + 1, columns });
     setPanelOpen(false);
     setEditColumn(null);
@@ -340,6 +359,22 @@ export function Workbench({
           height={height}
           poll={poll}
           theme={theme}
+          headerMenu={ShadcnHeaderMenu}
+          draftColumn={draftColumn}
+          onGroupByColumn={(colId) => {
+            if (!groupBy.some((g) => g.columnId === colId)) applyGroupBy([...groupBy, { columnId: colId }]);
+          }}
+          {...(canEditSchema
+            ? {
+                onAddColumn: () => openPanel(null),
+                onEditColumn: (colId: string) => {
+                  const c = schema.columns.find((x) => x.id === colId);
+                  if (c) openPanel(c);
+                },
+                onInsertColumn: (colId: string, side: "left" | "right") =>
+                  openPanel(null, side === "left" ? { beforeColumnId: colId } : { afterColumnId: colId }),
+              }
+            : {})}
           gridOptions={GRID_OPTIONS}
           {...(pageSize ? { pageSize } : {})}
           onClipboardReport={(report) => {
@@ -382,6 +417,7 @@ export function Workbench({
         onClose={() => {
           setPanelOpen(false);
           setEditColumn(null);
+          setDraftColumn(null);
         }}
         schema={schema}
         registry={registry}
@@ -393,6 +429,8 @@ export function Workbench({
         onDelete={(id) => void deleteColumn(id)}
         dataSource={dataSource}
         sampleRows={sampleRows}
+        insertAt={insertAt}
+        onDraftChange={setDraftColumn}
       />
     </div>
   );

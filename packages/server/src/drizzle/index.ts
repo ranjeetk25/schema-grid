@@ -1,4 +1,4 @@
-/** `@masai/schema-grid-server/drizzle` — Drizzle/MySQL translation, query, write and feed APIs. */
+/** `@ranjeetk25/schema-grid-server/drizzle` — Drizzle/MySQL translation, query, write and feed APIs. */
 export { type DefineGridTablesOptions, type GridTables, defineGridTables } from "../storage/tables";
 export type { FormulaPlan, SqlScope } from "../sql/scope";
 export type { StorageInfo, StorageKind, StorageOverrides } from "../sql/storage-kind";

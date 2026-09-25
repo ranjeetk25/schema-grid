@@ -1,6 +1,6 @@
 /**
  * import-export adapter. The ONLY file in ui-shadcn that imports
- * `@masai/schema-grid-io`. Functions and types are re-exported from the real
+ * `@ranjeetk25/schema-grid-io`. Functions and types are re-exported from the real
  * package; a few UI-only types and gaps are defined locally at the bottom.
  */
 import {
@@ -8,7 +8,7 @@ import {
   parseFile,
   validateRows,
   type ValidateRowsOptions,
-} from "@masai/schema-grid-io/import";
+} from "@ranjeetk25/schema-grid-io/import";
 
 // Import pipeline (browser preview + server job share these)
 export {
@@ -22,7 +22,7 @@ export {
   parseFile,
   toChangeBatches,
   validateRows,
-} from "@masai/schema-grid-io/import";
+} from "@ranjeetk25/schema-grid-io/import";
 export type {
   AutoMapColumnsOptions,
   CellErrorKind,
@@ -37,11 +37,11 @@ export type {
   RowValidation,
   ValidateRowsOptions,
   ValidationReport,
-} from "@masai/schema-grid-io/import";
+} from "@ranjeetk25/schema-grid-io/import";
 
 // Export
-export { HiddenColumnError, buildExport, buildExportBlob, exportFileName } from "@masai/schema-grid-io/export";
-export type { ExportFormat, ExportOptions } from "@masai/schema-grid-io/export";
+export { HiddenColumnError, buildExport, buildExportBlob, exportFileName } from "@ranjeetk25/schema-grid-io/export";
+export type { ExportFormat, ExportOptions } from "@ranjeetk25/schema-grid-io/export";
 
 // ---------------------------------------------------------------------------
 // Local (UI-only types and gaps in io's public API)

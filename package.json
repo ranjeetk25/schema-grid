@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "vitest run",
-    "test:integration": "bun run --filter @masai/schema-grid-server test:integration",
+    "test:integration": "bun run --filter @ranjeetk25/schema-grid-server test:integration",
     "build": "bun run --filter '*' build",
     "lint": "biome lint .",
     "format:check": "biome format .",

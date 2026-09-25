@@ -1,5 +1,5 @@
 /*
- * Tailwind v4 source entry for @masai/schema-grid-ui-shadcn.
+ * Tailwind v4 source entry for @ranjeetk25/schema-grid-ui-shadcn.
  *
  * - Every utility is prefixed `sg:` (and every theme variable `--sg-*`), so
  *   this build never collides with a host's own Tailwind.
@@ -7,7 +7,7 @@
  *   host page is untouched.
  * - Hosts that run Tailwind v4 can import this file as its OWN css entry
  *   (a second Tailwind root) to re-theme via @theme; everyone else imports
- *   the prebuilt `@masai/schema-grid-ui-shadcn/styles.css`.
+ *   the prebuilt `@ranjeetk25/schema-grid-ui-shadcn/styles.css`.
  */
 @layer theme, base, components, utilities;
 

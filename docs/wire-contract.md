@@ -12,11 +12,11 @@ SchemaGrid ── DataSource ── transport ──►  handler(op, input) ─�
             createHttpDataSource            createGridRouterAdapter + toExpressHandler / toLambdaHandler
 ```
 
-- Core: `@masai/schema-grid-core/wire` (`GRID_OPERATIONS`, `wireSchemas`, `createDataSourceHandler`,
+- Core: `@ranjeetk25/schema-grid-core/wire` (`GRID_OPERATIONS`, `wireSchemas`, `createDataSourceHandler`,
   `createRemoteDataSource`, `toWireError`, `httpStatusFor`, `RemoteDataSourceError`, `unwrapWireResult`).
-- Server: `@masai/schema-grid-server/http` (`createGridRouterAdapter`, `toExpressHandler`, `toLambdaHandler`,
+- Server: `@ranjeetk25/schema-grid-server/http` (`createGridRouterAdapter`, `toExpressHandler`, `toLambdaHandler`,
   `toHttpResponse`).
-- Browser: `@masai/schema-grid-ag-grid` (`createHttpDataSource`, re-exported `createRemoteDataSource`).
+- Browser: `@ranjeetk25/schema-grid-ag-grid` (`createHttpDataSource`, re-exported `createRemoteDataSource`).
 
 ## Operations
 

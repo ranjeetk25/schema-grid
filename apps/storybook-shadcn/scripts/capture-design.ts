@@ -39,7 +39,7 @@ async function openColumnFilter(page: Page, colId: string) {
 }
 
 async function openPanel(page: Page) {
-  await page.getByRole("button", { name: "Add column" }).click();
+  await page.getByRole("button", { name: "Add column" }).first().click();
   await page.getByRole("dialog", { name: "New column" }).waitFor();
 }
 
@@ -78,6 +78,32 @@ const all: Scenario[] = [
     story: "3-client-grid--full-toolbar",
     act: async (page) => {
       await page.getByRole("button", { name: "All rows" }).click();
+    },
+  },
+  {
+    name: "header-menu",
+    story: "3-client-grid--fixture-only",
+    act: async (page) => {
+      const header = page.locator('.ag-header-cell[col-id="col_status"]').first();
+      await header.hover();
+      await header.locator(".sg-header-menu").first().click();
+      await page.getByRole("menu").first().waitFor();
+    },
+  },
+  {
+    name: "column-panel-ghost",
+    story: "3-client-grid--fixture-only",
+    act: async (page) => {
+      const header = page.locator('.ag-header-cell[col-id="col_paid"]').first();
+      await header.hover();
+      await header.locator(".sg-header-menu").first().click();
+      await page.getByRole("menuitem", { name: /Insert column right/ }).click();
+      const panel = page.getByRole("dialog", { name: "New column" });
+      await panel.getByRole("textbox", { name: /Name/ }).fill("Balance due");
+      await panel.getByRole("button", { name: /Type|Choose a type/ }).first().click();
+      await page.getByRole("option", { name: /^Formula/ }).first().click();
+      await panel.getByRole("textbox", { name: /Formula/ }).fill("{fee} - {paid}");
+      await page.waitForTimeout(400);
     },
   },
   { name: "column-panel-empty", story: "3-client-grid--full-toolbar", act: openPanel },

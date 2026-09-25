@@ -1,16 +1,16 @@
 # Consuming Schema Grid from npm
 
 The packages are public on npmjs.com under the `@masai` scope, MIT-licensed, and
-released in lockstep: every `@masai/schema-grid-*` package always has the same
+released in lockstep: every `@ranjeetk25/schema-grid-*` package always has the same
 version, so pin them all to the same number.
 
 | Package | Runs in | What it is |
 |---|---|---|
-| `@masai/schema-grid-core` | browser + Node | schemas, field types, filters, formulas, wire contract |
-| `@masai/schema-grid-io` | browser + Node | CSV/XLSX import/export, clipboard parsing |
-| `@masai/schema-grid-server` | Node | Drizzle/MySQL data source, permissions, HTTP adapters |
-| `@masai/schema-grid-ag-grid` | browser | `<SchemaGrid>` on AG Grid Community, `createHttpDataSource` |
-| `@masai/schema-grid-ui-mantine` | browser | Mantine v8 editors, filter/column builders, import/export UI |
+| `@ranjeetk25/schema-grid-core` | browser + Node | schemas, field types, filters, formulas, wire contract |
+| `@ranjeetk25/schema-grid-io` | browser + Node | CSV/XLSX import/export, clipboard parsing |
+| `@ranjeetk25/schema-grid-server` | Node | Drizzle/MySQL data source, permissions, HTTP adapters |
+| `@ranjeetk25/schema-grid-ag-grid` | browser | `<SchemaGrid>` on AG Grid Community, `createHttpDataSource` |
+| `@ranjeetk25/schema-grid-ui-mantine` | browser | Mantine v8 editors, filter/column builders, import/export UI |
 
 All packages ship ESM + CJS builds with `.d.ts` types, and need Node >= 20.
 
@@ -19,21 +19,21 @@ All packages ship ESM + CJS builds with `.d.ts` types, and need Node >= 20.
 Frontend workspace (e.g. `public-ui`):
 
 ```bash
-bun add @masai/schema-grid-core @masai/schema-grid-ag-grid @masai/schema-grid-ui-mantine
+bun add @ranjeetk25/schema-grid-core @ranjeetk25/schema-grid-ag-grid @ranjeetk25/schema-grid-ui-mantine
 # peers the frontend must provide (see the table below)
 bun add ag-grid-community@^36 ag-grid-react@^36 @mantine/dates@^8 dayjs zod
 # optional: CSV/XLSX export from the browser
-bun add @masai/schema-grid-io
+bun add @ranjeetk25/schema-grid-io
 ```
 
 Backend workspace (`api`):
 
 ```bash
-bun add @masai/schema-grid-core @masai/schema-grid-server
+bun add @ranjeetk25/schema-grid-core @ranjeetk25/schema-grid-server
 # peers: drizzle-orm ^0.45 (see "Known gaps" below), mysql2 ^3, zod
 ```
 
-`@masai/schema-grid-ui-mantine` depends on `-ag-grid`, `-core` and `-io` itself,
+`@ranjeetk25/schema-grid-ui-mantine` depends on `-ag-grid`, `-core` and `-io` itself,
 so those three get installed with it at the matching version. They are listed
 explicitly above because you import from them directly.
 
@@ -50,7 +50,7 @@ React, Mantine, AG Grid and Zod.
 | | `mysql2` | `^3.0.0` | optional |
 | `-ag-grid` | `react`, `react-dom` | `^18.3.0` | |
 | | `ag-grid-community`, `ag-grid-react` | `^36.0.0` | Community only, no Enterprise |
-| | `@masai/schema-grid-io` | `*` | optional, only for `exportCurrentView` |
+| | `@ranjeetk25/schema-grid-io` | `*` | optional, only for `exportCurrentView` |
 | `-ui-mantine` | `react`, `react-dom` | `^18.3.0` | |
 | | `@mantine/core`, `@mantine/hooks`, `@mantine/dates` | `^8.0.0` | |
 | | `@mantine/notifications` | `^8.0.0` | optional (paste-report toast) |
@@ -61,7 +61,7 @@ React, Mantine, AG Grid and Zod.
 Known gaps in the admissions monorepo (checked 2026-09): `public-ui` has
 `@mantine/core`/`hooks` ^8.3 and React 18.3, but not `@mantine/dates` or
 `ag-grid-*`. `api` pins `drizzle-orm` ^0.41, below the `^0.45.0` peer of
-`@masai/schema-grid-server`. Either upgrade drizzle-orm in `api`, or use only
+`@ranjeetk25/schema-grid-server`. Either upgrade drizzle-orm in `api`, or use only
 the non-Drizzle parts of `-server` (`/http` with your own `DataSource`) until
 you do. `zod` resolves to 3.25.76 there, which satisfies `^3.25`.
 
@@ -87,10 +87,10 @@ The schema-grid packages ship no CSS files of their own.
 
 ```ts
 import express from "express";
-import { createRolePermissionResolver, type PermissionUser } from "@masai/schema-grid-core";
-import { createDefaultRegistry } from "@masai/schema-grid-core/field-types";
-import { createDrizzleDataSource } from "@masai/schema-grid-server/drizzle";
-import { createGridRouterAdapter, toExpressHandler } from "@masai/schema-grid-server/http";
+import { createRolePermissionResolver, type PermissionUser } from "@ranjeetk25/schema-grid-core";
+import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
+import { createDrizzleDataSource } from "@ranjeetk25/schema-grid-server/drizzle";
+import { createGridRouterAdapter, toExpressHandler } from "@ranjeetk25/schema-grid-server/http";
 
 const registry = createDefaultRegistry();
 const resolver = createRolePermissionResolver();
@@ -107,16 +107,16 @@ app.post(
 ```
 
 `db` is your Drizzle MySQL instance and `schema` is a `GridSchema`. The tables
-come from `@masai/schema-grid-server/ddl` (`createRowsTableDDL`,
+come from `@ranjeetk25/schema-grid-server/ddl` (`createRowsTableDDL`,
 `createChangeLogTableDDL`). Hono, AWS Lambda and tRPC variants are in
 [`packages/server/README.md`](../packages/server/README.md).
 
 ### Browser
 
 ```tsx
-import { SchemaGrid, createHttpDataSource } from "@masai/schema-grid-ag-grid";
-import { createMantineUiRegistry } from "@masai/schema-grid-ui-mantine/editors";
-import { createDefaultRegistry } from "@masai/schema-grid-core/field-types";
+import { SchemaGrid, createHttpDataSource } from "@ranjeetk25/schema-grid-ag-grid";
+import { createMantineUiRegistry } from "@ranjeetk25/schema-grid-ui-mantine/editors";
+import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 
 // Module scope: SchemaGrid compares these by reference.
 const registry = createDefaultRegistry();
@@ -160,9 +160,9 @@ line on the PR:
 
 ```bash
 # exact build, which is reproducible:
-bun add @masai/schema-grid-core@0.0.0-pr42-1a2b3c4 @masai/schema-grid-ag-grid@0.0.0-pr42-1a2b3c4 @masai/schema-grid-ui-mantine@0.0.0-pr42-1a2b3c4
+bun add @ranjeetk25/schema-grid-core@0.0.0-pr42-1a2b3c4 @ranjeetk25/schema-grid-ag-grid@0.0.0-pr42-1a2b3c4 @ranjeetk25/schema-grid-ui-mantine@0.0.0-pr42-1a2b3c4
 # or the newest preview from ANY PR:
-bun add @masai/schema-grid-core@pr
+bun add @ranjeetk25/schema-grid-core@pr
 ```
 
 Use the same version for every package. Do not merge an admissions change that
@@ -174,7 +174,7 @@ Every release has a `CHANGELOG.md` per package and a GitHub Release. Because
 versions move in lockstep, upgrade all of them together:
 
 ```bash
-bun add @masai/schema-grid-core@latest @masai/schema-grid-ag-grid@latest @masai/schema-grid-ui-mantine@latest
+bun add @ranjeetk25/schema-grid-core@latest @ranjeetk25/schema-grid-ag-grid@latest @ranjeetk25/schema-grid-ui-mantine@latest
 ```
 
 While the version is `0.x`, a minor bump (`0.1` to `0.2`) may contain breaking

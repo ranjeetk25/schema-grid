@@ -1,5 +1,5 @@
 {
-  "name": "@masai/schema-grid-server",
+  "name": "@ranjeetk25/schema-grid-server",
   "version": "0.0.1",
   "description": "Server side of Schema Grid: permission-checked Drizzle/MySQL queries, change feed, import/export jobs and HTTP adapters.",
   "license": "MIT",
@@ -69,7 +69,7 @@
     "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration"
   },
   "dependencies": {
-    "@masai/schema-grid-core": "workspace:*"
+    "@ranjeetk25/schema-grid-core": "workspace:*"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.45.0",

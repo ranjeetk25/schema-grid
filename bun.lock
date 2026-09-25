@@ -23,9 +23,9 @@
       "name": "demo-api",
       "version": "0.0.0",
       "dependencies": {
-        "@masai/schema-grid-core": "workspace:*",
-        "@masai/schema-grid-io": "workspace:*",
-        "@masai/schema-grid-server": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-server": "workspace:*",
         "drizzle-orm": "^0.45.3",
         "hono": "^4.6.0",
         "mysql2": "^3.24.4",
@@ -44,10 +44,10 @@
         "@mantine/dates": "^8.3.18",
         "@mantine/hooks": "^8.3.18",
         "@mantine/notifications": "^8.3.18",
-        "@masai/schema-grid-ag-grid": "workspace:*",
-        "@masai/schema-grid-core": "workspace:*",
-        "@masai/schema-grid-io": "workspace:*",
-        "@masai/schema-grid-ui-mantine": "workspace:*",
+        "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-ui-mantine": "workspace:*",
         "@tabler/icons-react": "^3.48.0",
         "ag-grid-community": "^36.2.0",
         "ag-grid-react": "^36.2.0",
@@ -73,10 +73,10 @@
       "name": "schema-grid-storybook-shadcn",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-ag-grid": "workspace:*",
-        "@masai/schema-grid-core": "workspace:*",
-        "@masai/schema-grid-io": "workspace:*",
-        "@masai/schema-grid-ui-shadcn": "workspace:*",
+        "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-ui-shadcn": "workspace:*",
         "ag-grid-community": "^36.2.0",
         "ag-grid-react": "^36.2.0",
         "lucide-react": "^1.48.0",
@@ -101,31 +101,31 @@
       },
     },
     "packages/ag-grid": {
-      "name": "@masai/schema-grid-ag-grid",
+      "name": "@ranjeetk25/schema-grid-ag-grid",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
       },
       "devDependencies": {
-        "@masai/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
         "ag-grid-community": "^36.2.0",
         "ag-grid-react": "^36.2.0",
         "react": "^18.3.0",
         "react-dom": "^18.3.0",
       },
       "peerDependencies": {
-        "@masai/schema-grid-io": "*",
+        "@ranjeetk25/schema-grid-io": "*",
         "ag-grid-community": "^36.0.0",
         "ag-grid-react": "^36.0.0",
         "react": "^18.3.0",
         "react-dom": "^18.3.0",
       },
       "optionalPeers": [
-        "@masai/schema-grid-io",
+        "@ranjeetk25/schema-grid-io",
       ],
     },
     "packages/core": {
-      "name": "@masai/schema-grid-core",
+      "name": "@ranjeetk25/schema-grid-core",
       "version": "0.0.1",
       "devDependencies": {
         "zod": "^3.25.76",
@@ -135,10 +135,10 @@
       },
     },
     "packages/import-export": {
-      "name": "@masai/schema-grid-io",
+      "name": "@ranjeetk25/schema-grid-io",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
         "exceljs": "^4.4.0",
         "papaparse": "^5.7.0",
       },
@@ -147,10 +147,10 @@
       },
     },
     "packages/server": {
-      "name": "@masai/schema-grid-server",
+      "name": "@ranjeetk25/schema-grid-server",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
       },
       "devDependencies": {
         "@testcontainers/mysql": "^12.1.0",
@@ -167,12 +167,12 @@
       ],
     },
     "packages/ui-mantine": {
-      "name": "@masai/schema-grid-ui-mantine",
+      "name": "@ranjeetk25/schema-grid-ui-mantine",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-ag-grid": "workspace:*",
-        "@masai/schema-grid-core": "workspace:*",
-        "@masai/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
         "@tabler/icons-react": "^3.48.0",
       },
       "devDependencies": {
@@ -203,10 +203,10 @@
       ],
     },
     "packages/ui-shadcn": {
-      "name": "@masai/schema-grid-ui-shadcn",
+      "name": "@ranjeetk25/schema-grid-ui-shadcn",
       "version": "0.0.1",
       "dependencies": {
-        "@masai/schema-grid-core": "workspace:*",
+        "@ranjeetk25/schema-grid-core": "workspace:*",
         "@radix-ui/react-avatar": "^1.2.6",
         "@radix-ui/react-checkbox": "^1.3.11",
         "@radix-ui/react-dialog": "^1.1.23",
@@ -230,8 +230,8 @@
         "tailwind-merge": "^3.7.0",
       },
       "devDependencies": {
-        "@masai/schema-grid-ag-grid": "workspace:*",
-        "@masai/schema-grid-io": "workspace:*",
+        "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+        "@ranjeetk25/schema-grid-io": "workspace:*",
         "@tailwindcss/cli": "^4",
         "@testing-library/user-event": "^14.6.1",
         "ag-grid-community": "^36.2.0",
@@ -243,8 +243,8 @@
         "zod": "^3.25.76",
       },
       "peerDependencies": {
-        "@masai/schema-grid-ag-grid": "*",
-        "@masai/schema-grid-io": "*",
+        "@ranjeetk25/schema-grid-ag-grid": "*",
+        "@ranjeetk25/schema-grid-io": "*",
         "ag-grid-community": "^36.0.0",
         "ag-grid-react": "^36.0.0",
         "react": "^18.3.0",
@@ -481,17 +481,17 @@
 
     "@manypkg/get-packages": ["@manypkg/get-packages@1.1.3", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@changesets/types": "^4.0.1", "@manypkg/find-root": "^1.1.0", "fs-extra": "^8.1.0", "globby": "^11.0.0", "read-yaml-file": "^1.1.0" } }, "sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A=="],
 
-    "@masai/schema-grid-ag-grid": ["@masai/schema-grid-ag-grid@workspace:packages/ag-grid"],
+    "@ranjeetk25/schema-grid-ag-grid": ["@ranjeetk25/schema-grid-ag-grid@workspace:packages/ag-grid"],
 
-    "@masai/schema-grid-core": ["@masai/schema-grid-core@workspace:packages/core"],
+    "@ranjeetk25/schema-grid-core": ["@ranjeetk25/schema-grid-core@workspace:packages/core"],
 
-    "@masai/schema-grid-io": ["@masai/schema-grid-io@workspace:packages/import-export"],
+    "@ranjeetk25/schema-grid-io": ["@ranjeetk25/schema-grid-io@workspace:packages/import-export"],
 
-    "@masai/schema-grid-server": ["@masai/schema-grid-server@workspace:packages/server"],
+    "@ranjeetk25/schema-grid-server": ["@ranjeetk25/schema-grid-server@workspace:packages/server"],
 
-    "@masai/schema-grid-ui-mantine": ["@masai/schema-grid-ui-mantine@workspace:packages/ui-mantine"],
+    "@ranjeetk25/schema-grid-ui-mantine": ["@ranjeetk25/schema-grid-ui-mantine@workspace:packages/ui-mantine"],
 
-    "@masai/schema-grid-ui-shadcn": ["@masai/schema-grid-ui-shadcn@workspace:packages/ui-shadcn"],
+    "@ranjeetk25/schema-grid-ui-shadcn": ["@ranjeetk25/schema-grid-ui-shadcn@workspace:packages/ui-shadcn"],
 
     "@mdx-js/react": ["@mdx-js/react@3.1.1", "", { "dependencies": { "@types/mdx": "^2.0.0" }, "peerDependencies": { "@types/react": ">=16", "react": ">=16" } }, "sha512-f++rKLQgUVYDAtECQ6fn/is15GkEH9+nZPM3MS0RcxVqoTfawHvDlSCH7JbMhAM6uJ32v3eXLvLmLvjGu7PTQw=="],
 

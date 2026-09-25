@@ -3,24 +3,24 @@ import {
   type GridSchema,
   type RowPartial,
   createRolePermissionResolver,
-} from "@masai/schema-grid-core";
-import { createDefaultRegistry } from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core";
+import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 import {
   createFixtureRows,
   createFixtureSchema,
-} from "@masai/schema-grid-core/testing";
-import { createServerContext } from "@masai/schema-grid-server";
+} from "@ranjeetk25/schema-grid-core/testing";
+import { createServerContext } from "@ranjeetk25/schema-grid-server";
 import {
   createChangeLogTableDDL,
   createRowsTableDDL,
   diffIndexedColumns,
   formulaSqlHook,
-} from "@masai/schema-grid-server/ddl";
+} from "@ranjeetk25/schema-grid-server/ddl";
 import {
   type GridDb,
   type GridTables,
   createRows,
-} from "@masai/schema-grid-server/drizzle";
+} from "@ranjeetk25/schema-grid-server/drizzle";
 import { rawQuery } from "./db";
 import type { SchemaStore } from "./schema-store";
 

@@ -1,10 +1,10 @@
 /**
- * Core adapter. The ONLY place ui-shadcn imports `@masai/schema-grid-core`
+ * Core adapter. The ONLY place ui-shadcn imports `@ranjeetk25/schema-grid-core`
  * from. Everything is re-exported from the real package; the few local
  * helpers at the bottom are UI-specific (not gaps in core).
  */
-import type { FilterValueKind } from "@masai/schema-grid-core";
-import { RELATIVE_DATE_PRESETS } from "@masai/schema-grid-core/filter";
+import type { FilterValueKind } from "@ranjeetk25/schema-grid-core";
+import { RELATIVE_DATE_PRESETS } from "@ranjeetk25/schema-grid-core/filter";
 
 // §4.1 schema, §4.4 query, §4.5 rows, §4.6 data source, common refs
 export type {
@@ -30,15 +30,15 @@ export type {
   SortSpec,
   UserRef,
   ViewDef,
-} from "@masai/schema-grid-core";
-export { BUILTIN_FIELD_TYPE_IDS } from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
+export { BUILTIN_FIELD_TYPE_IDS } from "@ranjeetk25/schema-grid-core";
 
 // §4.7 permissions
-export type { Access, PermissionContext, PermissionResolver, PermissionUser } from "@masai/schema-grid-core";
-export { createRolePermissionResolver, resolveColumnAccess } from "@masai/schema-grid-core";
+export type { Access, PermissionContext, PermissionResolver, PermissionUser } from "@ranjeetk25/schema-grid-core";
+export { createRolePermissionResolver, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
 
 // §4.2 field types
-export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@masai/schema-grid-core";
+export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core";
 export {
   createDefaultRegistry,
   createFieldTypeRegistry,
@@ -47,7 +47,7 @@ export {
   getColumnValueFieldType,
   isEmptyValue,
   resolveFormulaOperandTypeId,
-} from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core/field-types";
 
 // §4.3 filter AST + validation
 export type {
@@ -63,7 +63,7 @@ export type {
   RelativeDate,
   RelativeDateKind,
   RelativeDatePreset,
-} from "@masai/schema-grid-core/filter";
+} from "@ranjeetk25/schema-grid-core/filter";
 export {
   MAX_FILTER_DEPTH,
   NEGATIVE_OPERATOR_IDS,
@@ -72,14 +72,14 @@ export {
   isFilterCondition,
   isFilterGroup,
   validateFilter,
-} from "@masai/schema-grid-core/filter";
+} from "@ranjeetk25/schema-grid-core/filter";
 
 // §4.8 formula
-export type { FormulaError, FormulaNode, FormulaResultType } from "@masai/schema-grid-core";
-export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parseFormula } from "@masai/schema-grid-core";
+export type { FormulaError, FormulaNode, FormulaResultType } from "@ranjeetk25/schema-grid-core";
+export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parseFormula } from "@ranjeetk25/schema-grid-core";
 // Formula evaluation (column-builder live preview).
-export type { FormulaEnv, FormulaFunctionDef, FormulaValue } from "@masai/schema-grid-core";
-export { DEFAULT_TIME_ZONE, evaluate } from "@masai/schema-grid-core";
+export type { FormulaEnv, FormulaFunctionDef, FormulaValue } from "@ranjeetk25/schema-grid-core";
+export { DEFAULT_TIME_ZONE, evaluate } from "@ranjeetk25/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API

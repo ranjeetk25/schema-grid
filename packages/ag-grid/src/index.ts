@@ -1,4 +1,4 @@
-// Public barrel for `@masai/schema-grid-ag-grid`.
+// Public barrel for `@ranjeetk25/schema-grid-ag-grid`.
 // Subpaths: `./editors`, `./filters`, `./sync`.
 export const SCHEMA_GRID_AG_GRID_VERSION = "0.0.1";
 
@@ -140,7 +140,7 @@ export {
   type RemoteDataSourceOptions,
   type WireError,
   type WireResult,
-} from "@masai/schema-grid-core/wire";
+} from "@ranjeetk25/schema-grid-core/wire";
 
 // A11y
 export { createAnnouncer, savedMessage, type Announcer, type Politeness } from "./a11y/announcer";

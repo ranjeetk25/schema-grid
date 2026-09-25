@@ -1,5 +1,5 @@
-import { SchemaGrid, createDefaultUiRegistry } from "@masai/schema-grid-ag-grid";
-import { useGridThemeFromShadcn } from "@masai/schema-grid-ui-shadcn";
+import { SchemaGrid, createDefaultUiRegistry } from "@ranjeetk25/schema-grid-ag-grid";
+import { useGridThemeFromShadcn } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo, useState } from "react";
 import { GRID_OPTIONS, Workbench } from "../support/Workbench";

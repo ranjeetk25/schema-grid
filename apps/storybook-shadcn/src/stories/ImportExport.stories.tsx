@@ -1,14 +1,14 @@
-import { SchemaGrid, type SchemaGridHandle } from "@masai/schema-grid-ag-grid";
-import { type ColumnDef, type GridRow, resolveColumnAccess } from "@masai/schema-grid-core";
-import { buildExportBlob, exportFileName } from "@masai/schema-grid-io/export";
-import { toChangeBatches, validateRows } from "@masai/schema-grid-io/import";
+import { SchemaGrid, type SchemaGridHandle } from "@ranjeetk25/schema-grid-ag-grid";
+import { type ColumnDef, type GridRow, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
+import { buildExportBlob, exportFileName } from "@ranjeetk25/schema-grid-io/export";
+import { toChangeBatches, validateRows } from "@ranjeetk25/schema-grid-io/import";
 import {
   ExportDialog,
   type ExportRequest,
   type ImportJobStatus,
   ImportWizard,
   useGridThemeFromShadcn,
-} from "@masai/schema-grid-ui-shadcn";
+} from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { DownloadIcon, UploadIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";

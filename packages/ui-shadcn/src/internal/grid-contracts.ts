@@ -1,6 +1,6 @@
 /**
  * ag-grid adapter. The ONLY file in ui-shadcn that imports
- * `@masai/schema-grid-ag-grid` (and `ag-grid-react`).
+ * `@ranjeetk25/schema-grid-ag-grid` (and `ag-grid-react`).
  *
  * ui-shadcn's widgets are written against its own small, grid-agnostic
  * contracts (`UiEditorProps`, `UiRendererProps`, `UiFilterInputProps`) so the
@@ -16,13 +16,13 @@ import {
   type UiFieldTypeRegistry,
   createDefaultUiRegistry,
   getSchemaGridContext,
-} from "@masai/schema-grid-ag-grid";
+} from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type CreatePopupEditorOptions,
   type PopupEditorEntry,
   type PopupEditorInnerProps,
   createPopupEditor,
-} from "@masai/schema-grid-ag-grid/editors";
+} from "@ranjeetk25/schema-grid-ag-grid/editors";
 import { type CustomCellEditorProps, type CustomCellRendererProps, useGridCellEditor } from "ag-grid-react";
 import { type ComponentType, createElement, useCallback, useRef } from "react";
 import {
@@ -49,10 +49,27 @@ export {
   type UiFieldType,
   type UiFieldTypeRegistry,
 };
-export type { ClipboardReport, SchemaGridEvents } from "@masai/schema-grid-ag-grid";
+export type { ClipboardReport, SchemaGridEvents } from "@ranjeetk25/schema-grid-ag-grid";
+
+// Header menu slot + column-builder live preview (SchemaGrid.headerMenu / draftColumn)
+export type {
+  HeaderMenuActions,
+  HeaderMenuColumn,
+  HeaderMenuComponent,
+  HeaderMenuPinnedState,
+  HeaderMenuProps,
+  HeaderMenuSortState,
+} from "@ranjeetk25/schema-grid-ag-grid";
+
+/**
+ * `DraftColumn` / `AddColumnPosition` are not exported from ag-grid's index
+ * (contract gap, reported); derived from `SchemaGridProps` meanwhile.
+ */
+export type GridDraftColumn = NonNullable<import("@ranjeetk25/schema-grid-ag-grid").SchemaGridProps["draftColumn"]>;
+export type AddColumnPosition = Parameters<NonNullable<import("@ranjeetk25/schema-grid-ag-grid").SchemaGridProps["onAddColumn"]>>[0];
 
 // Theme (used by theme/useGridThemeFromShadcn)
-export { createSchemaGridTheme, type SchemaGridThemeOverrides } from "@masai/schema-grid-ag-grid";
+export { createSchemaGridTheme, type SchemaGridThemeOverrides } from "@ranjeetk25/schema-grid-ag-grid";
 
 // ---------------------------------------------------------------------------
 // Widget contracts (owned by ui-shadcn)
@@ -103,7 +120,7 @@ type GridEditor = ComponentType<CustomCellEditorProps<GridRow>>;
 type GridRenderer = ComponentType<CustomCellRendererProps<GridRow>>;
 type SchemaExtras = Partial<SchemaCellRendererParams>;
 
-const WIDGET = Symbol.for("@masai/schema-grid-ui-shadcn/widget");
+const WIDGET = Symbol.for("@ranjeetk25/schema-grid-ui-shadcn/widget");
 type Tagged<W> = { [WIDGET]?: W };
 
 function tag<C extends object, W>(component: C, widget: W): C {
@@ -370,7 +387,7 @@ export {
   type FilterOption,
   type ResolvedFilterColumn,
   type SchemaFilterProps,
-} from "@masai/schema-grid-ag-grid/filters";
+} from "@ranjeetk25/schema-grid-ag-grid/filters";
 
 // ---------------------------------------------------------------------------
 // Boolean: toggle in place

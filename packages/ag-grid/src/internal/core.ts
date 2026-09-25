@@ -1,5 +1,5 @@
 /**
- * The ONLY place `@masai/schema-grid-core` is consumed from.
+ * The ONLY place `@ranjeetk25/schema-grid-core` is consumed from.
  *
  * Mostly straight re-exports of the real core. A few thin adapters keep this
  * package's call sites stable; each is marked `ADAPTER` with the reason.
@@ -39,14 +39,14 @@ import {
   DEFAULT_TIME_ZONE,
   matchesFilter as coreMatchesFilter,
   validateFilter as coreValidateFilter,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 import {
   compareWithEmptyLast,
   createDefaultRegistry,
   getColumnValueFieldType,
   isEmptyValue,
   resolveFormulaOperandTypeId,
-} from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core/field-types";
 
 // ============================================================================
 // 1. Types
@@ -55,7 +55,7 @@ import {
 export {
   BUILTIN_FIELD_TYPE_IDS,
   BUILTIN_FIELD_TYPE_IDS as BUILT_IN_FIELD_TYPE_IDS,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 export type {
   ActorRef,
@@ -92,7 +92,7 @@ export type {
   SortSpec,
   UserRef,
   ViewDef,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 export type Pinned = "left" | "right" | null;
 
@@ -100,8 +100,8 @@ export type Pinned = "left" | "right" | null;
 // 2. Field types
 // ============================================================================
 
-export type { AnyFieldType, FieldTypeRegistry, ParseResult } from "@masai/schema-grid-core";
-export type { FieldType } from "@masai/schema-grid-core";
+export type { AnyFieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core";
+export type { FieldType } from "@ranjeetk25/schema-grid-core";
 export {
   builtinFieldTypes,
   compareWithEmptyLast,
@@ -117,7 +117,7 @@ export {
   type FormulaConfig,
   type NumberConfig,
   type SelectConfig,
-} from "@masai/schema-grid-core/field-types";
+} from "@ranjeetk25/schema-grid-core/field-types";
 
 /** Module-level registry used where only the built-ins are needed. */
 let builtinRegistry: FieldTypeRegistry | undefined;
@@ -164,7 +164,7 @@ export type {
   RelativeDate,
   RelativeDateKind,
   RelativeDateResult,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 export {
   BOOLEAN_OPERATORS,
   DATE_OPERATORS,
@@ -181,7 +181,7 @@ export {
   isFilterGroup,
   isNegativeOperator,
   resolveRelativeDate,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 export const DEFAULT_TZ = DEFAULT_TIME_ZONE;
 export { DEFAULT_TIME_ZONE };
@@ -241,7 +241,7 @@ export function matchesFilter(row: GridRow, node: FilterNode | null, ctx: MatchC
 // 4. Sort / search / aggregate
 // ============================================================================
 
-export { computeAggregate, isAggregationAllowed, UNIVERSAL_AGGREGATIONS } from "@masai/schema-grid-core";
+export { computeAggregate, isAggregationAllowed, UNIVERSAL_AGGREGATIONS } from "@ranjeetk25/schema-grid-core";
 
 export interface SortContext {
   schema: GridSchema;
@@ -318,14 +318,14 @@ export function searchRows<Row extends GridRow>(
 // 5. Permissions
 // ============================================================================
 
-export type { Access, PermissionUser } from "@masai/schema-grid-core";
+export type { Access, PermissionUser } from "@ranjeetk25/schema-grid-core";
 export {
   createRolePermissionResolver,
   editableColumnIds,
   readableColumnIds,
   resolveColumnAccess,
   type RolePermissionResolverOptions,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 /** Alias kept for this package's call sites. */
 export type GridUser = PermissionUser;
@@ -334,8 +334,8 @@ export type GridUser = PermissionUser;
  * ADAPTER: core's PermissionContext/Resolver are not generic; the `Row`
  * parameter is kept (unused) so call sites can stay generic.
  */
-export type PermissionContext<_Row extends GridRow = GridRow> = import("@masai/schema-grid-core").PermissionContext;
-export type PermissionResolver<_Row extends GridRow = GridRow> = import("@masai/schema-grid-core").PermissionResolver;
+export type PermissionContext<_Row extends GridRow = GridRow> = import("@ranjeetk25/schema-grid-core").PermissionContext;
+export type PermissionResolver<_Row extends GridRow = GridRow> = import("@ranjeetk25/schema-grid-core").PermissionResolver;
 
 // ============================================================================
 // 6. Formula engine
@@ -349,7 +349,7 @@ export type {
   FormulaNode as FormulaAst,
   FormulaResultType,
   FormulaValue,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 export {
   dependencies,
   detectFormulaCycles,
@@ -359,7 +359,7 @@ export {
   isFormulaError,
   parseFormula,
   validateFormulaColumns,
-} from "@masai/schema-grid-core";
+} from "@ranjeetk25/schema-grid-core";
 
 /** LOCAL: build a core-shaped FormulaError value (core's is a plain object). */
 export function formulaError(message: string, code: FormulaErrorCode = "eval"): FormulaError {
@@ -370,7 +370,7 @@ export function formulaError(message: string, code: FormulaErrorCode = "eval"): 
 // 7. Events
 // ============================================================================
 
-export type { GridEventName, GridEvents } from "@masai/schema-grid-core";
+export type { GridEventName, GridEvents } from "@ranjeetk25/schema-grid-core";
 
 export type ConflictResolution = "keepTheirs" | "overwrite";
 
@@ -394,7 +394,7 @@ export interface SchemaGridEvents<Row extends GridRow = GridRow>
 }
 
 // ============================================================================
-// 8. IO bridge — structural mirror of `@masai/schema-grid-io/export`'s
+// 8. IO bridge — structural mirror of `@ranjeetk25/schema-grid-io/export`'s
 //    `buildExportBlob` (the io package is an optional peer, so its types are
 //    never referenced from this package's public surface).
 // ============================================================================

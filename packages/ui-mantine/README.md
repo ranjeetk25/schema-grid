@@ -1,4 +1,4 @@
-# @masai/schema-grid-ui-mantine
+# @ranjeetk25/schema-grid-ui-mantine
 
 Mantine v8 UI for Schema Grid: cell editors and renderers, a filter builder,
 a column builder, saved-view and group-by controls, a conflict prompt, an
@@ -11,16 +11,16 @@ Optional peer: `@mantine/notifications` ^8.
 
 | Import | Contents |
 |---|---|
-| `@masai/schema-grid-ui-mantine` | everything below, plus `ViewSwitcher`, `GroupByBar`, `ConflictPopover`, `RemoteChangedBadge`, `useGridThemeFromMantine`, `notifyClipboardReport` |
+| `@ranjeetk25/schema-grid-ui-mantine` | everything below, plus `ViewSwitcher`, `GroupByBar`, `ConflictPopover`, `RemoteChangedBadge`, `useGridThemeFromMantine`, `notifyClipboardReport` |
 | `…/editors` | editors, renderers, `createMantineUiRegistry()` |
 | `…/filter-builder` | `FilterBuilder`, `FilterChips`, `FilterButton`, draft model |
 | `…/column-builder` | `ColumnBuilderModal`, `ZodForm`, `FormulaEditor`, column draft model |
 | `…/import-export` | `ImportWizard`, `ExportDialog` |
 
 ```tsx
-import { createMantineUiRegistry } from "@masai/schema-grid-ui-mantine/editors";
+import { createMantineUiRegistry } from "@ranjeetk25/schema-grid-ui-mantine/editors";
 
-// The real @masai/schema-grid-ag-grid registry: createDefaultUiRegistry().extend(...)
+// The real @ranjeetk25/schema-grid-ag-grid registry: createDefaultUiRegistry().extend(...)
 const uiRegistry = createMantineUiRegistry({
   widgets: { select: { renderer: MyBadge } }, // ui-mantine widget props, adapted for you
   overrides: { url: { editorPopup: false } }, // raw AG Grid UiFieldType partials
@@ -80,6 +80,6 @@ never throws.
 
 ## Upstream contracts
 
-`@masai/schema-grid-core`, `-ag-grid` and `-io` are consumed only through
+`@ranjeetk25/schema-grid-core`, `-ag-grid` and `-io` are consumed only through
 `src/internal/{core,grid,io}-contracts.ts`. All three are real re-exports
 plus a few local helpers for gaps (and, for ag-grid, the widget adapters).

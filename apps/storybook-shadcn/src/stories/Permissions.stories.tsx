@@ -1,6 +1,6 @@
-import { SchemaGrid } from "@masai/schema-grid-ag-grid";
-import { type Access, resolveColumnAccess } from "@masai/schema-grid-core";
-import { Badge, useGridThemeFromShadcn } from "@masai/schema-grid-ui-shadcn";
+import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
+import { type Access, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
+import { Badge, useGridThemeFromShadcn } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo } from "react";
 import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";

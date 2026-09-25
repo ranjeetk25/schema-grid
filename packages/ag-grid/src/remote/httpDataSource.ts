@@ -1,11 +1,11 @@
-import type { DataSource, GridRow } from "@masai/schema-grid-core";
+import type { DataSource, GridRow } from "@ranjeetk25/schema-grid-core";
 import {
   createRemoteDataSource,
   type GridOperation,
   isWireError,
   RemoteDataSourceError,
   type RemoteDataSourceOptions,
-} from "@masai/schema-grid-core/wire";
+} from "@ranjeetk25/schema-grid-core/wire";
 
 export interface HttpDataSourceOptions extends RemoteDataSourceOptions {
   /** Base URL of the mounted grid endpoint, e.g. `/api/grid` or `https://api.example.com/grid`. */
@@ -39,7 +39,7 @@ async function readJson(res: Response): Promise<{ ok: true; body: unknown } | { 
 /**
  * A `DataSource<GridRow>` that POSTs each operation as JSON to
  * `baseUrl + opPath(op)`. Expects `{ data }` on 2xx and `{ error: WireError }`
- * otherwise — the shape produced by `@masai/schema-grid-server/http`.
+ * otherwise — the shape produced by `@ranjeetk25/schema-grid-server/http`.
  */
 export function createHttpDataSource(options: HttpDataSourceOptions): DataSource<GridRow> {
   const base = options.baseUrl.replace(/\/+$/, "");

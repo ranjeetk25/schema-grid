@@ -1,8 +1,8 @@
-# @masai/schema-grid-io Implementation Plan
+# @ranjeetk25/schema-grid-io Implementation Plan
 
 **REQUIRED SUB-SKILL:** superpowers:subagent-driven-development
 
-**Goal:** Build `@masai/schema-grid-io` (`packages/import-export`). It reads CSV/XLSX files into a string table, maps file headers to schema columns automatically, validates rows using each field type's `parse`, turns validated rows into create and update batches for the server job runner, exports CSV/XLSX with real types while respecting column access, and provides the TSV clipboard format/parse used by the ag-grid package.
+**Goal:** Build `@ranjeetk25/schema-grid-io` (`packages/import-export`). It reads CSV/XLSX files into a string table, maps file headers to schema columns automatically, validates rows using each field type's `parse`, turns validated rows into create and update batches for the server job runner, exports CSV/XLSX with real types while respecting column access, and provides the TSV clipboard format/parse used by the ag-grid package.
 
 **Architecture:** The package works in both the browser and Node, with four entry points: `.` (re-exports everything), `./import`, `./export` and `./clipboard`. `./clipboard` has no dependencies at all, so ag-grid can import it without pulling in exceljs or papaparse.
 - **Reading files:** every input is first turned into bytes. CSV is decoded as UTF-8 (BOM removed) and parsed with papaparse. XLSX is loaded into an in-memory exceljs `Workbook`, and each cell is converted to a string: numbers use the raw value, dates become ISO strings, formulas use their saved result.
@@ -17,7 +17,7 @@
 
 **Tech Stack:** TypeScript strict, bun workspaces, papaparse ^5.7, exceljs ^4.4 (ships its own types), tsup (ESM+CJS), Vitest 3 (node env by default; the Blob test opts into jsdom with a per-file environment comment), Biome (double quotes).
 
-**Commands:** `bun run --filter @masai/schema-grid-io test`, `bun run --filter @masai/schema-grid-io typecheck`. Never run `check:fix` or `format` automatically.
+**Commands:** `bun run --filter @ranjeetk25/schema-grid-io test`, `bun run --filter @ranjeetk25/schema-grid-io typecheck`. Never run `check:fix` or `format` automatically.
 
 **Library API facts (checked against context7):**
 - **papaparse parse:** `Papa.parse(string, config)` with `delimiter: ""` auto-detects the delimiter; `delimitersToGuess` defaults to comma, tab, pipe, semicolon and two record separators. `preview` limits the number of rows parsed. `skipEmptyLines: "greedy"` is available. `meta.delimiter` reports the delimiter it found.
@@ -164,7 +164,7 @@ packages/import-export/
   - Keep `sideEffects: false`.
   - Add `"typesVersions"` so `./import`, `./export` and `./clipboard` resolve under older TypeScript module resolution.
 - New files, all under `/Users/masai/Desktop/workspace/masai/schema-grid/packages/import-export/`:
-  - `tsup.config.ts`: 4 entries, ESM+CJS, dts, `external: ["exceljs", "papaparse", "@masai/schema-grid-core", "node:stream"]`.
+  - `tsup.config.ts`: 4 entries, ESM+CJS, dts, `external: ["exceljs", "papaparse", "@ranjeetk25/schema-grid-core", "node:stream"]`.
   - `vitest.config.ts`:
     - environment `node`, include `test/**/*.test.ts`, `globalSetup: ["test/global-setup.ts"]`;
     - add `"development"` to both `resolve.conditions` and `ssr.resolve.conditions`. On Vite 6, spread `defaultClientConditions` / `defaultServerConditions` so the default conditions are not lost.
@@ -193,7 +193,7 @@ packages/import-export/
   - `ExportOptions { columns: ColumnDef[]; registry: FieldTypeRegistry; rows: AsyncIterable<GridRow> | GridRow[]; format: ExportFormat; tz: string; fileName: string; access: ReadonlyMap<string, Access>; sheetName?: string }`
   - `ExcelCell { value: string | number | boolean | Date | { text: string; hyperlink: string } | null; numFmt?: string }`
 - **Core shim (`src/internal/core.ts`):**
-  - Re-exports `ColumnDef`, `GridSchema`, `GridRow`, `ChangeBatch`, `CellChange`, `ChangeResult`, `FieldType`, `FieldTypeRegistry`, `ParseResult`, `Access` from `@masai/schema-grid-core`.
+  - Re-exports `ColumnDef`, `GridSchema`, `GridRow`, `ChangeBatch`, `CellChange`, `ChangeResult`, `FieldType`, `FieldTypeRegistry`, `ParseResult`, `Access` from `@ranjeetk25/schema-grid-core`.
   - If any of these is not exported yet, declare a local type alias that matches spec section 4, marked with a `TODO(core): replace with core export` comment.
   - `unwrapParse(result: ParseResult<unknown>)` returns `{ ok: true; value } | { ok: false; error: string }`, so it doesn't matter exactly how core shapes its parse result.
   - `getSelectOptions(column: ColumnDef)` returns `{ value: string; label: string }[]`. It reads `config.options` defensively and carries a `TODO(core)` until core exports an option accessor.
@@ -692,8 +692,8 @@ packages/import-export/
   - **export:** `buildExport`, `buildExportBlob`, `buildExportStream`, `exportFileName`, `exportMimeType`, `HiddenColumnError`.
   - **clipboard:** `formatForClipboard`, `formatMatrixForClipboard`, `parseClipboard`.
 - A source scan of `src/clipboard` finds no imports of `exceljs`, `papaparse` or `node:` modules.
-- No source file imports `@masai/schema-grid-core` directly except `src/internal/core.ts`.
-- `bun run --filter @masai/schema-grid-io typecheck` and `test` are green, and `tsup` produces `dist/{index,import/index,export/index,clipboard/index}.{js,cjs,d.ts}`.
+- No source file imports `@ranjeetk25/schema-grid-core` directly except `src/internal/core.ts`.
+- `bun run --filter @ranjeetk25/schema-grid-io typecheck` and `test` are green, and `tsup` produces `dist/{index,import/index,export/index,clipboard/index}.{js,cjs,d.ts}`.
 - The README explains:
   - which parts run in the browser and which in Node,
   - the order of calls in the import pipeline,

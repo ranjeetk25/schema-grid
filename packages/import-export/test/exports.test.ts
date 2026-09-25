@@ -93,9 +93,9 @@ describe("dependency hygiene", () => {
     expect(seen.size).toBeGreaterThan(1);
   });
 
-  it("only src/internal/core.ts may import @masai/schema-grid-core", () => {
+  it("only src/internal/core.ts may import @ranjeetk25/schema-grid-core", () => {
     const offenders = sourceFiles(SRC)
-      .filter((f) => importsOf(f).some((s) => s.startsWith("@masai/schema-grid-core")))
+      .filter((f) => importsOf(f).some((s) => s.startsWith("@ranjeetk25/schema-grid-core")))
       .map((f) => relative(SRC, f))
       .filter((f) => f !== join("internal", "core.ts"));
     expect(offenders).toEqual([]);

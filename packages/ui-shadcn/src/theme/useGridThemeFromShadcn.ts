@@ -3,7 +3,7 @@ import { type SchemaGridThemeOverrides, createSchemaGridTheme } from "../interna
 
 export type GridColorScheme = "light" | "dark";
 
-/** The `--sg-*` variables `@masai/schema-grid-ag-grid`'s theme reads. */
+/** The `--sg-*` variables `@ranjeetk25/schema-grid-ag-grid`'s theme reads. */
 export type GridCssVariables = Record<`--sg-${string}`, string>;
 
 export interface GridThemeParams {

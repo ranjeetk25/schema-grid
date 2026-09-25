@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ranjeetk25/schema-grid/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ranjeetk25/schema-grid/actions/workflows/ci.yml)
 [![Release](https://github.com/ranjeetk25/schema-grid/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/ranjeetk25/schema-grid/actions/workflows/release.yml)
-[![npm](https://img.shields.io/npm/v/@masai/schema-grid-core?label=%40masai%2Fschema-grid-core)](https://www.npmjs.com/package/@masai/schema-grid-core)
+[![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-core?label=%40masai%2Fschema-grid-core)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-core)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Schema Grid is a schema-driven, Airtable-style data grid built as a thin layer
@@ -19,29 +19,29 @@ All packages are released together and always share one version.
 
 | Package | Version | What it is |
 |---|---|---|
-| [`@masai/schema-grid-core`](packages/core) | [![npm](https://img.shields.io/npm/v/@masai/schema-grid-core)](https://www.npmjs.com/package/@masai/schema-grid-core) | schema, field types, filters, formulas, wire contract. No UI dependencies. |
-| [`@masai/schema-grid-io`](packages/import-export) | [![npm](https://img.shields.io/npm/v/@masai/schema-grid-io)](https://www.npmjs.com/package/@masai/schema-grid-io) | CSV/XLSX import and export, clipboard parsing |
-| [`@masai/schema-grid-server`](packages/server) | [![npm](https://img.shields.io/npm/v/@masai/schema-grid-server)](https://www.npmjs.com/package/@masai/schema-grid-server) | Drizzle/MySQL data source, permissions, change feed, HTTP adapters |
-| [`@masai/schema-grid-ag-grid`](packages/ag-grid) | [![npm](https://img.shields.io/npm/v/@masai/schema-grid-ag-grid)](https://www.npmjs.com/package/@masai/schema-grid-ag-grid) | `<SchemaGrid>` on AG Grid Community: column compiler, editors, range selection, clipboard, fill handle |
-| [`@masai/schema-grid-ui-mantine`](packages/ui-mantine) | [![npm](https://img.shields.io/npm/v/@masai/schema-grid-ui-mantine)](https://www.npmjs.com/package/@masai/schema-grid-ui-mantine) | Mantine v8 editors, filter/column builders, import wizard, export dialog |
+| [`@ranjeetk25/schema-grid-core`](packages/core) | [![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-core)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-core) | schema, field types, filters, formulas, wire contract. No UI dependencies. |
+| [`@ranjeetk25/schema-grid-io`](packages/import-export) | [![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-io)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-io) | CSV/XLSX import and export, clipboard parsing |
+| [`@ranjeetk25/schema-grid-server`](packages/server) | [![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-server)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-server) | Drizzle/MySQL data source, permissions, change feed, HTTP adapters |
+| [`@ranjeetk25/schema-grid-ag-grid`](packages/ag-grid) | [![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-ag-grid)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-ag-grid) | `<SchemaGrid>` on AG Grid Community: column compiler, editors, range selection, clipboard, fill handle |
+| [`@ranjeetk25/schema-grid-ui-mantine`](packages/ui-mantine) | [![npm](https://img.shields.io/npm/v/@ranjeetk25/schema-grid-ui-mantine)](https://www.npmjs.com/package/@ranjeetk25/schema-grid-ui-mantine) | Mantine v8 editors, filter/column builders, import wizard, export dialog |
 
 ## Quick start
 
 ```bash
-bun add @masai/schema-grid-core @masai/schema-grid-ag-grid @masai/schema-grid-ui-mantine \
+bun add @ranjeetk25/schema-grid-core @ranjeetk25/schema-grid-ag-grid @ranjeetk25/schema-grid-ui-mantine \
   ag-grid-community ag-grid-react @mantine/core @mantine/hooks @mantine/dates dayjs zod
 ```
 
 ```tsx
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
-import { SchemaGrid, createHttpDataSource } from "@masai/schema-grid-ag-grid";
-import { createDefaultRegistry } from "@masai/schema-grid-core/field-types";
-import { createMantineUiRegistry } from "@masai/schema-grid-ui-mantine/editors";
+import { SchemaGrid, createHttpDataSource } from "@ranjeetk25/schema-grid-ag-grid";
+import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
+import { createMantineUiRegistry } from "@ranjeetk25/schema-grid-ui-mantine/editors";
 
 const registry = createDefaultRegistry();
 const uiRegistry = createMantineUiRegistry({ fieldTypes: registry });
-const dataSource = createHttpDataSource({ baseUrl: "/api/grid" }); // served by @masai/schema-grid-server/http
+const dataSource = createHttpDataSource({ baseUrl: "/api/grid" }); // served by @ranjeetk25/schema-grid-server/http
 
 <SchemaGrid schema={schema} dataSource={dataSource} registry={registry} uiRegistry={uiRegistry} user={user} />;
 ```

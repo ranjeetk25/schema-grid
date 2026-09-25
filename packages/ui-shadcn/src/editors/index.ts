@@ -32,7 +32,7 @@ export { FormattedRenderer, createFormattedRenderer } from "../renderers/Formatt
 export { FormulaRenderer } from "../renderers/FormulaRenderer";
 export { BooleanRenderer } from "../renderers/BooleanRenderer";
 
-// Registry (real @masai/schema-grid-ag-grid registry) + column filters + widget adapters
+// Registry (real @ranjeetk25/schema-grid-ag-grid registry) + column filters + widget adapters
 export {
   POPUP_FIELD_TYPES,
   createShadcnUiRegistry,

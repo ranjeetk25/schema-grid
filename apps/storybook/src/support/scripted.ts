@@ -8,8 +8,8 @@ import type {
   ChangeResult,
   DataSource,
   GridRow,
-} from "@masai/schema-grid-core";
-import type { InMemoryDataSource } from "@masai/schema-grid-core/memory";
+} from "@ranjeetk25/schema-grid-core";
+import type { InMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 
 export const REMOTE_ACTOR: ActorRef = { id: "u9", name: "Priya (remote)" };
 

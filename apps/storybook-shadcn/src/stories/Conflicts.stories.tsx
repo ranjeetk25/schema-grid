@@ -1,4 +1,4 @@
-import { Button } from "@masai/schema-grid-ui-shadcn";
+import { Button } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
 import { UserRoundPenIcon } from "lucide-react";
 import { useMemo, useState } from "react";

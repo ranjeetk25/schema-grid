@@ -16,7 +16,7 @@ If your PR changes anything under `packages/*`, add a changeset:
 bun run changeset
 ```
 
-1. Select the package(s) you changed. All `@masai/schema-grid-*` packages
+1. Select the package(s) you changed. All `@ranjeetk25/schema-grid-*` packages
    release together at one version (a `fixed` group), so picking the one you
    touched is enough.
 2. Pick the bump:
@@ -32,7 +32,7 @@ Example `.changeset/brave-ducks-dance.md`:
 
 ```md
 ---
-"@masai/schema-grid-ag-grid": patch
+"@ranjeetk25/schema-grid-ag-grid": patch
 ---
 
 Fill handle no longer overwrites read-only cells when dragging across a formula column.

@@ -1,6 +1,6 @@
 # ui-mantine: Playwright scenarios (apps/storybook)
 
-Behaviour jsdom cannot prove for `@masai/schema-grid-ui-mantine`. Run each in
+Behaviour jsdom cannot prove for `@ranjeetk25/schema-grid-ui-mantine`. Run each in
 Storybook against a real AG Grid (Community ^36) and, where noted, demo-api.
 Implemented in `apps/storybook/e2e` (`bun run e2e`); each item says which spec
 covers it, or why it is not implemented.

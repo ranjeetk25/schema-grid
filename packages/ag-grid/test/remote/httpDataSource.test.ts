@@ -1,7 +1,7 @@
-import type { GridQuery } from "@masai/schema-grid-core";
-import { createInMemoryDataSource } from "@masai/schema-grid-core/memory";
-import { createFixtureRows, createFixtureSchema, FIXTURE_COLUMN_IDS as C, FIXTURE_NOW } from "@masai/schema-grid-core/testing";
-import { createDataSourceHandler, RemoteDataSourceError } from "@masai/schema-grid-core/wire";
+import type { GridQuery } from "@ranjeetk25/schema-grid-core";
+import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
+import { createFixtureRows, createFixtureSchema, FIXTURE_COLUMN_IDS as C, FIXTURE_NOW } from "@ranjeetk25/schema-grid-core/testing";
+import { createDataSourceHandler, RemoteDataSourceError } from "@ranjeetk25/schema-grid-core/wire";
 import { describe, expect, it, vi } from "vitest";
 import { createHttpDataSource, createRemoteDataSource } from "../../src/index";
 

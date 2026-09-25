@@ -1,4 +1,4 @@
-# Playwright scenarios — `@masai/schema-grid-ag-grid`
+# Playwright scenarios — `@ranjeetk25/schema-grid-ag-grid`
 
 Status: **implemented in `apps/storybook/e2e`** (Playwright, chromium) against the stories in
 `apps/storybook/src/stories`, except where a scenario below says **Not implemented** (with the reason). Run with
@@ -330,7 +330,7 @@ with children loaded on demand.
 
 ## 14. CSV download contents
 
-**Implemented:** `filter-views-columns.spec.ts` (client `exportCsv` of the filtered view, formatted values) and `permissions-import-export.spec.ts` (ExportDialog CSV/XLSX via io). **Server-mode `exportCurrentView`: expected-failure test** in `server-demo-api.spec.ts` — it loads `@masai/schema-grid-io` with a non-static `import()` (unresolvable in a bundled browser app) and expects `writeCsv`/`writeXlsx`, which io does not export.
+**Implemented:** `filter-views-columns.spec.ts` (client `exportCsv` of the filtered view, formatted values) and `permissions-import-export.spec.ts` (ExportDialog CSV/XLSX via io). **Server-mode `exportCurrentView`: expected-failure test** in `server-demo-api.spec.ts` — it loads `@ranjeetk25/schema-grid-io` with a non-static `import()` (unresolvable in a bundled browser app) and expects `writeCsv`/`writeXlsx`, which io does not export.
 
 **Preconditions:** both client and server mode stories, with a mix of hidden and read-only columns in the
 schema.
