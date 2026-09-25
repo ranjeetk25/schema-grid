@@ -2,6 +2,7 @@ export const SCHEMA_GRID_UI_SHADCN_VERSION = "0.0.1";
 
 // Subpath areas (also importable as ./editors, ./filter-builder, ./column-builder, ./import-export)
 export * from "./filter-builder";
+export * from "./column-builder";
 export * from "./import-export";
 
 // Root-only areas

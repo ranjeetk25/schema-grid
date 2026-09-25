@@ -77,6 +77,9 @@ export {
 // §4.8 formula
 export type { FormulaError, FormulaNode, FormulaResultType } from "@masai/schema-grid-core";
 export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parseFormula } from "@masai/schema-grid-core";
+// Formula evaluation (column-builder live preview).
+export type { FormulaEnv, FormulaFunctionDef, FormulaValue } from "@masai/schema-grid-core";
+export { DEFAULT_TIME_ZONE, evaluate } from "@masai/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API
