@@ -69,7 +69,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration"
+    "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration --no-file-parallelism"
   },
   "dependencies": {
     "@ranjeetk25/schema-grid-core": "workspace:*"

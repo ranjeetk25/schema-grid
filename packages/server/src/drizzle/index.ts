@@ -37,3 +37,21 @@ export {
   createDrizzleDataSource,
 } from "../datasource/create-drizzle-data-source";
 export { type DrizzleSchemaStoreOptions, createDrizzleSchemaStore } from "../schema-store/drizzle-schema-store";
+export {
+  SQL_VIEW_BASE_ALIAS,
+  SQL_VIEW_EXTENSION_ALIAS,
+  type SqlViewContext,
+  type SqlViewDataSource,
+  type SqlViewDataSourceOptions,
+  type SqlViewUpdateInput,
+  type SqlViewUpdateResult,
+  type SqlViewWriteHooks,
+  createSqlViewDataSource,
+} from "../sqlview/create-sql-view-data-source";
+export {
+  type ExtensionCellStore,
+  type ExtensionCellStoreOptions,
+  type ExtensionCellsTable,
+  createExtensionCellStore,
+} from "../sqlview/extension-store";
+export { rebaseColumns } from "../sqlview/rebase";

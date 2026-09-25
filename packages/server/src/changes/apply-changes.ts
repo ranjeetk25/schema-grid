@@ -106,7 +106,7 @@ async function loadRowsForUpdate(
  */
 export const MAX_BATCH_ID_LENGTH = 64;
 
-function conflictsFor(rowPlan: RowWritePlan, fresh: CurrentRow | undefined, ctx: ServerContext, access: AccessMap) {
+export function conflictsFor(rowPlan: RowWritePlan, fresh: CurrentRow | undefined, ctx: ServerContext, access: AccessMap) {
   const conflicts: ChangeConflict[] = [];
   const errors: ChangeError[] = [];
   for (const s of rowPlan.sets) {

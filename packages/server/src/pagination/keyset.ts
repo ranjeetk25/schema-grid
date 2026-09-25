@@ -12,7 +12,7 @@ export interface KeysetCursor {
 }
 
 /** MySQL binds a bound ISO datetime string against `DATETIME(3)` fine only in this normalized shape. */
-function toDatetimeLiteral(iso: string): string {
+export function toDatetimeLiteral(iso: string): string {
   return iso.replace("T", " ").replace("Z", "");
 }
 
