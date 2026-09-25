@@ -137,7 +137,7 @@ const urlType = base<string, Record<string, never>>(
 // --- numeric ---------------------------------------------------------------
 
 function parseNumericText(s: string): number | null {
-  let t = s.trim().replace(/^[₹$€£]\s*/, "").replace(/[\s,]/g, "");
+  let t = s.trim().replace(/^([-+]?)\s*[₹$€£]\s*/, "$1").replace(/[\s,]/g, "");
   let neg = false;
   if (/^\(.*\)$/.test(t)) {
     neg = true;

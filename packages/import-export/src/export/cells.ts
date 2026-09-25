@@ -150,6 +150,13 @@ function dateCell(value: string): Date | null {
   return date;
 }
 
+/** Parses a stored datetime string as UTC when it carries no zone. */
+function zoneAware(value: string): Date | null {
+  const t = value.trim();
+  if (!ISO_DATETIME_RE.test(t)) return null;
+  return new Date(HAS_ZONE_RE.test(t) ? t : `${t}Z`);
+}
+
 /** Wall clock in `tz`, or null for an unparseable instant. An invalid tz throws. */
 function datetimeCell(value: unknown, tz: string): Date | null {
   if (!(value instanceof Date) && typeof value !== "string") return null;
@@ -271,6 +278,17 @@ export function toCsvCell(
   registry: FieldTypeRegistry,
 ): string {
   if (isEmpty(value)) return "";
+  // Dates and datetimes are written in unambiguous ISO form whatever the
+  // column's display format: "09/05/2026" (mdy) would re-import as 9 May, and
+  // "dmy" drops seconds. Datetimes are UTC ISO instants.
+  if (column.type === "date" && typeof value === "string") {
+    const m = ISO_DATE_RE.exec(value.trim());
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  if (column.type === "datetime") {
+    const d = value instanceof Date ? value : typeof value === "string" ? zoneAware(value) : null;
+    if (d && !Number.isNaN(d.getTime())) return d.toISOString();
+  }
   const text =
     column.type === "multiSelect"
       ? multiSelectText(value, column)
