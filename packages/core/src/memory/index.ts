@@ -5,3 +5,4 @@ export {
   InMemoryQueryError,
   type InMemoryQueryErrorCode,
 } from "./types";
+export { InMemoryMutationError } from "./mutations";

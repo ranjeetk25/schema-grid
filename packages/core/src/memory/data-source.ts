@@ -4,9 +4,11 @@ import { resolveColumnAccess } from "../permissions/column-access";
 import { createRolePermissionResolver } from "../permissions/role-resolver";
 import type { Access } from "../permissions/types";
 import type { GridQuery, QueryResult } from "../query/types";
-import type { GridRow } from "../rows/types";
+import type { ChangeBatch, ChangeResult, GridRow } from "../rows/types";
+import type { RowPartial } from "../datasource/types";
 import type { GridSchema } from "../schema/types";
-import { materializeFormulas } from "./materialize";
+import { materializeFormulas, projectRow } from "./materialize";
+import { applyChangeBatch, createStoreRows, deleteStoreRows, type MutationDeps } from "./mutations";
 import { type MemoryQueryContext, runQuery } from "./query";
 import type { InMemoryDataSource, InMemoryDataSourceOptions } from "./types";
 
@@ -49,8 +51,29 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     };
   }
 
-  const notImplemented = (name: string) => () =>
-    Promise.reject(new Error(`${name} is not implemented`));
+  let seq = 0;
+  const generateId = options.generateId ?? (() => `row_${++seq}`);
+
+  function mutationDeps(): MutationDeps<Row> {
+    return {
+      schema,
+      registry,
+      store,
+      access: accessMap(),
+      env: env(),
+      generateId,
+      ...(options.actor ? { actor: options.actor } : {}),
+    };
+  }
+
+  function readableKeys(): Set<string> {
+    const access = accessMap();
+    return new Set(
+      schema.columns
+        .filter((c) => access.get(c.id) === "read" || access.get(c.id) === "edit")
+        .map((c) => c.key),
+    );
+  }
 
   return {
     async fetch(query: GridQuery): Promise<QueryResult<Row>> {
@@ -63,9 +86,16 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       });
       return runQuery(rows, query, ctx);
     },
-    applyChanges: notImplemented("applyChanges"),
-    createRows: notImplemented("createRows"),
-    deleteRows: notImplemented("deleteRows"),
+    async applyChanges(batch: ChangeBatch): Promise<ChangeResult> {
+      return applyChangeBatch(batch, mutationDeps());
+    },
+    async createRows(partials: RowPartial<Row>[]): Promise<Row[]> {
+      const keys = readableKeys();
+      return createStoreRows(partials, mutationDeps()).map((r) => projectRow(r, keys));
+    },
+    async deleteRows(ids: string[]): Promise<void> {
+      deleteStoreRows(ids, mutationDeps());
+    },
     getSchema: () => structuredClone(schema),
     setSchema(next: GridSchema) {
       schema = structuredClone(next);
