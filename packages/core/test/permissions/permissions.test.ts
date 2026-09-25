@@ -133,4 +133,17 @@ describe("resolveColumnAccess / readableColumnIds / editableColumnIds", () => {
     expect(calls[0]?.row).toBeUndefined();
     expect(calls[1]?.column.id).toBe("b");
   });
+
+  it("caps a settable:false column at read, whatever the resolver says", () => {
+    const schema = makeSchema([
+      makeColumn({ id: "a", key: "a", settable: false }),
+      makeColumn({ id: "b", key: "b", settable: true }),
+      makeColumn({ id: "c", key: "c", settable: false, permissions: { read: { roles: ["x"] }, edit: { roles: ["x"] } } }),
+    ]);
+    const access = resolveColumnAccess(schema, createRolePermissionResolver(), user([]));
+    expect(access.get("a")).toBe("read");
+    expect(access.get("b")).toBe("edit");
+    expect(access.get("c")).toBe("hidden");
+    expect(editableColumnIds(access).has("a")).toBe(false);
+  });
 });

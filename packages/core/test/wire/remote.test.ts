@@ -9,6 +9,7 @@ import { createFixtureSchema, FIXTURE_COLUMN_IDS as C, FIXTURE_NOW, FIXTURE_USER
 import { RemoteDataSourceError, toWireError } from "../../src/wire/errors";
 import { createDataSourceHandler, unwrapWireResult } from "../../src/wire/handler";
 import { createRemoteDataSource } from "../../src/wire/remote";
+import { DEFAULT_CAPABILITIES } from "../../src/datasource/capabilities";
 
 const q = (over: Partial<GridQuery> = {}): GridQuery => ({ filter: null, sort: [], page: { offset: 0, limit: 100 }, ...over });
 const spec8: FilterNode = {
@@ -83,6 +84,7 @@ describe("handler -> remote round trip matches the data source", () => {
     ["createOption not allowed", async (ds) => ds.createOption?.(C.status, "Nope")],
     ["lookup", async (ds) => ds.lookup?.(C.programs, "data")],
     ["lookup non-link", async (ds) => ds.lookup?.(C.name, "x")],
+    ["capabilities", async (ds) => ds.capabilities?.()],
     ["fetch after writes", (ds) => ds.fetch(q({ includeTotal: true }))],
   ];
 
@@ -141,6 +143,7 @@ describe("createRemoteDataSource", () => {
       if (op === "getChanges") return { cursor: "1", rows: [], deletedRowIds: [], schemaVersion: 1 };
       if (op === "createOption") return { id: "o", label: "L" };
       if (op === "deleteRows") return undefined;
+      if (op === "capabilities") return { ...DEFAULT_CAPABILITIES };
       return [];
     });
     const ds = createRemoteDataSource(transport);
@@ -154,6 +157,7 @@ describe("createRemoteDataSource", () => {
     await ds.getOptions?.("c", "s");
     await ds.createOption?.("c", "L");
     await ds.lookup?.("c", "s");
+    await ds.capabilities?.();
     expect(transport.mock.calls).toEqual([
       ["fetch", q()],
       ["applyChanges", b],
@@ -164,6 +168,7 @@ describe("createRemoteDataSource", () => {
       ["getOptions", { columnId: "c", search: "s" }],
       ["createOption", { columnId: "c", label: "L" }],
       ["lookup", { columnId: "c", search: "s" }],
+      ["capabilities", null],
     ]);
   });
 
@@ -188,5 +193,19 @@ describe("createRemoteDataSource", () => {
     await expect(ds.fetch(q())).rejects.toMatchObject({ code: "OUTPUT_INVALID" });
     const loose = createRemoteDataSource(async () => ({ rows: "nope" }), { validateOutput: false });
     await expect(loose.fetch(q())).resolves.toEqual({ rows: "nope" });
+  });
+});
+
+describe("createRemoteDataSource capabilities", () => {
+  it("passes the server's capabilities through (validated)", async () => {
+    const ds = createRemoteDataSource(async () => ({ ...DEFAULT_CAPABILITIES, maxPageSize: 200, changeFeed: "updates-only" }));
+    expect(await ds.capabilities?.()).toMatchObject({ maxPageSize: 200, changeFeed: "updates-only" });
+    const bad = createRemoteDataSource(async () => ({ maxPageSize: "lots" }));
+    await expect(bad.capabilities?.()).rejects.toMatchObject({ code: "OUTPUT_INVALID" });
+  });
+
+  it("can be turned off for servers that predate the op", () => {
+    const ds = createRemoteDataSource(vi.fn(), { supports: { capabilities: false } });
+    expect(ds.capabilities).toBeUndefined();
   });
 });

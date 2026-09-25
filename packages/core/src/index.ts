@@ -53,6 +53,18 @@ export {
   type ColumnIndex,
 } from "./schema/lookup";
 export type { DataSource, RowPartial } from "./datasource/types";
+export {
+  applyEffectiveCapabilities,
+  DEFAULT_CAPABILITIES,
+  getDataSourceCapabilities,
+  inferCapabilities,
+  mergeCapabilities,
+  normalizeCapabilities,
+  type ColumnScope,
+  type DataSourceCapabilities,
+  type EffectiveCapabilities,
+  type EffectiveColumnCapabilities,
+} from "./datasource/capabilities";
 export type { GridEventName, GridEvents } from "./events/types";
 export type {
   Access,

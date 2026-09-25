@@ -18,6 +18,7 @@ function actions(overrides: Partial<HeaderMenuActions> = {}): HeaderMenuActions 
     openFilter: vi.fn(),
     sortState: null,
     pinnedState: null,
+    canSort: true,
     canFilter: true,
     canGroup: true,
     ...overrides,

@@ -1,4 +1,5 @@
 import type { ActorRef, LinkRef } from "../common/types";
+import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { DataSource } from "../datasource/types";
 import type { FieldTypeRegistry } from "../field-types/registry";
 import type { FilterValidationError, FilterValidationErrorCode } from "../filter/validate";
@@ -26,6 +27,11 @@ export interface InMemoryDataSourceOptions<Row extends GridRow = GridRow> {
   actor?: ActorRef;
   /** Link targets for `lookup`, keyed by column id. */
   linkTargets?: Record<string, LinkRef[]>;
+  /**
+   * Reported by `capabilities()` (filled from `DEFAULT_CAPABILITIES`).
+   * `maxPageSize` is enforced: larger `page.limit`s are clamped.
+   */
+  capabilities?: Partial<DataSourceCapabilities>;
 }
 
 export interface InMemoryDataSource<Row extends GridRow = GridRow> extends DataSource<Row> {
@@ -37,6 +43,7 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends DataS
 
 export type InMemoryQueryErrorCode =
   | FilterValidationErrorCode
+  | "unsortableColumn"
   | "invalidAggregation"
   | "invalidPage"
   | "invalidCursor"

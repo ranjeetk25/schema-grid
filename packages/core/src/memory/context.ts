@@ -46,14 +46,14 @@ export function requireReadableColumn(
  * Column access for the in-memory source: the resolver's answer, except that a
  * formula column depending (transitively) on a column the user cannot read is
  * hidden too, so formulas never reveal hidden data. Without a user, everything
- * is editable (formulas stay read-only via the mutation rules).
+ * except `settable: false` columns is editable (formulas stay read-only via the mutation rules).
  */
 export function resolveMemoryAccess(
   schema: GridSchema,
   resolver: PermissionResolver,
   user: PermissionUser | undefined,
 ): Map<string, Access> {
-  if (!user) return new Map(schema.columns.map((c) => [c.id, "edit" as Access]));
+  if (!user) return new Map(schema.columns.map((c) => [c.id, (c.settable === false ? "read" : "edit") as Access]));
   const access = resolveColumnAccess(schema, resolver, user);
   const leaks = (column: ColumnDef, seen: Set<string>): boolean => {
     if (seen.has(column.key)) return false;

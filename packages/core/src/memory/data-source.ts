@@ -1,3 +1,4 @@
+import { normalizeCapabilities } from "../datasource/capabilities";
 import { createDefaultRegistry } from "../field-types/default-registry";
 import { DEFAULT_TIME_ZONE } from "../time/zoned";
 import { createRolePermissionResolver } from "../permissions/role-resolver";
@@ -33,6 +34,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
   const log = new ChangeLog();
 
   const env = () => ({ now: now(), tz });
+  const caps = normalizeCapabilities(options.capabilities);
 
   for (const row of options.rows ?? []) {
     if (store.has(row.id)) throw new Error(`Duplicate initial row id "${row.id}"`);
@@ -110,8 +112,12 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     async fetch(query: GridQuery): Promise<QueryResult<Row>> {
       const ctx = queryContext();
       const e = { now: ctx.now, tz };
-      return runQuery([...store.values()].map((r) => materialized(r, schema, e)), query, ctx);
+      const limit = query.page?.limit;
+      const clamped =
+        typeof limit === "number" && limit > caps.maxPageSize ? { ...query, page: { ...query.page, limit: caps.maxPageSize } as GridQuery["page"] } : query;
+      return runQuery([...store.values()].map((r) => materialized(r, schema, e)), clamped, ctx);
     },
+    capabilities: () => structuredClone(caps),
     async applyChanges(batch: ChangeBatch): Promise<ChangeResult> {
       return applyChangeBatch(batch, mutationDeps());
     },

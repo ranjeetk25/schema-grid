@@ -22,6 +22,7 @@ function makeActions(overrides: Partial<HeaderMenuActions> = {}): HeaderMenuActi
     insertColumn: vi.fn(),
     sortState: null,
     pinnedState: null,
+    canSort: true,
     canFilter: true,
     canGroup: true,
     ...overrides,

@@ -46,6 +46,8 @@ export interface HeaderMenuActions {
   insertColumn?(side: "left" | "right"): void;
   sortState: HeaderMenuSortState;
   pinnedState: HeaderMenuPinnedState;
+  /** false for `sortable: false` columns (or when the data source cannot sort them): hide the sort items. */
+  canSort: boolean;
   canFilter: boolean;
   canGroup: boolean;
 }

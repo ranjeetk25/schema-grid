@@ -13,7 +13,7 @@ import type {
 
 export interface HeaderMenuActionDeps {
   api: Pick<GridApi, "applyColumnState" | "autoSizeColumns" | "autoSizeAllColumns" | "showColumnFilter">;
-  column: Pick<Column, "getColId" | "getSort" | "getPinned" | "isFilterAllowed">;
+  column: Pick<Column, "getColId" | "getSort" | "getPinned" | "isFilterAllowed" | "isSortable">;
   host?: HeaderMenuHostCallbacks;
   /** Opens the filter anchored at the header (falls back to `api.showColumnFilter`). */
   openFilter?(): void;
@@ -38,6 +38,7 @@ export function createHeaderMenuActions(deps: HeaderMenuActionDeps): HeaderMenuA
   const rawPinned = column.getPinned();
   const pinnedState: HeaderMenuPinnedState = rawPinned === "left" || rawPinned === "right" ? rawPinned : null;
   const canFilter = column.isFilterAllowed();
+  const canSort = column.isSortable();
 
   const actions: HeaderMenuActions = {
     sortAsc: sort("asc"),
@@ -57,6 +58,7 @@ export function createHeaderMenuActions(deps: HeaderMenuActionDeps): HeaderMenuA
     },
     sortState,
     pinnedState,
+    canSort,
     canFilter,
     canGroup: typeof host?.onGroupByColumn === "function",
   };

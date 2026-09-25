@@ -21,7 +21,7 @@ const query = (over: Partial<GridQuery> = {}): GridQuery => ({
 });
 
 describe("GRID_OPERATIONS", () => {
-  it("lists the 8 DataSource operations in contract order", () => {
+  it("lists the DataSource operations in contract order", () => {
     expect(GRID_OPERATIONS).toEqual([
       "fetch",
       "applyChanges",
@@ -31,6 +31,7 @@ describe("GRID_OPERATIONS", () => {
       "getOptions",
       "createOption",
       "lookup",
+      "capabilities",
     ]);
     expect(OPTIONAL_GRID_OPERATIONS).toEqual(["getChanges", "getOptions", "createOption", "lookup"]);
   });
@@ -174,5 +175,35 @@ describe("wireSchemas outputs", () => {
     expect(wireSchemas.createRows.output.safeParse([]).success).toBe(true);
     expect(wireSchemas.deleteRows.output.safeParse(null).success).toBe(true);
     expect(wireSchemas.deleteRows.output.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("wireSchemas.capabilities", () => {
+  const full = {
+    maxPageSize: 200,
+    sort: { columnIds: ["a"] },
+    filter: "all",
+    operators: { a: ["is"] },
+    groupBy: false,
+    search: true,
+    changeFeed: "updates-only",
+    write: { cells: false, createRows: false, deleteRows: false },
+    options: true,
+    lookup: false,
+    export: { maxRows: 10000 },
+  };
+
+  it("takes null as input", () => {
+    expect(wireSchemas.capabilities.input.safeParse(null).success).toBe(true);
+    expect(wireSchemas.capabilities.input.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts a full capabilities object and rejects malformed ones", () => {
+    const parsed = wireSchemas.capabilities.output.safeParse(full);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual(full);
+    expect(wireSchemas.capabilities.output.safeParse({ ...full, changeFeed: "sometimes" }).success).toBe(false);
+    expect(wireSchemas.capabilities.output.safeParse({ ...full, maxPageSize: 0 }).success).toBe(false);
+    expect(wireSchemas.capabilities.output.safeParse({ ...full, sort: "some" }).success).toBe(false);
   });
 });

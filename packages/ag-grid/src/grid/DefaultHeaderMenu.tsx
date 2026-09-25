@@ -11,11 +11,14 @@ import type { HeaderMenuProps } from "./headerMenu";
 type Item = { key: string; label: string; onSelect(): void; checked?: boolean } | { key: string; separator: true };
 
 function items({ actions }: HeaderMenuProps): Item[] {
-  const list: Item[] = [
-    { key: "asc", label: "Sort ascending", onSelect: actions.sortAsc, checked: actions.sortState === "asc" },
-    { key: "desc", label: "Sort descending", onSelect: actions.sortDesc, checked: actions.sortState === "desc" },
-  ];
-  if (actions.sortState) list.push({ key: "clear-sort", label: "Clear sort", onSelect: actions.clearSort });
+  const list: Item[] = [];
+  if (actions.canSort) {
+    list.push(
+      { key: "asc", label: "Sort ascending", onSelect: actions.sortAsc, checked: actions.sortState === "asc" },
+      { key: "desc", label: "Sort descending", onSelect: actions.sortDesc, checked: actions.sortState === "desc" },
+    );
+  }
+  if (actions.canSort && actions.sortState) list.push({ key: "clear-sort", label: "Clear sort", onSelect: actions.clearSort });
   if (actions.canFilter) list.push({ key: "filter", label: "Filter…", onSelect: actions.openFilter });
   if (actions.groupBy) list.push({ key: "group", label: "Group by this column", onSelect: actions.groupBy });
   list.push({ key: "sep-1", separator: true });

@@ -1,3 +1,4 @@
+import { getDataSourceCapabilities } from "../datasource/capabilities";
 import type { DataSource } from "../datasource/types";
 import type { GridRow } from "../rows/types";
 import { httpStatusFor, RemoteDataSourceError, toWireError, type WireError } from "./errors";
@@ -63,6 +64,9 @@ async function invoke(ds: DataSource<GridRow>, op: GridOperation, input: unknown
       const i = input as WireInput<"lookup">;
       return ds.lookup?.(i.columnId, i.search);
     }
+    case "capabilities":
+      // Sources without `capabilities()` get a default computed from what they implement.
+      return getDataSourceCapabilities(ds);
   }
 }
 

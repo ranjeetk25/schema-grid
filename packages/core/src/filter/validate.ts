@@ -12,6 +12,7 @@ export const MAX_FILTER_DEPTH = 2;
 export type FilterValidationErrorCode =
   | "unknownColumn"
   | "unreadableColumn"
+  | "unfilterableColumn"
   | "unknownOperator"
   | "depthExceeded"
   | "valueKindMismatch";
@@ -105,6 +106,16 @@ function validateCondition(
       columnId,
       operator,
       message: "You do not have access to this column",
+    });
+    return;
+  }
+  if (column.filterable === false) {
+    errors.push({
+      code: "unfilterableColumn",
+      path,
+      columnId,
+      operator,
+      message: `Column "${column.label}" cannot be filtered`,
     });
     return;
   }

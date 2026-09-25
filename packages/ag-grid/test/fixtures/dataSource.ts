@@ -32,7 +32,7 @@ export interface InMemoryOptions {
   delayMs?: number;
 }
 
-export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<Required<DataSource<Row>>, "applyChanges"> {
+export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<Required<DataSource<Row>>, "applyChanges" | "capabilities"> {
   /** Reports the new per-row `versions` (core `ChangeResult`, spec §4.5 addendum). */
   applyChanges(batch: ChangeBatch): Promise<ChangeResult>;
   /** Current server copy. */

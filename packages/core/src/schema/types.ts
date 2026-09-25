@@ -35,6 +35,16 @@ export interface ColumnDef {
   hidden?: boolean;
   order: number;
   indexed?: boolean;
+  /** Default true. false: header sort is off and servers reject sorting on it (`UNSORTABLE_COLUMN`). */
+  sortable?: boolean;
+  /** Default true. false: no column filter and hidden from filter pickers; `validateFilter` rejects it (`unfilterableColumn`). */
+  filterable?: boolean;
+  /**
+   * Default true. false: the data source cannot write this column (e.g. a
+   * computed "AI verified" flag). It stays visible, but its effective access
+   * is at most "read" whatever the permissions say.
+   */
+  settable?: boolean;
   /** Only when type === "formula". */
   formula?: string;
   /** Maps to an existing DB column. */

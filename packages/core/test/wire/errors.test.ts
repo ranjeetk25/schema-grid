@@ -31,6 +31,7 @@ describe("httpStatusFor", () => {
       ROW_INVALID: 400,
       GROUPING_INVALID: 400,
       UNAUTHENTICATED: 401,
+      UNSORTABLE_COLUMN: 400,
       PERMISSION_DENIED: 403,
       UNKNOWN_OPERATION: 404,
       FORMULA_ROW_CAP: 413,
@@ -91,6 +92,19 @@ describe("toWireError", () => {
     expect(toWireError(new InMemoryQueryError("unreadableColumn", "c")).code).toBe("PERMISSION_DENIED");
     expect(toWireError(new InMemoryQueryError("invalidAggregation", "c")).code).toBe("GROUPING_INVALID");
     expect(toWireError(new InMemoryQueryError("depthExceeded", "c")).code).toBe("FILTER_INVALID");
+    expect(toWireError(new InMemoryQueryError("unsortableColumn", "c")).code).toBe("UNSORTABLE_COLUMN");
+    expect(
+      toWireError(
+        new InMemoryQueryError("unfilterableColumn", "Invalid filter", [
+          { code: "unfilterableColumn", path: [], columnId: "a", message: "m" },
+        ]),
+      ).code,
+    ).toBe("FILTER_INVALID");
+    expect(toWireError({ code: "UNSORTABLE_COLUMN", message: "m", details: { columnIds: ["a"], usage: "sort" } })).toEqual({
+      code: "UNSORTABLE_COLUMN",
+      message: "m",
+      details: { columnIds: ["a"], usage: "sort" },
+    });
     for (const code of ["unknownColumn", "invalidPage", "unsupportedColumnType", "invalidValue"] as const) {
       expect(toWireError(new InMemoryQueryError(code, "c")).code).toBe("INPUT_INVALID");
     }
