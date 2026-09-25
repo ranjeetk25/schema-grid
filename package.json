@@ -7,7 +7,8 @@
     "test": "vitest run",
     "test:integration": "bun run --filter @masai/schema-grid-server test:integration",
     "build": "bun run --filter '*' build",
-    "lint": "biome check .",
+    "lint": "biome lint .",
+    "format:check": "biome format .",
     "changeset": "changeset"
   },
   "devDependencies": {
