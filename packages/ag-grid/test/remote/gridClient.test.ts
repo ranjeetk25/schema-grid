@@ -1,9 +1,15 @@
-import type { GridQuery, GridSchema } from "@ranjeetk25/schema-grid-core";
+import {
+  DEFAULT_CAPABILITIES,
+  type DataSourceCapabilities,
+  type GridQuery,
+  type GridSchema,
+  normalizeCapabilities,
+} from "@ranjeetk25/schema-grid-core";
 import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 import { createFixtureRows, createFixtureSchema, FIXTURE_NOW } from "@ranjeetk25/schema-grid-core/testing";
 import { createDataSourceHandler, RemoteDataSourceError } from "@ranjeetk25/schema-grid-core/wire";
-import { describe, expect, it, vi } from "vitest";
-import { createGridClient } from "../../src/index";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { createGridClient, type GridClientCapabilities } from "../../src/index";
 
 const q = (over: Partial<GridQuery> = {}): GridQuery => ({ filter: null, sort: [], page: { offset: 0, limit: 50 }, ...over });
 
@@ -11,7 +17,7 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /** A fake multi-grid server: `POST {base}/:gridId/:op` like `toFetchHandler`. */
-function fakeServer() {
+function fakeServer(caps?: Partial<DataSourceCapabilities>) {
   let schema: GridSchema = createFixtureSchema();
   const handle = createDataSourceHandler(
     createInMemoryDataSource({ schema, rows: createFixtureRows(), now: () => new Date(FIXTURE_NOW) }),
@@ -29,7 +35,7 @@ function fakeServer() {
       schema = { ...next, schemaVersion: schema.schemaVersion + 1 };
       return json(200, { data: schema });
     }
-    if (op === "capabilities") return json(200, { data: { maxPageSize: 200 } });
+    if (op === "capabilities" && caps) return json(200, { data: normalizeCapabilities(caps) });
     const result = await handle(op ?? "", input);
     return result.ok ? json(200, { data: result.data }) : json(result.status, { error: result.error });
   });
@@ -89,10 +95,35 @@ describe("createGridClient", () => {
     await expect(client.getSchema()).rejects.toMatchObject({ code: "OUTPUT_INVALID" });
   });
 
-  it("capabilities() calls the capabilities op", async () => {
-    const { fetch } = fakeServer();
+  it("capabilities() calls the wire capabilities op through the data source and normalises it", async () => {
+    const { fetch } = fakeServer({ maxPageSize: 200, groupBy: false, changeFeed: "updates-only" });
     const client = createGridClient({ baseUrl: "/grid", gridId: "admissions", fetch });
-    expect(await client.capabilities()).toEqual({ maxPageSize: 200 });
+    expect(typeof client.dataSource.capabilities).toBe("function");
+    const caps: DataSourceCapabilities = await client.capabilities();
+    expect(caps).toEqual({
+      ...DEFAULT_CAPABILITIES,
+      maxPageSize: 200,
+      groupBy: false,
+      changeFeed: "updates-only",
+    });
     expect(String(fetch.mock.calls[0]?.[0])).toBe("/grid/admissions/capabilities");
+    expect(JSON.parse(String((fetch.mock.calls[0]?.[1] as RequestInit).body))).toBeNull();
+  });
+
+  it("capabilities() rejects a malformed answer with OUTPUT_INVALID", async () => {
+    const fetch = vi.fn(async () => json(200, { data: { maxPageSize: 200 } }));
+    const client = createGridClient({ baseUrl: "/grid", gridId: "admissions", fetch });
+    await expect(client.capabilities()).rejects.toMatchObject({ code: "OUTPUT_INVALID" });
+  });
+
+  it("capabilities() infers them without a request when the server predates the op", async () => {
+    const { fetch } = fakeServer();
+    const client = createGridClient({ baseUrl: "/grid", gridId: "admissions", fetch, supports: { capabilities: false } });
+    expect(await client.capabilities()).toEqual({ ...DEFAULT_CAPABILITIES, write: { ...DEFAULT_CAPABILITIES.write } });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps GridClientCapabilities as a deprecated alias of DataSourceCapabilities", () => {
+    expectTypeOf<GridClientCapabilities>().toEqualTypeOf<DataSourceCapabilities>();
   });
 });

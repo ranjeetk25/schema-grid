@@ -1,12 +1,17 @@
-import type { DataSource, GridRow, GridSchema } from "@ranjeetk25/schema-grid-core";
+import {
+  type DataSource,
+  type DataSourceCapabilities,
+  type GridRow,
+  type GridSchema,
+  getDataSourceCapabilities,
+} from "@ranjeetk25/schema-grid-core";
 import { RemoteDataSourceError, wireSchemas } from "@ranjeetk25/schema-grid-core/wire";
 import { createHttpDataSource, createHttpTransport, type HttpDataSourceOptions } from "./httpDataSource";
 
-/**
- * What the server's `capabilities` op answers.
- * TODO(lane-a): replace with core `DataSourceCapabilities` once it lands.
- */
-export type GridClientCapabilities = Record<string, unknown>;
+export type { DataSourceCapabilities };
+
+/** @deprecated Use `DataSourceCapabilities` (core). */
+export type GridClientCapabilities = DataSourceCapabilities;
 
 export interface GridClientOptions extends Omit<HttpDataSourceOptions, "baseUrl" | "opPath" | "method"> {
   /** URL the grid registry is mounted at, e.g. `/api/grid` (server: `toFetchHandler(registry, { basePath: "/api/grid" })`). */
@@ -23,8 +28,12 @@ export interface GridClient {
   getSchema(): Promise<GridSchema>;
   /** Saves `schema` (its `schemaVersion` must be current); resolves with the stored, version-bumped schema. */
   updateSchema(schema: GridSchema): Promise<GridSchema>;
-  /** What the grid's data source supports (paging limit, sortable/filterable columns, writes, ...). */
-  capabilities(): Promise<GridClientCapabilities>;
+  /**
+   * What the grid's data source supports (paging limit, sortable/filterable
+   * columns, writes, ...): the wire `capabilities` op via `dataSource`,
+   * normalised; inferred without a request when `supports.capabilities` is false.
+   */
+  capabilities(): Promise<DataSourceCapabilities>;
 }
 
 function checked<T>(op: "getSchema" | "updateSchema", raw: unknown, validate: boolean): T {
@@ -52,12 +61,13 @@ export function createGridClient(options: GridClientOptions): GridClient {
   const baseUrl = `${options.baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(gridId)}`;
   const transport = createHttpTransport({ ...rest, baseUrl });
   const validate = options.validateOutput !== false;
+  const dataSource = createHttpDataSource({ ...rest, baseUrl });
   return {
     gridId,
-    dataSource: createHttpDataSource({ ...rest, baseUrl }),
+    dataSource,
     getSchema: async () => checked<GridSchema>("getSchema", await transport("getSchema", null), validate),
     updateSchema: async (schema) =>
       checked<GridSchema>("updateSchema", await transport("updateSchema", schema), validate),
-    capabilities: async () => (await transport("capabilities", null)) as GridClientCapabilities,
+    capabilities: () => getDataSourceCapabilities(dataSource),
   };
 }
