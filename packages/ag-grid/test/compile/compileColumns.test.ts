@@ -277,7 +277,10 @@ describe("review follow-ups", () => {
 
   it("enables floatingFilter only when a filter and floating filter component exist", () => {
     const Dummy = () => null;
-    const custom = ui.extend({ text: { filterComponent: Dummy, floatingFilter: Dummy } });
+    const custom = ui.extend({
+      text: { filterComponent: Dummy, floatingFilter: Dummy },
+      number: { filterComponent: undefined, floatingFilter: undefined },
+    });
     const schema: GridSchema = { id: "s", schemaVersion: 1, columns: [col({ id: "x", type: "text" }), col({ id: "n", type: "number" })] };
     const access = new Map<string, Access>([
       ["x", "edit"],

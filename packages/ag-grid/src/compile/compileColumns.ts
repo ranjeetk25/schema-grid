@@ -100,6 +100,7 @@ export function compileColumns<Row extends GridRow = GridRow>(
       cellEditorPopup: entry.editorPopup,
       cellEditorPopupPosition: entry.editorPopupPosition,
       filter: entry.filterComponent ?? false,
+      filterParams: params,
       floatingFilterComponent: entry.floatingFilter,
       floatingFilter: entry.filterComponent !== undefined && entry.floatingFilter !== undefined,
     };
