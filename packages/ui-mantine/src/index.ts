@@ -52,3 +52,6 @@ export {
   type NotifyClipboardReportOptions,
 } from "./notifications/notifyClipboardReport";
 export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./internal/grid-contracts";
+
+// One-component page
+export * from "./workbench";

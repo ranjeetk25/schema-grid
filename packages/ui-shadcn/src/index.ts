@@ -53,3 +53,6 @@ export { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 export { Separator } from "./ui/separator";
 export { Avatar, type AvatarProps } from "./ui/avatar";
 export { SG_ROOT, cn } from "./lib/cn";
+
+// One-component page
+export * from "./workbench";
