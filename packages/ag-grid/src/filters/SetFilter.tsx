@@ -34,6 +34,13 @@ function selectedFrom(model: FilterCondition | null, isBoolean: boolean): string
 }
 
 /**
+ * Stable across renders: ag-grid-react treats a new `doesFilterPass` identity on a
+ * re-render of an active filter as "the filter logic changed" and fires a spurious
+ * `filterChanged`, which resets the infinite row model (a duplicate server fetch).
+ */
+const PASS_ALL_FILTER_METHODS = { doesFilterPass: () => true };
+
+/**
  * Searchable checkbox list for select, multiSelect, user and boolean columns.
  * Options come from `context.dataSource.getOptions(columnId)` once per mount
  * (falling back to the column's static `config.options`). Every toggle emits:
@@ -42,7 +49,7 @@ function selectedFrom(model: FilterCondition | null, isBoolean: boolean): string
  */
 export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
-  useGridFilter({ doesFilterPass: () => true });
+  useGridFilter(PASS_ALL_FILTER_METHODS);
 
   const resolved = resolveFilterColumn({
     schemaColumn: props.schemaColumn,

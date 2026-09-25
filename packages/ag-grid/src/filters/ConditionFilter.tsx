@@ -49,6 +49,13 @@ function isFieldType(x: unknown): x is FieldType<unknown, unknown> {
 }
 
 /**
+ * Stable across renders: ag-grid-react treats a new `doesFilterPass` identity on a
+ * re-render of an active filter as "the filter logic changed" and fires a spurious
+ * `filterChanged`, which resets the infinite row model (a duplicate server fetch).
+ */
+const PASS_ALL_FILTER_METHODS = { doesFilterPass: () => true };
+
+/**
  * Finds the schema column behind a filter / floating filter. Looks, in order,
  * at props spread from `colDef.filterParams`, `colDef.filterParams`, then
  * `colDef.cellRendererParams` (which `compileColumns` always sets).
@@ -251,7 +258,7 @@ function inputTypeFor(ft: FieldType<unknown, unknown>): "text" | "number" | "dat
  */
 export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
-  useGridFilter({ doesFilterPass: () => true });
+  useGridFilter(PASS_ALL_FILTER_METHODS);
 
   const resolved = resolveFilterColumn({
     schemaColumn: props.schemaColumn,

@@ -237,6 +237,26 @@ describe("useSchemaGrid — server mode", () => {
     });
   });
 
+  it("a query-store filter change raises exactly one grid filterChanged (no spurious filter-component re-fire)", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
+    const grid = mountGrid(baseProps({ dataSource: ds, mode: "server", pageSize: 10 }));
+    const api = await grid.ready();
+    await waitFor(() => expect(grid.current().stores.rows.all()).toHaveLength(4));
+    await settle();
+    const sources: string[] = [];
+    api.addEventListener("filterChanged", (e) => sources.push(String(e.source)));
+    act(() => grid.current().stores.query.setFilter({ columnId: "payment", operator: "is", value: "paid" }));
+    await waitFor(() =>
+      expect((ds.calls.fetch.mock.calls.at(-1)?.[0] as { filter: unknown }).filter).toEqual({
+        columnId: "payment",
+        operator: "is",
+        value: "paid",
+      }),
+    );
+    await settle();
+    expect(sources).toEqual(["api"]);
+  });
+
   it("a header sort fetches exactly once, already using the new sort (no stale-query fetch)", async () => {
     const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
     const grid = mountGrid(baseProps({ dataSource: ds, mode: "server", pageSize: 10 }));

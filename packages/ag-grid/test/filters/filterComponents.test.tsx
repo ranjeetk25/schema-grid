@@ -6,6 +6,8 @@ import { type ColumnDef, createDefaultRegistry, type FilterCondition, type Optio
 import { col, PAYMENT_OPTIONS, TAG_OPTIONS } from "../fixtures/schema";
 
 let lastFilterCallbacks: CustomFilterCallbacks | undefined;
+/** Every registration, one per render. */
+let filterCallbackHistory: CustomFilterCallbacks[] = [];
 
 vi.mock("ag-grid-react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("ag-grid-react")>();
@@ -13,6 +15,7 @@ vi.mock("ag-grid-react", async (importOriginal) => {
     ...actual,
     useGridFilter: (callbacks: CustomFilterCallbacks) => {
       lastFilterCallbacks = callbacks;
+      filterCallbackHistory.push(callbacks);
     },
   };
 });
@@ -71,7 +74,19 @@ async function flush() {
 
 beforeEach(() => {
   lastFilterCallbacks = undefined;
+  filterCallbackHistory = [];
 });
+
+/**
+ * ag-grid-react treats a new `doesFilterPass` identity on a re-render of an
+ * active filter as changed filter logic and fires a spurious `filterChanged`,
+ * which resets the infinite row model (a duplicate server fetch).
+ */
+function expectStableDoesFilterPass() {
+  expect(filterCallbackHistory.length).toBeGreaterThan(1);
+  const first = filterCallbackHistory[0]?.doesFilterPass;
+  for (const cb of filterCallbackHistory) expect(cb.doesFilterPass).toBe(first);
+}
 afterEach(() => cleanup());
 
 describe("ConditionFilter", () => {
@@ -81,6 +96,15 @@ describe("ConditionFilter", () => {
     const { props } = filterProps(score);
     render(<ConditionFilter {...props} />);
     expect(lastFilterCallbacks?.doesFilterPass({} as never)).toBe(true);
+  });
+
+  it("keeps the doesFilterPass identity stable across re-renders (no spurious filterChanged)", () => {
+    const { props } = filterProps(score);
+    const { rerender } = render(<ConditionFilter {...props} />);
+    // An outside model change re-renders twice (new props, then the draft re-sync effect).
+    rerender(<ConditionFilter {...props} model={{ columnId: "score", operator: "gt", value: 5 }} />);
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "7" } });
+    expectStableDoesFilterPass();
   });
 
   it("choosing an operator and a value emits a typed FilterCondition with the right columnId", () => {
@@ -241,6 +265,16 @@ describe("SetFilter", () => {
 
     fireEvent.click(screen.getByLabelText("Pending"));
     expect(lastModel(onModelChange)).toEqual({ columnId: "payment", operator: "isAnyOf", value: ["paid", "pending"] });
+  });
+
+  it("keeps the doesFilterPass identity stable across re-renders (no spurious filterChanged)", async () => {
+    const { props } = filterProps(payment, null, makeContext({}, async () => PAYMENT_OPTIONS));
+    const { rerender } = render(<SetFilter {...props} />);
+    await flush();
+    rerender(<SetFilter {...props} model={{ columnId: "payment", operator: "is", value: "paid" }} />);
+    await flush();
+    expect(lastFilterCallbacks?.doesFilterPass({} as never)).toBe(true);
+    expectStableDoesFilterPass();
   });
 
   it("unchecking everything emits null", async () => {
