@@ -7,7 +7,7 @@
  * `TODO(io)`. The fallback functions throw; components accept injected
  * implementations (the `io` prop) so tests and early consumers never hit them.
  */
-import type { ColumnDef, FieldTypeRegistry, GridSchema } from "./core-contracts";
+import type { Access, ColumnDef, FieldTypeRegistry, GridSchema } from "./core-contracts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +39,8 @@ export interface RowValidationResult {
   rowIndex: number;
   values: Record<string, unknown>;
   errors: CellValidationError[];
+  /** Row-level problem, e.g. "Missing key" or "Duplicate key". */
+  rowError?: string;
 }
 
 export type ImportMode = "create" | "update" | "upsert";
@@ -59,6 +61,10 @@ export interface ValidateRowsInput {
   mapping: ColumnMapping;
   schema: GridSchema;
   registry: FieldTypeRegistry;
+  mode?: ImportMode;
+  keyColumnId?: string | null;
+  unknownEnumPolicy?: UnknownEnumPolicy;
+  access?: ReadonlyMap<string, Access>;
 }
 
 export interface BuildExportInput {
