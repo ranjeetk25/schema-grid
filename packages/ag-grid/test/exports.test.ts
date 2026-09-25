@@ -31,6 +31,7 @@ describe("public barrels", () => {
       "serializeTsv",
       "createUndoStack",
       "createHttpDataSource",
+      "createGridClient",
       "createRemoteDataSource",
       "RemoteDataSourceError",
       "unwrapWireResult",
