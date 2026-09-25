@@ -92,6 +92,11 @@ export {
 } from "./core-shim/validate-filter";
 export type { FilterValidationError as CoreFilterValidationError } from "./core-shim/validate-filter"; // TODO(core): replace with @masai/schema-grid-core `FilterValidationError`
 
+export {
+  compareRows, // TODO(core): replace with @masai/schema-grid-core in-memory sort comparator
+  matchesFilter, // TODO(core): replace with @masai/schema-grid-core export
+} from "./core-shim/match";
+
 // ---- permissions ------------------------------------------------------------
 export {
   createRolePermissionResolver, // TODO(core): replace with @masai/schema-grid-core export
