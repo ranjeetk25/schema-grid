@@ -1,0 +1,37 @@
+name: Changeset check
+
+# Fails a PR that changes a publishable package (packages/*) without adding a
+# .changeset/*.md file. Changes to private apps/* never need one.
+# Opt out: add the `skip-changeset` label, or commit an empty changeset
+# (`bun run changeset --empty`). See CONTRIBUTING.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changeset:
+    # The version PR consumes changesets, so it never carries one.
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'skip-changeset') &&
+      !startsWith(github.head_ref, 'changeset-release/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Require a changeset for package changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bunx changeset status --since="origin/${BASE_REF}"

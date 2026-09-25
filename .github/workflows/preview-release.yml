@@ -1,0 +1,86 @@
+name: Preview release
+
+# Label a PR `preview` to publish every package as 0.0.0-pr<N>-<sha7> under the
+# `pr` dist-tag, e.g. `bun add @masai/schema-grid-core@pr` (latest preview of
+# any PR) or `@masai/schema-grid-core@0.0.0-pr42-1a2b3c4` (this exact build).
+# Re-runs on every push while the label is on. Needs at least one changeset in
+# the PR (snapshots only version packages that have one; the `fixed` group
+# then carries all of them).
+#
+# Uses `pull_request` (not `pull_request_target`), so PRs from forks get no
+# secrets and cannot publish. Runbook: docs/releasing.md
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write # comment the install line
+  id-token: write # npm provenance
+
+jobs:
+  preview:
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.4"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Snapshot version
+        id: snapshot
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          tag="pr${PR}-${SHA::7}"
+          bunx changeset version --snapshot "$tag"
+          echo "version=0.0.0-${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Build, verify and publish to the `pr` dist-tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          bun run build
+          bun scripts/verify-pack.ts
+          bun scripts/prepare-publish.ts --write
+          bun scripts/prepare-publish.ts --check
+          bunx changeset publish --tag pr --no-git-tag
+
+      - name: Comment install line
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          VERSION: ${{ steps.snapshot.outputs.version }}
+        run: |
+          body=$(cat <<EOF
+          Preview published as \`${VERSION}\` (dist-tag \`pr\`):
+
+          \`\`\`bash
+          bun add @masai/schema-grid-core@${VERSION} @masai/schema-grid-ag-grid@${VERSION} @masai/schema-grid-ui-mantine@${VERSION}
+          \`\`\`
+          EOF
+          )
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
