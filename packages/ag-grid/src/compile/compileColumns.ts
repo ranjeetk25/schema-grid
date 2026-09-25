@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { CellClassRules, ColDef, EditableCallbackParams, ValueGetterParams } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { Access, ColumnDef, FieldTypeRegistry, FormulaEnv, GridRow, GridSchema, Pinned, ViewDef } from "../internal/core";
+import { longTextSuppressKeyboardEvent } from "../editors/LongTextEditor";
 import type { SchemaCellRendererParams } from "./defaultRenderers";
 import { compileFormulaColumns, type CompiledFormulas } from "./formulaColumns";
 import type { UiFieldTypeRegistry } from "./uiRegistry";
@@ -104,6 +105,7 @@ export function compileColumns<Row extends GridRow = GridRow>(
     };
     if (width !== undefined) def.width = width;
     if (cellClassRules) def.cellClassRules = cellClassRules;
+    if (column.type === "longText") def.suppressKeyboardEvent = longTextSuppressKeyboardEvent;
     compiled.push({ def, inView: state ? 0 : 1, order: state?.order ?? column.order, index });
   });
 

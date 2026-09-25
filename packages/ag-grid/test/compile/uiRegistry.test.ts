@@ -65,7 +65,8 @@ describe("UiFieldTypeRegistry.extend", () => {
     expect(extended.get("text").renderer).toBe(baseTextEntry.renderer);
     expect(extended.get("number")).toEqual(baseNumberEntry);
     // The original registry is untouched.
-    expect(base.get("text").editor).toBeUndefined();
+    expect(base.get("text").editor).toBe(baseTextEntry.editor);
+    expect(base.get("text").editor).not.toBe(CustomTextEditor);
   });
 });
 
