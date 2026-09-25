@@ -19,6 +19,7 @@
     "dev:api": "bun run --cwd apps/demo-api dev",
     "storybook": "bun run --cwd apps/storybook storybook",
     "build-storybook": "bun run --cwd apps/storybook build-storybook",
+    "analyze": "bun run --cwd apps/storybook analyze",
     "e2e": "bun run --cwd apps/storybook e2e",
     "storybook:shadcn": "bun run --cwd apps/storybook-shadcn storybook",
     "build-storybook:shadcn": "bun run --cwd apps/storybook-shadcn build-storybook",
