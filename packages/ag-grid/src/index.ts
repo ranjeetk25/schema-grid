@@ -37,6 +37,31 @@ export {
   type RootKeyHandlerOptions,
   type RootKeyResult,
 } from "./grid/keyboard";
+export {
+  SchemaHeader,
+  schemaHeaderKeyboardEvent,
+  SG_HEADER_CLASSES,
+  type SchemaHeaderProps,
+} from "./grid/SchemaHeader";
+export { DefaultHeaderMenu } from "./grid/DefaultHeaderMenu";
+export { createHeaderMenuActions, type HeaderMenuActionDeps } from "./grid/headerMenuActions";
+export {
+  createInPlaceHandlers,
+  createReadOnlyCellClassRules,
+  READ_ONLY_MESSAGES,
+  readOnlyReason,
+  type ReadOnlyReason,
+} from "./editing/inPlace";
+export type {
+  HeaderMenuActions,
+  HeaderMenuColumn,
+  HeaderMenuComponent,
+  HeaderMenuContext,
+  HeaderMenuHostCallbacks,
+  HeaderMenuPinnedState,
+  HeaderMenuProps,
+  HeaderMenuSortState,
+} from "./grid/headerMenu";
 export { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "./agModules";
 
 // Compilation + UI registry
@@ -60,7 +85,7 @@ export { exportCsv, type ExportCsvOptions } from "./export/csv";
 export { exportCurrentView, type ExportCurrentViewOptions } from "./export/exportCurrentView";
 
 // Theme
-export { createSchemaGridTheme, type SchemaGridThemeOverrides } from "./theme/theme";
+export { createSchemaGridTheme, SCHEMA_GRID_THEME_PARAMS, type SchemaGridThemeOverrides } from "./theme/theme";
 export { SG_CLASSES, SG_CSS, type SgClassName } from "./theme/classNames";
 
 // Stores

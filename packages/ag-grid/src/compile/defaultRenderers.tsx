@@ -1,6 +1,7 @@
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { ColumnDef, FieldType, GridRow, Option } from "../internal/core";
 import { isFormulaError } from "../internal/core";
+import { cellReadOnlyReason } from "../editing/inPlace";
 
 /**
  * Extra params `compileColumns` (T6) puts into `colDef.cellRendererParams`. AG
@@ -52,10 +53,37 @@ export function TextRenderer<Row extends GridRow = GridRow>(props: SchemaRendere
   return <>{fieldType.format(props.value as never, config as never)}</>;
 }
 
-/** Read-only checkbox — boolean columns are edited through the boolean editor, never inline in the renderer. */
+/** Read-only per schema/access/row permission (AG Grid's `editable` is always false for booleans). */
+function isEditableCell<Row extends GridRow>(props: SchemaRendererProps<Row>): boolean {
+  if (props.schemaColumn?.type === "formula") return false;
+  const ctx = props.context as { schema?: unknown } | undefined;
+  // Outside a schema grid context (tests, standalone use) the checkbox is shown as editable.
+  if (!ctx || typeof ctx !== "object" || !("schema" in ctx)) return true;
+  return cellReadOnlyReason<Row>({ context: props.context, data: props.data, colDef: props.colDef, column: props.column }) === null;
+}
+
+/**
+ * A 16px checkbox drawn in the cell (`.sg-bool`, styled by the theme part).
+ * It is display-only (disabled, `pointer-events: none`): toggling happens at
+ * the grid level (click / Space / Enter on the cell), so clicks land on the
+ * cell. Muted (`sg-bool-readonly`) when the cell can't be edited.
+ */
 export function BooleanRenderer<Row extends GridRow = GridRow>(props: SchemaRendererProps<Row>): JSX.Element {
   const checked = props.value === true;
-  return <input type="checkbox" readOnly disabled checked={checked} aria-label={checked ? "Checked" : "Unchecked"} />;
+  const className = isEditableCell(props) ? "sg-bool" : "sg-bool sg-bool-readonly";
+  return (
+    <span className="sg-bool-cell">
+      <input
+        type="checkbox"
+        className={className}
+        tabIndex={-1}
+        readOnly
+        disabled
+        checked={checked}
+        aria-label={checked ? "Checked" : "Unchecked"}
+      />
+    </span>
+  );
 }
 
 function toHref(raw: string): string {

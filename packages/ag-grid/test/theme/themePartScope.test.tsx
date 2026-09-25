@@ -58,9 +58,15 @@ describe("schemaGrid theme part CSS scope", () => {
 
     const cell = container.querySelector<HTMLElement>(".ag-row .ag-cell");
     expect(cell).not.toBeNull();
+    // Cell/row decorations are the classes that land on cells; header,
+    // filter and editor chrome selectors need their own ancestors (header
+    // cell, popup), so only the decoration targets are probed in a cell —
+    // but NO selector may still require a `.sg-root` ancestor.
+    const decorationTargets = new Set<string>(Object.values(SG_CLASSES));
     for (const selector of ruleSelectors(css as string)) {
+      expect(selector, "part selectors must not require .sg-root").not.toContain(`.${SG_CLASSES.root}`);
       const target = /\.(sg-[a-z-]+)\s*$/.exec(selector)?.[1];
-      if (!target) continue;
+      if (!target || !decorationTargets.has(target)) continue;
       const probe = document.createElement("span");
       probe.className = target;
       (cell as HTMLElement).append(probe);

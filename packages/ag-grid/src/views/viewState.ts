@@ -9,7 +9,19 @@
 import type { ColumnState, GridApi } from "ag-grid-community";
 import type { Access, ColumnDef, FilterNode, GridRow, Pinned, SortSpec, ViewColumnState, ViewDef } from "../internal/core";
 import { isFilterGroup } from "../internal/core";
+import { isSyntheticColumnId } from "../compile/syntheticColumns";
+import type { ExpansionStore } from "../state/expansionStore";
 import type { QueryStore } from "../state/queryStore";
+
+/** Collapsed group ids from the expansion store (explicit collapses over an expanded default). */
+export function collapsedGroupIds(expansion: Pick<ExpansionStore, "getState">): string[] {
+  const { defaultExpanded, overrides } = expansion.getState();
+  if (!defaultExpanded) return [];
+  return Object.entries(overrides)
+    .filter(([, expanded]) => !expanded)
+    .map(([id]) => id)
+    .sort();
+}
 
 const AG_INTERNAL_PREFIX = "ag-Grid-";
 
@@ -29,7 +41,7 @@ export const DEFAULT_VIEW_COLUMN_WIDTH = 200;
  */
 export function captureViewState<Row extends GridRow>(
   api: Pick<GridApi<Row>, "getColumnState">,
-  stores: { query: QueryStore },
+  stores: { query: QueryStore; expansion?: Pick<ExpansionStore, "getState"> },
   base: ViewDef,
   opts?: { columns?: readonly ColumnDef[] },
 ): ViewDef {
@@ -44,7 +56,7 @@ export function captureViewState<Row extends GridRow>(
   const columnState: ViewColumnState[] = [];
   let order = 0;
   for (const cs of raw) {
-    if (cs.colId.startsWith(AG_INTERNAL_PREFIX)) continue;
+    if (cs.colId.startsWith(AG_INTERNAL_PREFIX) || isSyntheticColumnId(cs.colId)) continue;
     const entry: ViewColumnState = {
       id: cs.colId,
       hidden: !!cs.hide,
@@ -57,6 +69,7 @@ export function captureViewState<Row extends GridRow>(
   }
 
   const query = stores.query.getState();
+  const collapsed = stores.expansion && query.groupBy.length > 0 ? collapsedGroupIds(stores.expansion) : [];
 
   return {
     id: base.id,
@@ -67,6 +80,7 @@ export function captureViewState<Row extends GridRow>(
     groupBy: query.groupBy,
     columnState,
     ...(query.search !== undefined ? { search: query.search } : {}),
+    ...(collapsed.length > 0 ? { collapsedGroups: collapsed } : {}),
   };
 }
 
@@ -83,7 +97,7 @@ function pruneFilter(node: FilterNode | null, isKnown: (columnId: string) => boo
 export function applyViewState<Row extends GridRow>(
   api: Pick<GridApi<Row>, "applyColumnState" | "getColumnState">,
   view: ViewDef,
-  stores: { query: QueryStore },
+  stores: { query: QueryStore; expansion?: Pick<ExpansionStore, "expandAll" | "setExpanded"> },
   opts?: { access?: Map<string, Access> },
 ): void {
   const access = opts?.access;
@@ -127,4 +141,8 @@ export function applyViewState<Row extends GridRow>(
   stores.query.setSort(filteredSort);
   stores.query.setSearch(view.search);
   stores.query.setGroupBy(groupBy);
+  if (stores.expansion) {
+    stores.expansion.expandAll(true);
+    for (const id of view.collapsedGroups ?? []) stores.expansion.setExpanded(id, false);
+  }
 }
