@@ -45,9 +45,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@masai/schema-grid-core": "workspace:*",
     "@masai/schema-grid-ag-grid": "workspace:*",
-    "@masai/schema-grid-io": "workspace:*"
+    "@masai/schema-grid-core": "workspace:*",
+    "@masai/schema-grid-io": "workspace:*",
+    "@tabler/icons-react": "^3.48.0"
   },
   "peerDependencies": {
     "react": "^18.3.0",
