@@ -229,6 +229,42 @@ describe("createServerGroupsController", () => {
     };
   }
 
+  /**
+   * `@masai/schema-grid-server` pages the GROUPS of a grouping query by
+   * `page` (rows: [], nextCursor while more groups exist), where core's
+   * in-memory source returns every group and pages `rows`. Found by the
+   * apps/storybook Playwright server-mode grouping scenario (§12): asking for
+   * a one-row page showed only the first group against the real server.
+   */
+  function serverStyleGroupPaging(ds: DataSource<GridRow>): { fetch: ReturnType<typeof vi.fn> } {
+    return {
+      fetch: vi.fn(async (q: GridQuery): Promise<QueryResult<GridRow>> => {
+        if (!q.groupBy?.length) return ds.fetch(q);
+        const all = (await ds.fetch({ ...q, page: { offset: 0, limit: 1000 } })).groups ?? [];
+        const offset = "cursor" in q.page && q.page.cursor ? Number(q.page.cursor) : (q.page.offset ?? 0);
+        const groups = all.slice(offset, offset + q.page.limit);
+        const next = offset + q.page.limit;
+        return { rows: [], groups, ...(next < all.length ? { nextCursor: String(next) } : {}) };
+      }),
+    };
+  }
+
+  it("loads every group from a source that pages groups (server semantics)", async () => {
+    const ds = serverStyleGroupPaging(createInMemoryDataSource(fixtureSchema, fixtureRows));
+    const ctl = createServerGroupsController<GridRow>({
+      dataSource: ds,
+      getQuery: () => ({ filter: null, sort: [], groupBy: [{ columnId: "payment" }] }),
+      pageSize: 2,
+      schema: fixtureSchema,
+      registry,
+    });
+    await ctl.load();
+    const labels = ctl.getDisplayRows().map((r) => (r as { label?: string }).label);
+    expect(labels).toHaveLength(4);
+    expect(new Set(labels).size).toBe(4);
+    expect(labels).toEqual(expect.arrayContaining(["Paid", "Pending", "(empty)"]));
+  });
+
   it("queries sub-groups with the groupBy slice when core children are absent", async () => {
     const ds = withoutChildren(createInMemoryDataSource(fixtureSchema, fixtureRows));
     const ctl = createServerGroupsController<GridRow>({
