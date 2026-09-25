@@ -1,5 +1,5 @@
 import { Combobox, Select, useCombobox, useMantineTheme } from "@mantine/core";
-import { IconCheck } from "@tabler/icons-react";
+import { IconCheck } from "../internal/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";

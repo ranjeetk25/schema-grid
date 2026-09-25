@@ -12,7 +12,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { IconArrowDown, IconArrowUp, IconChevronDown, IconChevronRight, IconLayoutList, IconX } from "@tabler/icons-react";
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconChevronRight, IconLayoutList, IconX } from "../internal/icons";
 import { useState } from "react";
 import { ColumnTypeIcon } from "../filter-builder/columnTypeIcon";
 import { type AccessMap, readableColumns } from "../internal/access";

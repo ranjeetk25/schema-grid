@@ -1,5 +1,5 @@
 import { ActionIcon, Select, type SelectProps, Tooltip } from "@mantine/core";
-import { IconChevronDown, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconX } from "../internal/icons";
 import { useEffect, useRef } from "react";
 import type { DataSource, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
@@ -33,7 +33,15 @@ export function FilterConditionRow({ condition, api, schema, uiRegistry, dataSou
   const operator = operators.find((o) => o.id === condition.operator);
   const column = condition.columnId ? schema.columns.find((c) => c.id === condition.columnId) : undefined;
   const typeById = new Map(api.columns.map((c) => [c.id, c.type]));
-  const columnData = api.columns.map((c) => ({ value: c.id, label: c.label }));
+  const columnData: { value: string; label: string; disabled?: boolean }[] = api.columns.map((c) => ({
+    value: c.id,
+    label: c.label,
+  }));
+  // A condition on a readable but unfilterable column (e.g. from a saved view) keeps its label; not selectable.
+  if (column && api.readable?.has(column.id) && !api.columns.some((c) => c.id === column.id)) {
+    columnData.push({ value: column.id, label: column.label, disabled: true });
+    typeById.set(column.id, column.type);
+  }
   const columnRef = useRef<HTMLInputElement>(null);
 
   // A freshly added row focuses its column picker.

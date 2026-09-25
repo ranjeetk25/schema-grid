@@ -1,5 +1,5 @@
 import { Alert, Box, Button, Group, Stack, Text } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle } from "../internal/icons";
 import { type KeyboardEvent, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import { readableColumnIds } from "../internal/access";
@@ -85,8 +85,14 @@ export interface FilterDraftApi {
   draft: FilterDraft;
   /** Draft node id → inline errors. */
   errors: ReadonlyMap<string, RowErrors>;
-  /** Columns offered by the column picker (readable only). */
+  /** Columns offered by the column picker (readable, not `filterable: false`). */
   columns: ColumnDef[];
+  /**
+   * Readable column ids. An existing condition on a readable column the
+   * picker doesn't offer (`filterable: false`, e.g. from a saved view) still
+   * shows its label; hidden columns never do.
+   */
+  readable?: ReadonlySet<string>;
   maxDepth: number;
   operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
   addCondition(groupId: string): void;
@@ -228,6 +234,7 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
     draft,
     errors,
     columns,
+    readable,
     maxDepth,
     operatorsForColumnId,
     addCondition: (groupId) => {

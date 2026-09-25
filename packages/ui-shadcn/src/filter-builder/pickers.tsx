@@ -129,6 +129,8 @@ export interface ComboboxPickerProps {
   items: readonly PickerItem[];
   value: string | null;
   onChange(value: string): void;
+  /** Shown on the trigger when `value` is not among `items` (e.g. a column no longer offered); never listed. */
+  selectedFallback?: PickerItem;
   disabled?: boolean;
   invalid?: boolean;
   describedBy?: string;
@@ -143,6 +145,7 @@ export function ComboboxPicker({
   items,
   value,
   onChange,
+  selectedFallback,
   placeholder,
   searchPlaceholder = "Search…",
   emptyText = "No matches",
@@ -156,7 +159,9 @@ export function ComboboxPicker({
   ...rest
 }: ComboboxPickerProps) {
   const [open, setOpen] = useState(false);
-  const selected = value ? items.find((i) => i.value === value) : undefined;
+  const selected = value
+    ? (items.find((i) => i.value === value) ?? (selectedFallback?.value === value ? selectedFallback : undefined))
+    : undefined;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>

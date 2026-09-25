@@ -1,5 +1,5 @@
 import { Combobox, Group, InputBase, Loader, useCombobox } from "@mantine/core";
-import { IconPlus } from "@tabler/icons-react";
+import { IconPlus } from "../internal/icons";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";

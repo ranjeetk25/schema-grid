@@ -13,7 +13,7 @@ import {
   UnstyledButton,
   useCombobox,
 } from "@mantine/core";
-import { IconMathFunction, IconSearch } from "@tabler/icons-react";
+import { IconMathFunction, IconSearch } from "../internal/icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type AccessMap, readableColumns } from "../internal/access";
 import {

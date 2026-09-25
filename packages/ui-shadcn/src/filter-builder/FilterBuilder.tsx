@@ -63,8 +63,14 @@ export interface FilterDraftApi {
   draft: FilterDraft;
   /** Draft node id → inline errors. */
   errors: ReadonlyMap<string, RowErrors>;
-  /** Columns offered by the column picker (readable only). */
+  /** Columns offered by the column picker (readable, not `filterable: false`). */
   columns: ColumnDef[];
+  /**
+   * Readable column ids. An existing condition on a readable column the
+   * picker doesn't offer (`filterable: false`, e.g. from a saved view) still
+   * shows its label; hidden columns never do.
+   */
+  readable?: ReadonlySet<string>;
   maxDepth: number;
   operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
   addCondition(groupId: string): void;
@@ -193,6 +199,7 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
     draft,
     errors,
     columns,
+    readable,
     maxDepth,
     operatorsForColumnId,
     addCondition: (groupId) => commit(addConditionTo(draftRef.current, groupId)),

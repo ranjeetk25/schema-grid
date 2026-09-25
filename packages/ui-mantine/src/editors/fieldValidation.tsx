@@ -1,5 +1,5 @@
 import { VisuallyHidden } from "@mantine/core";
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle } from "../internal/icons";
 import { type CSSProperties, type RefObject, useEffect, useId, useRef, useState } from "react";
 import { type AnyFieldType, createDefaultRegistry } from "../internal/core-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";

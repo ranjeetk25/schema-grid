@@ -1,5 +1,5 @@
 import { Combobox, useMantineTheme } from "@mantine/core";
-import { IconCheck, IconSearch, IconX } from "@tabler/icons-react";
+import { IconCheck, IconSearch, IconX } from "../internal/icons";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import type { Option } from "../internal/core-contracts";
 import { resolveOptionColor } from "../internal/options";

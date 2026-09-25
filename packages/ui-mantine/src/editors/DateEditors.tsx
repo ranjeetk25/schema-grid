@@ -1,5 +1,5 @@
 import { DatePickerInput, DateTimePicker } from "@mantine/dates";
-import { IconCalendar, IconCalendarTime } from "@tabler/icons-react";
+import { IconCalendar, IconCalendarTime } from "../internal/icons";
 import dayjs from "dayjs";
 import { type ReactNode, useEffect, useRef } from "react";
 import { toPopupGridEditor } from "../internal/grid-contracts";

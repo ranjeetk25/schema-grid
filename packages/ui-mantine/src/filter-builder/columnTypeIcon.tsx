@@ -15,7 +15,7 @@ import {
   IconSquareCheck,
   IconTags,
   IconUserCircle,
-} from "@tabler/icons-react";
+} from "../internal/icons";
 import type { FieldTypeId } from "../internal/core-contracts";
 
 type TablerIcon = typeof IconHash;

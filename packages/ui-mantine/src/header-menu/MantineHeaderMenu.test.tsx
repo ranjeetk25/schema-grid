@@ -78,3 +78,29 @@ describe("MantineHeaderMenu", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("MantineHeaderMenu canSort (v0.2 C1)", () => {
+  it("hides Sort ascending / descending / Clear sort when canSort is false", () => {
+    setup(actions({ canSort: false, sortState: "asc" }));
+    for (const name of ["Sort ascending", "Sort descending", "Clear sort"]) {
+      expect(screen.queryByRole("menuitem", { name })).toBeNull();
+    }
+    expect(screen.getByRole("menuitem", { name: /Filter…/ })).toBeInTheDocument();
+    // No leading divider when the sort section is gone.
+    const first = document.querySelector("[data-sg-header-menu]")?.querySelector('[role="menuitem"], .mantine-Menu-divider');
+    expect(first?.getAttribute("role")).toBe("menuitem");
+  });
+
+  it("no leading divider when neither sort nor filter/group items are shown", () => {
+    setup(actions({ canSort: false, canFilter: false }));
+    const first = document.querySelector("[data-sg-header-menu]")?.querySelector('[role="menuitem"], .mantine-Menu-divider');
+    expect(first?.textContent).toContain("Pin left");
+    expect(document.querySelectorAll("[data-sg-header-menu] .mantine-Menu-divider").length).toBeGreaterThan(0);
+  });
+
+  it("shows the sort items when canSort is true", () => {
+    setup(actions({ canSort: true }));
+    expect(screen.getByRole("menuitem", { name: "Sort ascending" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Sort descending" })).toBeInTheDocument();
+  });
+});

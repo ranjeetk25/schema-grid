@@ -1,5 +1,5 @@
 import { Box, Button, CloseButton, Group, Text, Tooltip } from "@mantine/core";
-import { IconX } from "@tabler/icons-react";
+import { IconX } from "../internal/icons";
 import { type FieldTypeRegistry, type FilterNode, type GridSchema, isFilterGroup } from "../internal/core-contracts";
 import type { AccessMap } from "../internal/access";
 import { describeConditionParts, describeNode } from "./describeFilter";

@@ -1,5 +1,5 @@
 import { ActionIcon, Button, ColorSwatch, Group, Input, Popover, SimpleGrid, Stack, TextInput, UnstyledButton } from "@mantine/core";
-import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../../internal/icons";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MANTINE_NAMED_COLORS } from "../../internal/options";
 

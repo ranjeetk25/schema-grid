@@ -1,6 +1,6 @@
 import { Box, Button, Group, MultiSelect, NumberInput, Select, Stack, TagsInput, Text, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconChevronDown } from "../internal/icons";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { ColumnTypeIcon } from "../filter-builder/columnTypeIcon";
 import type {

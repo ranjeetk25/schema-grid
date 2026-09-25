@@ -1,5 +1,5 @@
 import { Group, type MantineSize, MultiSelect, NumberInput, Select, Stack, TagsInput, Text, TextInput } from "@mantine/core";
-import { IconChevronDown } from "@tabler/icons-react";
+import { IconChevronDown } from "../internal/icons";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type ColumnDef,
