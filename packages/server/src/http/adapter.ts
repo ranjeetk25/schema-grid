@@ -39,22 +39,7 @@ export function createGridRouterAdapter<Ctx = undefined>(
   const fixed: DataSourceHandler | undefined =
     typeof source === "function" ? undefined : createDataSourceHandler(source, options);
 
-  function failure(err: unknown, op: string): WireFailure {
-    let error: WireError | undefined;
-    try {
-      error = options.mapError?.(err, op as never);
-    } catch {
-      error = undefined;
-    }
-    error ??= toWireError(err, { exposeInternal: options.exposeInternalErrors === true });
-    const result: WireFailure = { ok: false, error, status: httpStatusFor(error.code) };
-    try {
-      options.onError?.(err, { op, error: result.error, status: result.status });
-    } catch {
-      // ignore logger failures
-    }
-    return result;
-  }
+  const failure = (err: unknown, op: string): WireFailure => toWireFailure(err, op, options);
 
   async function handle(op: string, input: unknown, ctx?: Ctx): Promise<WireResult> {
     if (fixed) return fixed(op, input);
@@ -67,6 +52,33 @@ export function createGridRouterAdapter<Ctx = undefined>(
   }
 
   return { handle: handle as GridRouterAdapter<Ctx>["handle"], failure };
+}
+
+/**
+ * Maps anything thrown around a grid operation to a failed `WireResult` the
+ * same way `createDataSourceHandler` does (custom `mapError` first, then
+ * `toWireError`) and reports it to `onError`. Never throws.
+ */
+export function toWireFailure(err: unknown, op: string, options: DataSourceHandlerOptions = {}): WireFailure {
+  let error: WireError | undefined;
+  try {
+    error = options.mapError?.(err, op as never);
+  } catch {
+    error = undefined;
+  }
+  error ??= toWireError(err, { exposeInternal: options.exposeInternalErrors === true });
+  const result: WireFailure = { ok: false, error, status: httpStatusFor(error.code) };
+  reportFailure(err, result, op, options);
+  return result;
+}
+
+/** Calls `options.onError` for a failure; logger exceptions are swallowed. */
+export function reportFailure(err: unknown, result: WireFailure, op: string, options: DataSourceHandlerOptions): void {
+  try {
+    options.onError?.(err, { op, error: result.error, status: result.status });
+  } catch {
+    // ignore logger failures
+  }
 }
 
 /** Status + JSON body for any HTTP framework: `{ data }` on success, `{ error }` otherwise. */

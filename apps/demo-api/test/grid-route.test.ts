@@ -1,4 +1,5 @@
-import type { DataSource, GridRow } from "@ranjeetk25/schema-grid-core";
+import { readFileSync } from "node:fs";
+import type { DataSource, GridRow, GridSchema } from "@ranjeetk25/schema-grid-core";
 import { createFixtureSchema } from "@ranjeetk25/schema-grid-core/testing";
 import {
   CursorError,
@@ -11,6 +12,7 @@ import type { GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type GridRequestContext, createApp } from "../src/app";
 import { gridTables } from "../src/db";
+import { leadsSchema } from "../src/leads/grid";
 import { HttpError, toErrorResponse } from "../src/http-error";
 import { SchemaStore } from "../src/schema-store";
 
@@ -169,7 +171,7 @@ describe("app routes that need no database", () => {
   });
 });
 
-describe("grid route over createGridRouterAdapter (fake data source)", () => {
+describe("legacy /grid/:op route (fake data source)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -253,5 +255,95 @@ describe("grid route over createGridRouterAdapter (fake data source)", () => {
     expect(contexts[0]?.now().toISOString()).toBe("2026-09-26T00:00:00.000Z");
     expect(contexts[1]?.user).toEqual({ id: "admin", roles: ["admin"] });
     expect(contexts[1]?.now().toISOString()).toBe("2026-09-24T21:00:00.000Z");
+  });
+});
+
+describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
+  const contexts: GridRequestContext[] = [];
+  const ds = fakeDs();
+  const { app, grids } = createApp({
+    db: {} as GridDb,
+    tables: gridTables(),
+    gridId: "admissions",
+    store: new SchemaStore(null, createFixtureSchema),
+    tz: "Asia/Kolkata",
+    clock: "2026-09-24T21:00:00.000Z",
+    dataSource: (ctx) => {
+      contexts.push(ctx);
+      return ds;
+    },
+  });
+  const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+    app.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  it("registers both grids and lists them at GET /grid", async () => {
+    expect(await grids.list({ user: { id: "a", roles: [] }, now: () => new Date() })).toEqual([
+      { id: "admissions" },
+      { id: "leads" },
+    ]);
+    expect(await (await app.request("/grid")).json()).toEqual({ data: [{ id: "admissions" }, { id: "leads" }] });
+  });
+
+  it("GET /grid/:gridId/schema serves each grid's schema", async () => {
+    const admissions = (await (await app.request("/grid/admissions/schema")).json()) as { data: GridSchema };
+    expect(admissions.data.id).toBe("admissions");
+    const leads = (await (await app.request("/grid/leads/schema")).json()) as { data: GridSchema };
+    expect(leads.data).toEqual(leadsSchema);
+  });
+
+  it("POST /grid/admissions/fetch reaches the fixture grid's source with the header context", async () => {
+    const res = await post("/grid/admissions/fetch", { filter: null, sort: [], page: { offset: 0, limit: 5 } }, {
+      "x-user": "u9",
+      "x-roles": "counsellor",
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { rows: [] } });
+    expect(contexts.at(-1)?.user).toEqual({ id: "u9", roles: ["counsellor"] });
+  });
+
+  it("unknown grid 404, bad x-now 400, counsellor updateSchema on leads 403", async () => {
+    const unknown = await post("/grid/nope/fetch", {});
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toMatchObject({ error: { code: "UNKNOWN_GRID" } });
+    const badNow = await post("/grid/admissions/fetch", {}, { "x-now": "soon" });
+    expect(badNow.status).toBe(400);
+    expect(await badNow.json()).toEqual({ error: { code: "INPUT_INVALID", message: "x-now must be an ISO instant" } });
+    const denied = await post("/grid/leads/updateSchema", leadsSchema, { "x-roles": "counsellor" });
+    expect(denied.status).toBe(403);
+  });
+
+  it("admin updateSchema on leads persists in the (memory) schema store", async () => {
+    const renamed = {
+      ...leadsSchema,
+      columns: leadsSchema.columns.map((c) => (c.key === "email" ? { ...c, label: "E-mail" } : c)),
+    };
+    const res = await post("/grid/leads/updateSchema", renamed);
+    expect(res.status).toBe(200);
+    const saved = ((await res.json()) as { data: GridSchema }).data;
+    expect(saved.schemaVersion).toBe(leadsSchema.schemaVersion + 1);
+    const again = (await (await app.request("/grid/leads/schema")).json()) as { data: GridSchema };
+    expect(again.data.columns.find((c) => c.key === "email")?.label).toBe("E-mail");
+  });
+
+  it("PUT /schema (legacy) still answers 409 SchemaVersionConflict on a stale version", async () => {
+    const res = await app.request("/schema", {
+      method: "PUT",
+      body: JSON.stringify({ ...createFixtureSchema(), schemaVersion: 0 }),
+    });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { name: "SchemaVersionConflict" } });
+  });
+});
+
+describe("docs/consuming.md", () => {
+  it("embeds the leads grid file verbatim, and it stays within 40 lines", () => {
+    const file = readFileSync(new URL("../src/leads/grid.ts", import.meta.url), "utf8");
+    const docs = readFileSync(new URL("../../../docs/consuming.md", import.meta.url), "utf8");
+    expect(file.trimEnd().split("\n").length).toBeLessThanOrEqual(40);
+    expect(docs).toContain(file.trimEnd());
   });
 });

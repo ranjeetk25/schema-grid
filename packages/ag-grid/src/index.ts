@@ -133,6 +133,12 @@ export { createServerGroupsController, type ServerGroupsController } from "./ser
 // Remote data sources (transport-neutral wire contract from core)
 export { createHttpDataSource, type HttpDataSourceOptions } from "./remote/httpDataSource";
 export {
+  createGridClient,
+  type GridClient,
+  type GridClientCapabilities,
+  type GridClientOptions,
+} from "./remote/gridClient";
+export {
   createRemoteDataSource,
   RemoteDataSourceError,
   unwrapWireResult,

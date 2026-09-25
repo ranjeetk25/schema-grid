@@ -5,6 +5,7 @@ import { toWireIssues } from "./issues";
 import {
   type GridOperation,
   isGridOperation,
+  isGridSchemaOperation,
   OPTIONAL_GRID_OPERATIONS,
   type OptionalGridOperation,
   type WireInput,
@@ -63,6 +64,9 @@ async function invoke(ds: DataSource<GridRow>, op: GridOperation, input: unknown
       const i = input as WireInput<"lookup">;
       return ds.lookup?.(i.columnId, i.search);
     }
+    default:
+      // Grid-level operations are rejected before `invoke` (see `handle`).
+      return undefined;
   }
 }
 
@@ -92,6 +96,14 @@ export function createDataSourceHandler(
   async function handle(op: string, rawInput: unknown): Promise<WireResult> {
     if (!isGridOperation(op)) {
       const result = fail("UNKNOWN_OPERATION", `Unknown grid operation "${op}"`);
+      report(undefined, op, result);
+      return result;
+    }
+    if (isGridSchemaOperation(op)) {
+      const result = fail(
+        "UNSUPPORTED_OPERATION",
+        `"${op}" is served by a grid registry (defineGrid), not by a data source`,
+      );
       report(undefined, op, result);
       return result;
     }

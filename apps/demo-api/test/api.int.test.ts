@@ -114,6 +114,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
         store: new SchemaStore(null, createFixtureSchema),
         tz: "Asia/Kolkata",
         clock: FIXTURE_NOW,
+        leads: { tableName: "it_api_leads" },
       });
       expect((await call("POST", "/__reset")).status).toBe(200);
     });

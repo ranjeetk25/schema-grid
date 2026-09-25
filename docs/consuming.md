@@ -132,6 +132,77 @@ export function AdmissionsGrid({ schema, user }) {
 
 Render it inside your existing `<MantineProvider>`.
 
+## Expose an existing table in ≤ 40 lines
+
+A grid over a table you already have is one `defineGrid()` call. This is the demo-api's leads grid,
+verbatim ([`apps/demo-api/src/leads/grid.ts`](../apps/demo-api/src/leads/grid.ts) — a test keeps the two in
+sync): a plain `leads(id, name, email, payment_status ENUM, call_date DATE, ai_verified BOOL, updated_at)`
+table, no `cells` JSON, no version column.
+
+```ts
+import { type ColumnDef, createRolePermissionResolver, type GridSchema } from "@ranjeetk25/schema-grid-core";
+import type { GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
+import { defineGrid, type SchemaStore } from "@ranjeetk25/schema-grid-server/http";
+import { eq, sql } from "drizzle-orm";
+import type { GridRequestContext } from "../context";
+import { createSqlViewDataSource } from "../sqlview-stub"; // TODO(lane-b): from "@ranjeetk25/schema-grid-server/drizzle"
+import type { LeadsTable } from "./table";
+
+const at = "2026-09-01T00:00:00.000Z";
+const col = (order: number, key: string, label: string, type: string, extra: Partial<ColumnDef> = {}): ColumnDef =>
+  ({ id: key, key, label, type, config: {}, order, createdAt: at, updatedAt: at, ...extra });
+const options = ["Paid", "Pending", "Failed"].map((label) => ({ id: label.toLowerCase(), label }));
+const readOnly: Partial<ColumnDef> = { permissions: { read: "all", edit: { roles: [] } } }; // TODO(lane-a): settable: false
+
+export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns: [
+  col(0, "name", "Name", "text"),
+  col(1, "email", "Email", "email"),
+  col(2, "paymentStatus", "Payment status", "select", { config: { options } }),
+  col(3, "callDate", "Call date", "date", { config: { displayFormat: "dmy", inputOrder: "DMY" } }),
+  col(4, "aiVerified", "AI verified", "boolean", readOnly),
+] };
+
+type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore?: SchemaStore };
+
+/** The existing `leads` table as a grid. Anyone may read/edit rows; only admins may change the schema. */
+export const leadsGrid = ({ db, table: t, tz, schemaStore }: Deps) => defineGrid<GridRequestContext>({
+  id: "leads", schema: leadsSchema, schemaStore,
+  permission: (ctx, op) => op !== "updateSchema" || ctx.user.roles.includes("admin"),
+  source: (ctx, { schema }) => createSqlViewDataSource({
+    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now,
+    baseQuery: () => sql`${t}`, rowId: t.id, updatedAt: t.updatedAt,
+    columns: { name: { expr: t.name, searchable: true }, email: { expr: t.email, searchable: true },
+      paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified } },
+    write: { update: async (_ctx, { rowId, changes }) => {
+      await db.update(t).set(Object.fromEntries(changes.map((c) => [c.columnId, c.next]))).where(eq(t.id, Number(rowId)));
+      return { applied: changes, version: 0 }; // no version column: the source re-hashes the row
+    } },
+  }),
+});
+```
+
+Serve every grid from one endpoint (`POST /grid/:gridId/:op`, `GET /grid/:gridId/schema`, `GET /grid`):
+
+```ts
+import { createGridRegistry, toFetchHandler } from "@ranjeetk25/schema-grid-server/http";
+
+const grids = createGridRegistry([admissionsGrid(deps), leadsGrid({ db, table: leads, tz: "Asia/Kolkata" })]);
+const endpoint = toFetchHandler(grids, { basePath: "/grid", context: (request) => contextFrom(request.headers) });
+app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js route handlers take `endpoint` as is
+```
+
+`toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json(), …)`) and
+`toLambdaHandler(grids, { context })` (routes `POST /grid/{gridId}/{op}`, `GET /grid/{gridId}/schema`) serve the
+same routes. In the browser, one client per grid:
+
+```ts
+import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
+
+const leads = createGridClient({ baseUrl: "/grid", gridId: "leads", credentials: "include" });
+const schema = await leads.getSchema(); // <SchemaGrid schema={schema} dataSource={leads.dataSource} … />
+await leads.updateSchema({ ...schema, columns: [...schema.columns, newColumn] }); // needs a schemaStore
+```
+
 ## CI / AWS CodePipeline + CodeBuild
 
 The packages are on the **public** npm registry, so `bun install` in CodeBuild

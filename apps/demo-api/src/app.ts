@@ -1,52 +1,46 @@
-import {
-  type Access,
-  type ColumnState,
-  type DataSource,
-  type FieldTypeRegistry,
-  type FilterNode,
-  type GridRow,
-  type GridSchema,
-  type LinkRef,
-  type Option,
-  type PermissionResolver,
-  type PermissionUser,
-  type SortSpec,
-  createRolePermissionResolver,
+import type {
+  Access,
+  ColumnState,
+  DataSource,
+  FieldTypeRegistry,
+  FilterNode,
+  GridRow,
+  GridSchema,
+  PermissionResolver,
+  SortSpec,
 } from "@ranjeetk25/schema-grid-core";
+import { createRolePermissionResolver } from "@ranjeetk25/schema-grid-core";
 import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
+import { createServerContext, resolveAccess } from "@ranjeetk25/schema-grid-server";
+import type { GridDb, GridTables } from "@ranjeetk25/schema-grid-server/drizzle";
 import {
-  FIXTURE_USERS,
-  createFixtureLinkTargets,
-  createFixtureRows,
-} from "@ranjeetk25/schema-grid-core/testing";
-import {
-  assertValidSchema,
-  createServerContext,
-  resolveAccess,
-} from "@ranjeetk25/schema-grid-server";
-import {
-  type GridDb,
-  type GridTables,
-  createDrizzleDataSource,
-  formulaTranslatability,
-} from "@ranjeetk25/schema-grid-server/drizzle";
-import {
-  createGridRouterAdapter,
+  type GridRegistry,
+  type SchemaStore as GridSchemaStore,
+  createGridRegistry,
+  createMemorySchemaStore,
   parseJsonBody,
+  toFetchHandler,
   toHttpResponse,
 } from "@ranjeetk25/schema-grid-server/http";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { type GridEnv, applyGeneratedColumns, resetGrid } from "./bootstrap";
+import { admissionsGrid } from "./admissions-grid";
+import { type GridEnv, resetGrid } from "./bootstrap";
+import { type GridRequestContext, requestContext } from "./context";
 import { buildExportResponse } from "./export";
 import { HttpError, toErrorResponse } from "./http-error";
 import { ImportJobs, startImport } from "./import-jobs";
+import { leadsGrid } from "./leads/grid";
+import { leadsTable, resetLeads } from "./leads/table";
 import type { SchemaStore } from "./schema-store";
+
+export type { GridRequestContext } from "./context";
 
 export interface AppDeps {
   db: GridDb;
   tables: GridTables;
+  /** Id of the JSON-cells fixture grid (also served by the legacy `/grid/:op` and `/schema` routes). */
   gridId: string;
   store: SchemaStore;
   /** IANA zone for relative dates. */
@@ -56,59 +50,33 @@ export interface AppDeps {
   jobs?: ImportJobs;
   registry?: FieldTypeRegistry;
   resolver?: PermissionResolver;
-  /** Override the per-request grid data source (tests). Default: Drizzle over MySQL. */
+  /** Override the fixture grid's per-request data source (tests). Default: Drizzle over MySQL. */
   dataSource?: (ctx: GridRequestContext) => DataSource<GridRow>;
-}
-
-/** Per-request identity + clock, read from `x-user` / `x-roles` / `x-now`. */
-export interface GridRequestContext {
-  user: PermissionUser;
-  now: () => Date;
+  /** The SQL-view grid over a plain table. Default: table `leads`, in-memory schema store. */
+  leads?: { tableName?: string; schemaStore?: GridSchemaStore };
 }
 
 export interface CreatedApp {
   app: Hono;
   jobs: ImportJobs;
+  /** Every grid behind `/grid/:gridId/:op`. */
+  grids: GridRegistry<GridRequestContext>;
 }
 
-/** Display names for the fixture users (FIXTURE_USERS carries ids/roles only). */
-function fixtureUserOptions(): Option[] {
-  const names = new Map<string, string>();
-  for (const row of createFixtureRows()) {
-    const owner = row.cells.owner as
-      | { id: string; name?: string }
-      | null
-      | undefined;
-    if (owner?.name) names.set(owner.id, owner.name);
-  }
-  return Object.entries(FIXTURE_USERS).map(([role, u]) => ({
-    id: u.id,
-    label: names.get(u.id) ?? role,
-  }));
-}
+/** Error `name`s the REST routes used before the grid registry (clients match on them). */
+const REST_ERROR_NAMES: Record<string, string> = {
+  SCHEMA_INVALID: "SchemaValidationError",
+  SCHEMA_CONFLICT: "SchemaVersionConflict",
+  PERMISSION_DENIED: "PermissionError",
+  INPUT_INVALID: "InputValidationError",
+};
 
-function slugify(label: string): string {
-  const slug = label
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return slug || "option";
-}
-
-function parseJsonParam<T>(
-  value: string | undefined,
-  name: string,
-): T | undefined {
+function parseJsonParam<T>(value: string | undefined, name: string): T | undefined {
   if (value === undefined || value === "") return undefined;
   try {
     return JSON.parse(value) as T;
   } catch {
-    throw new HttpError(
-      400,
-      "InputValidationError",
-      `${name} must be URL-encoded JSON`,
-    );
+    throw new HttpError(400, "InputValidationError", `${name} must be URL-encoded JSON`);
   }
 }
 
@@ -116,11 +84,7 @@ async function readJson(c: Context): Promise<unknown> {
   try {
     return await c.req.json();
   } catch {
-    throw new HttpError(
-      400,
-      "InputValidationError",
-      "Request body must be JSON",
-    );
+    throw new HttpError(400, "InputValidationError", "Request body must be JSON");
   }
 }
 
@@ -128,163 +92,58 @@ export function createApp(deps: AppDeps): CreatedApp {
   const registry = deps.registry ?? createDefaultRegistry();
   const resolver = deps.resolver ?? createRolePermissionResolver();
   const jobs = deps.jobs ?? new ImportJobs();
-  const env: GridEnv = {
-    db: deps.db,
-    tables: deps.tables,
-    gridId: deps.gridId,
-    tz: deps.tz,
-  };
-  const linkTargets = createFixtureLinkTargets();
-  const userOptions = fixtureUserOptions();
+  const env: GridEnv = { db: deps.db, tables: deps.tables, gridId: deps.gridId, tz: deps.tz };
+  const leadsTableName = deps.leads?.tableName ?? "leads";
+  const leads = leadsTable(leadsTableName);
+  // TODO(lane-b): createDrizzleSchemaStore so added leads columns survive a restart.
+  const leadsSchemaStore = deps.leads?.schemaStore ?? createMemorySchemaStore();
 
-  const userOf = (c: Context): PermissionUser => {
-    const rolesHeader = c.req.header("x-roles");
-    const roles =
-      rolesHeader === undefined
-        ? ["admin"]
-        : rolesHeader
-            .split(",")
-            .map((r) => r.trim())
-            .filter(Boolean);
-    return { id: c.req.header("x-user")?.trim() || "admin", roles };
-  };
-
-  const nowOf = (c: Context): (() => Date) => {
-    const header = c.req.header("x-now");
-    const iso = header ?? deps.clock;
-    if (iso === "wall") return () => new Date();
-    const at = new Date(iso);
-    if (Number.isNaN(at.getTime())) {
-      throw new HttpError(
-        400,
-        "InputValidationError",
-        header
-          ? "x-now must be an ISO instant"
-          : "DEMO_NOW is not an ISO instant",
-      );
-    }
-    return () => at;
-  };
-
-  const createOption = (columnId: string, label: string): Promise<Option> =>
-    deps.store.exclusive(async () => {
-      const schema = deps.store.get();
-      const column = schema.columns.find((col) => col.id === columnId);
-      const options = (
-        column?.config as { options?: Option[] } | null | undefined
-      )?.options;
-      if (!column || !Array.isArray(options)) {
-        throw new HttpError(
-          400,
-          "InputValidationError",
-          `Column "${columnId}" does not hold options`,
-        );
-      }
-      const existing = options.find(
-        (o) => o.label.trim().toLowerCase() === label.trim().toLowerCase(),
-      );
-      if (existing) return existing;
-      const base = slugify(label);
-      let id = base;
-      for (let n = 2; options.some((o) => o.id === id); n++)
-        id = `${base}_${n}`;
-      const option: Option = { id, label: label.trim() };
-      const at = new Date().toISOString();
-      const next: GridSchema = {
-        ...schema,
-        schemaVersion: schema.schemaVersion + 1,
-        columns: schema.columns.map((col) =>
-          col.id === columnId
-            ? {
-                ...col,
-                config: {
-                  ...(col.config as object),
-                  options: [...options, option],
-                },
-                updatedAt: at,
-              }
-            : col,
-        ),
-      };
-      assertValidSchema(next, registry, {
-        physicalColumns: [],
-        isFormulaTranslatable: formulaTranslatability(),
-      });
-      deps.store.set(next);
-      return option;
-    });
-
-  const linkLookup = async (
-    columnId: string,
-    search: string,
-  ): Promise<LinkRef[]> => {
-    const term = search.trim().toLowerCase();
-    const all = linkTargets[columnId] ?? [];
-    return term
-      ? all.filter((l) => l.label.toLowerCase().includes(term))
-      : [...all];
-  };
-
-  const userDirectory = async (
-    search: string | undefined,
-  ): Promise<Option[]> => {
-    const term = search?.trim().toLowerCase();
-    return term
-      ? userOptions.filter((o) => o.label.toLowerCase().includes(term))
-      : [...userOptions];
-  };
-
-  const drizzleDataSource = (ctx: GridRequestContext): DataSource<GridRow> =>
-    createDrizzleDataSource({
-      db: deps.db,
-      gridId: deps.gridId,
-      schema: deps.store.get(),
-      registry,
-      resolver,
-      user: ctx.user,
-      tz: deps.tz,
-      now: ctx.now,
-      tables: deps.tables,
-      onCreateOption: createOption,
-      linkLookup,
-      userDirectory,
-    });
-  const dataSourceFor = deps.dataSource ?? drizzleDataSource;
+  /** Both grids behind one endpoint: `POST /grid/:gridId/:op`, `GET /grid/:gridId/schema`, `GET /grid`. */
+  const grids = createGridRegistry<GridRequestContext>(
+    [
+      admissionsGrid({ ...deps, registry, resolver }),
+      leadsGrid({ db: deps.db, table: leads, tz: deps.tz, schemaStore: leadsSchemaStore }),
+    ],
+    {
+      onError: (err, info) => {
+        if (info.status === 500) console.error(err);
+      },
+    },
+  );
+  const gridEndpoint = toFetchHandler(grids, {
+    basePath: "/grid",
+    context: (request) => requestContext(request.headers, deps.clock),
+  });
 
   /** The adapter's `context(req)`: fake auth + clock from the request headers. */
-  const context = (c: Context): GridRequestContext => ({
-    user: userOf(c),
-    now: nowOf(c),
-  });
+  const context = (c: Context): GridRequestContext =>
+    requestContext({ get: (name) => c.req.header(name) }, deps.clock);
 
-  /** Wire-contract endpoint (docs/wire-contract.md): `200 { data }` / `<status> { error: WireError }`. */
-  const grid = createGridRouterAdapter<GridRequestContext>(dataSourceFor, {
-    onError: (err, info) => {
-      if (info.status === 500) console.error(err);
-    },
-  });
+  /** Runs one registry op for a REST route; wire failures become `HttpError`s named like the pre-registry routes. */
+  const gridOp = async <T>(gridId: string, op: string, input: unknown, ctx: GridRequestContext): Promise<T> => {
+    const result = await grids.handle(gridId, op, input, ctx);
+    if (!result.ok) {
+      const { code, message, details } = result.error;
+      throw new HttpError(result.status, REST_ERROR_NAMES[code] ?? code, message, details);
+    }
+    return result.data as T;
+  };
 
-  /** Per-request data source + the matching column access map. */
-  const requestScope = (
+  /** Per-request data source + the matching column access map for `?grid=` (default: the fixture grid). */
+  const requestScope = async (
     c: Context,
-  ): {
-    ds: DataSource<GridRow>;
-    access: Map<string, Access>;
-    schema: GridSchema;
-    now: () => Date;
-  } => {
-    const schema = deps.store.get();
+    gridId: string,
+  ): Promise<{ ds: DataSource<GridRow>; access: Map<string, Access>; schema: GridSchema; now: () => Date }> => {
     const ctx = context(c);
-    const ds = dataSourceFor(ctx);
+    const def = grids.get(gridId);
+    if (!def) throw new HttpError(404, "UNKNOWN_GRID", `Unknown grid "${gridId}"`);
+    const schema = await gridOp<GridSchema>(gridId, "getSchema", null, ctx);
+    if (def.permission && !(await def.permission(ctx, "fetch"))) {
+      throw new HttpError(403, "PERMISSION_DENIED", `Not allowed to read grid "${gridId}"`);
+    }
+    const ds = await def.source(ctx, { gridId, schema });
     const access = resolveAccess(
-      createServerContext({
-        schema,
-        registry,
-        resolver,
-        user: ctx.user,
-        tz: deps.tz,
-        now: ctx.now,
-      }),
+      createServerContext({ schema, registry, resolver, user: ctx.user, tz: deps.tz, now: ctx.now }),
     );
     return { ds, access, schema, now: ctx.now };
   };
@@ -321,62 +180,36 @@ export function createApp(deps: AppDeps): CreatedApp {
 
   app.get("/health", (c) => c.json({ ok: true }));
 
+  /** Legacy single-grid wire route: `POST /grid/:op` on the fixture grid (kept for existing clients). */
   app.post("/grid/:op", async (c) => {
     const op = c.req.param("op");
-    let result: Awaited<ReturnType<typeof grid.handle>>;
+    let result: Awaited<ReturnType<typeof grids.handle>>;
     try {
       const body = parseJsonBody(await c.req.text());
       result = body.ok
-        ? await grid.handle(op, body.value, context(c))
+        ? await grids.handle(deps.gridId, op, body.value, context(c))
         : { ok: false, error: body.error, status: 400 };
     } catch (err) {
       // Context resolution (e.g. a malformed x-now) fails the same way `handle` would.
-      result = grid.failure(err, op);
+      result = grids.failure(err, op);
     }
     const { status, body } = toHttpResponse(result);
     return c.json(body, status as ContentfulStatusCode);
   });
 
-  app.get("/schema", (c) => c.json(deps.store.get()));
+  /** Multi-grid wire endpoint (docs/wire-contract.md "Multi-grid endpoint"). */
+  app.all("/grid", (c) => gridEndpoint(c.req.raw));
+  app.all("/grid/*", (c) => gridEndpoint(c.req.raw));
+
+  /** Legacy REST schema routes for the fixture grid (the registry's getSchema / updateSchema). */
+  app.get("/schema", async (c) => c.json(await gridOp<GridSchema>(deps.gridId, "getSchema", null, context(c))));
 
   app.put("/schema", async (c) => {
-    const body = (await readJson(c)) as GridSchema;
-    if (!body || typeof body !== "object" || !Array.isArray(body.columns)) {
-      throw new HttpError(
-        400,
-        "InputValidationError",
-        "Body must be a GridSchema",
-      );
+    const body = await readJson(c);
+    if (!body || typeof body !== "object" || !Array.isArray((body as GridSchema).columns)) {
+      throw new HttpError(400, "InputValidationError", "Body must be a GridSchema");
     }
-    const now = nowOf(c);
-    const next = await deps.store.exclusive(async () => {
-      const current = deps.store.get();
-      if (
-        typeof body.schemaVersion !== "number" ||
-        body.schemaVersion < current.schemaVersion
-      ) {
-        throw new HttpError(
-          409,
-          "SchemaVersionConflict",
-          `Schema is at version ${current.schemaVersion}`,
-          {
-            currentVersion: current.schemaVersion,
-          },
-        );
-      }
-      const candidate: GridSchema = {
-        ...body,
-        schemaVersion: current.schemaVersion + 1,
-      };
-      assertValidSchema(candidate, registry, {
-        physicalColumns: [],
-        isFormulaTranslatable: formulaTranslatability(),
-      });
-      await applyGeneratedColumns(env, current, candidate, now());
-      deps.store.set(candidate);
-      return candidate;
-    });
-    return c.json(next);
+    return c.json(await gridOp<GridSchema>(deps.gridId, "updateSchema", body, context(c)));
   });
 
   app.post("/import", async (c) => {
@@ -390,7 +223,7 @@ export function createApp(deps: AppDeps): CreatedApp {
       );
     const str = (v: unknown) =>
       typeof v === "string" && v !== "" ? v : undefined;
-    const { ds, access, schema } = requestScope(c);
+    const { ds, access, schema } = await requestScope(c, str(form.grid) ?? deps.gridId);
     const jobId = await startImport(jobs, {
       file,
       mappingJson: str(form.mapping),
@@ -440,13 +273,14 @@ export function createApp(deps: AppDeps): CreatedApp {
       "columns",
     );
     const search = c.req.query("search");
-    const { ds, access, schema } = requestScope(c);
+    const gridId = c.req.query("grid") ?? deps.gridId;
+    const { ds, access, schema } = await requestScope(c, gridId);
     const res = await buildExportResponse(
       {
         format,
         query: { filter, sort, ...(search ? { search } : {}) },
         ...(columns ? { columns } : {}),
-        fileName: c.req.query("fileName") ?? deps.gridId,
+        fileName: c.req.query("fileName") ?? gridId,
       },
       { dataSource: ds, schema, registry, access, tz: deps.tz },
     );
@@ -457,10 +291,12 @@ export function createApp(deps: AppDeps): CreatedApp {
   });
 
   app.post("/__reset", async (c) => {
-    const now = nowOf(c);
+    const now = context(c).now;
     await deps.store.exclusive(() => resetGrid(env, deps.store, now()));
+    await resetLeads(deps.db, leads, leadsTableName, now(), deps.tz);
+    if ("clear" in leadsSchemaStore && typeof leadsSchemaStore.clear === "function") leadsSchemaStore.clear();
     return c.json({ ok: true });
   });
 
-  return { app, jobs };
+  return { app, jobs, grids };
 }

@@ -1,6 +1,8 @@
 /**
- * `@ranjeetk25/schema-grid-server/http` — mount a grid `DataSource` behind any
- * transport. Framework-free: the Express and Lambda adapters are typed
+ * `@ranjeetk25/schema-grid-server/http` — mount grids behind any transport:
+ * `defineGrid` + `createGridRegistry` + `toFetchHandler` / `toExpressRouter` /
+ * `toLambdaHandler` for many grids on one endpoint, or `createGridRouterAdapter`
+ * for a single `DataSource`. Framework-free: the Express and Lambda adapters are typed
  * structurally and import nothing.
  */
 export {
@@ -10,8 +12,30 @@ export {
   type GridRouterAdapter,
   parseJsonBody,
   toHttpResponse,
+  toWireFailure,
   type WireFailure,
 } from "./adapter";
+export {
+  createGridRegistry,
+  createMemorySchemaStore,
+  defineGrid,
+  type GridDefinition,
+  type GridDefinitionInput,
+  type GridListing,
+  type GridRegistry,
+  type GridRegistryOptions,
+  type GridSourceInfo,
+  isGridRegistry,
+  type MemorySchemaStore,
+  type SchemaStore,
+} from "../grid/index";
+export { type FetchHandlerOptions, toFetchHandler } from "./fetch";
+export {
+  type ExpressLikeNext,
+  type ExpressLikeRouterRequest,
+  type ExpressRouterOptions,
+  toExpressRouter,
+} from "./router";
 export {
   type ExpressHandlerOptions,
   type ExpressLikeRequest,
@@ -22,6 +46,7 @@ export { type LambdaHandlerOptions, type LambdaLikeEvent, type LambdaLikeResult,
 export type {
   DataSourceHandlerOptions,
   GridOperation,
+  GridSchemaOperation,
   WireError,
   WireResult,
 } from "../internal/core";
