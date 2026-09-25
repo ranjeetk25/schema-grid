@@ -6,7 +6,7 @@ import {
 import { createApp } from "./app";
 import { bootstrap } from "./bootstrap";
 import { DEFAULT_DATABASE_URL, connect, gridTables } from "./db";
-import { ensureLeads, leadsTable } from "./leads/table";
+import { ensureLeads, ensureLeadsStorage, leadsTable } from "./leads/table";
 import { SchemaStore } from "./schema-store";
 
 const port = Number(process.env.PORT ?? 3001);
@@ -24,6 +24,7 @@ const bootNow = clock === "wall" ? new Date() : new Date(clock);
 
 await bootstrap({ db, tables, gridId, tz }, store, persisted, bootNow);
 await ensureLeads(db, leadsTable("leads"), "leads", bootNow, tz);
+await ensureLeadsStorage(db);
 
 const { app } = createApp({ db, tables, gridId, store, tz, clock });
 

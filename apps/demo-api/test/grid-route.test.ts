@@ -15,6 +15,7 @@ import {
   SchemaValidationError,
 } from "@ranjeetk25/schema-grid-server";
 import type { GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
+import { createMemorySchemaStore } from "@ranjeetk25/schema-grid-server/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type GridRequestContext, createApp } from "../src/app";
 import { gridTables } from "../src/db";
@@ -278,6 +279,7 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
       contexts.push(ctx);
       return ds;
     },
+    leads: { schemaStore: createMemorySchemaStore() },
   });
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
     app.request(path, {
@@ -346,9 +348,10 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
 });
 
 describe("leads schema", () => {
-  it("aiVerified is settable:false (read for everyone, even admins), not an empty-roles permission", () => {
+  it("aiVerified is settable:false (read for everyone, even admins) and sortable:false, not an empty-roles permission", () => {
     const ai = leadsSchema.columns.find((c) => c.key === "aiVerified");
     expect(ai?.settable).toBe(false);
+    expect(ai?.sortable).toBe(false);
     expect(ai?.permissions).toBeUndefined();
     const access = resolveColumnAccess(leadsSchema, createRolePermissionResolver(), { id: "a", roles: ["admin"] });
     expect(access.get("aiVerified")).toBe("read");

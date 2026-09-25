@@ -4,7 +4,10 @@
  * over a plain `leads`-shaped table (`it_leads`, no `cells` JSON).
  */
 import type {
+  ChangeFeedEntry,
   ChangeResult,
+  ColumnDef,
+  DataSourceCapabilities,
   FilterNode,
   GridQuery,
   GridRow,
@@ -47,6 +50,18 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
   let database: Database;
   let created: CreatedApp;
 
+  /** A fresh app (= a restarted process): new registry, same MySQL tables. */
+  const makeApp = () =>
+    createApp({
+      db: database.db,
+      tables: gridTables({ rowsTable: "it_mg_grid_rows", changeLogTable: "it_mg_grid_change_log" }),
+      gridId: "admissions",
+      store: new SchemaStore(null, createFixtureSchema),
+      tz: TZ,
+      clock: FIXTURE_NOW,
+      leads: { tableName: "it_leads", schemasTable: "it_grid_schemas", extensionTable: "it_grid_extension_cells" },
+    });
+
   const op = async <T>(gridId: string, name: string, body: unknown, headers: Headers = {}): Promise<Wire<T>> => {
     const res = await created.app.request(`/grid/${gridId}/${name}`, {
       method: "POST",
@@ -63,15 +78,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
 
   beforeAll(async () => {
     database = connect(process.env.DATABASE_URL || DEFAULT_DATABASE_URL);
-    created = createApp({
-      db: database.db,
-      tables: gridTables({ rowsTable: "it_mg_grid_rows", changeLogTable: "it_mg_grid_change_log" }),
-      gridId: "admissions",
-      store: new SchemaStore(null, createFixtureSchema),
-      tz: TZ,
-      clock: FIXTURE_NOW,
-      leads: { tableName: "it_leads" },
-    });
+    created = makeApp();
     expect((await created.app.request("/__reset", { method: "POST" })).status).toBe(200);
   });
 
@@ -126,7 +133,8 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     const res = await fetchLeads({ filter: SECTION_8, sort: [{ columnId: "name", dir: "asc" }] });
     expect(res.status).toBe(200);
     expect(res.data.rows.map((r) => r.id)).toEqual(expected);
-    expect(res.data.rows.some((r) => r.cells.paymentStatus === null)).toBe(true);
+    // NULL payment_status rows are included (empty cells are omitted on the wire).
+    expect(res.data.rows.some((r) => (r.cells.paymentStatus ?? null) === null)).toBe(true);
   });
 
   it("§8 reopened the next day (x-now +24h) moves the window with the clock", async () => {
@@ -153,7 +161,26 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     expect(ids.size).toBe(LEADS_SEED_COUNT);
   });
 
-  it("GET /export?grid=leads streams all 1,200 rows as CSV", async () => {
+  it("capabilities: maxPageSize 200 (a bigger page is clamped, the cursor continues), updates-only feed, cells writable", async () => {
+    const caps = await op<DataSourceCapabilities>("leads", "capabilities", null);
+    expect(caps.status).toBe(200);
+    expect(caps.data).toMatchObject({
+      maxPageSize: 200,
+      changeFeed: "updates-only",
+      write: { cells: true, createRows: false, deleteRows: false },
+    });
+    const big = await fetchLeads({ page: { cursor: "", limit: 500 } });
+    expect(big.data.rows).toHaveLength(200);
+    expect(big.data.nextCursor).toBeTruthy();
+  });
+
+  it("sort on the unsortable aiVerified column is rejected (400 UNSORTABLE_COLUMN)", async () => {
+    const res = await fetchLeads({ sort: [{ columnId: "aiVerified", dir: "asc" }] });
+    expect(res.status).toBe(400);
+    expect(res.error?.code).toBe("UNSORTABLE_COLUMN");
+  });
+
+  it("GET /export?grid=leads streams all 1,200 rows as CSV (pages of at most 200)", async () => {
     const res = await created.app.request("/export?grid=leads&format=csv");
     expect(res.status).toBe(200);
     const lines = (await res.text()).replace(/^﻿/, "").split("\r\n").filter(Boolean);
@@ -174,7 +201,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     });
     expect(edit.status).toBe(200);
     expect(edit.data.applied.map((c) => c.columnId)).toEqual(["name"]);
-    expect(edit.data.errors).toEqual([{ rowId: "7", columnId: "aiVerified", message: "Column is read-only for you" }]);
+    expect(edit.data.errors).toEqual([{ rowId: "7", columnId: "aiVerified", message: "Column is read-only" }]);
     const [dbRow] = await rawQuery<{ name: string; ai_verified: number }>(
       database.db,
       "SELECT name, ai_verified FROM it_leads WHERE id = 7",
@@ -208,5 +235,84 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     const stale = await op<GridSchema>("leads", "updateSchema", renamed);
     expect(stale.status).toBe(409);
     expect(stale.error?.code).toBe("SCHEMA_CONFLICT");
+  });
+
+  it("updated_at feed: an edit after the cursor comes back; deletes are never reported", async () => {
+    const start = await op<ChangeFeedEntry<GridRow>>("leads", "getChanges", { since: "" });
+    expect(start.status).toBe(200);
+    expect(start.data.rows).toEqual([]);
+    await new Promise((r) => setTimeout(r, 5)); // TIMESTAMP(3): step past the cursor's millisecond
+    const before = await leadRow("9");
+    const edit = await op<ChangeResult>("leads", "applyChanges", {
+      id: "feed-1",
+      source: "edit",
+      baseVersions: { "9": before.version },
+      changes: [{ rowId: "9", columnId: "name", prev: before.cells.name, next: "Fed lead" }],
+    });
+    expect(edit.data.applied).toHaveLength(1);
+    const feed = await op<ChangeFeedEntry<GridRow>>("leads", "getChanges", { since: start.data.cursor });
+    expect(feed.data.rows.map((r) => [r.id, r.cells.name])).toEqual([["9", "Fed lead"]]);
+    expect(feed.data.deletedRowIds).toEqual([]);
+    expect(feed.data.cursor).not.toBe(start.data.cursor);
+    const again = await op<ChangeFeedEntry<GridRow>>("leads", "getChanges", { since: feed.data.cursor });
+    expect(again.data.rows).toEqual([]);
+  });
+
+  it("an added (extension) column: values in the extension table, filter + sort work, and it survives a restart", async () => {
+    const schema = (await op<GridSchema>("leads", "getSchema", null)).data;
+    const notes: ColumnDef = {
+      id: "notes",
+      key: "notes",
+      label: "Notes",
+      type: "text",
+      config: {},
+      order: schema.columns.length,
+      createdAt: FIXTURE_NOW,
+      updatedAt: FIXTURE_NOW,
+    };
+    const saved = await op<GridSchema>("leads", "updateSchema", { ...schema, columns: [...schema.columns, notes] });
+    expect(saved.status).toBe(200);
+
+    const edits: Array<[string, string]> = [["5", "beta call back"], ["6", "alpha call back"], ["8", "zeta"]];
+    for (const [id, text] of edits) {
+      const row = await leadRow(id);
+      expect(row.cells.notes).toBeUndefined();
+      const res = await op<ChangeResult>("leads", "applyChanges", {
+        id: `notes-${id}`,
+        source: "edit",
+        baseVersions: { [id]: row.version },
+        changes: [{ rowId: id, columnId: "notes", prev: null, next: text }],
+      });
+      expect(res.data.errors).toEqual([]);
+      expect(res.data.applied).toHaveLength(1);
+    }
+    const stored = await rawQuery<{ row_id: string; cells: unknown }>(
+      database.db,
+      "SELECT row_id, cells FROM it_grid_extension_cells WHERE grid_id = 'leads' ORDER BY row_id",
+    );
+    expect(stored.map((r) => r.row_id)).toEqual(["5", "6", "8"]);
+    const [base] = await rawQuery<{ n: number }>(
+      database.db,
+      "SELECT COUNT(*) AS n FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'it_leads' AND COLUMN_NAME = 'notes'",
+    );
+    expect(Number(base?.n)).toBe(0); // the existing table is never altered
+
+    // "Restart": a new app / registry reads the schema back from the Drizzle schema store.
+    created = makeApp();
+    const reloaded = (await op<GridSchema>("leads", "getSchema", null)).data;
+    expect(reloaded.columns.map((c) => c.key)).toContain("notes");
+    expect(reloaded.schemaVersion).toBe(saved.data.schemaVersion);
+
+    const filtered = await fetchLeads({
+      filter: { columnId: "notes", operator: "contains", value: "call back" },
+      sort: [{ columnId: "notes", dir: "asc" }],
+    });
+    expect(filtered.status).toBe(200);
+    expect(filtered.data.rows.map((r) => [r.id, r.cells.notes])).toEqual([
+      ["6", "alpha call back"],
+      ["5", "beta call back"],
+    ]);
+    const sorted = await fetchLeads({ sort: [{ columnId: "notes", dir: "desc" }], page: { offset: 0, limit: 3 } });
+    expect(sorted.data.rows.map((r) => r.id)).toEqual(["8", "5", "6"]);
   });
 });

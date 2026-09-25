@@ -12,12 +12,16 @@ import type {
 import { createRolePermissionResolver } from "@ranjeetk25/schema-grid-core";
 import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 import { createServerContext, resolveAccess } from "@ranjeetk25/schema-grid-server";
-import type { GridDb, GridTables } from "@ranjeetk25/schema-grid-server/drizzle";
+import {
+  type GridDb,
+  type GridTables,
+  createDrizzleSchemaStore,
+  createExtensionCellStore,
+} from "@ranjeetk25/schema-grid-server/drizzle";
 import {
   type GridRegistry,
   type SchemaStore as GridSchemaStore,
   createGridRegistry,
-  createMemorySchemaStore,
   parseJsonBody,
   toFetchHandler,
   toHttpResponse,
@@ -32,7 +36,7 @@ import { buildExportResponse } from "./export";
 import { HttpError, toErrorResponse } from "./http-error";
 import { ImportJobs, startImport } from "./import-jobs";
 import { leadsGrid } from "./leads/grid";
-import { leadsTable, resetLeads } from "./leads/table";
+import { DEFAULT_LEADS_STORAGE, type LeadsStorageNames, leadsTable, resetLeads } from "./leads/table";
 import type { SchemaStore } from "./schema-store";
 
 export type { GridRequestContext } from "./context";
@@ -52,8 +56,12 @@ export interface AppDeps {
   resolver?: PermissionResolver;
   /** Override the fixture grid's per-request data source (tests). Default: Drizzle over MySQL. */
   dataSource?: (ctx: GridRequestContext) => DataSource<GridRow>;
-  /** The SQL-view grid over a plain table. Default: table `leads`, in-memory schema store. */
-  leads?: { tableName?: string; schemaStore?: GridSchemaStore };
+  /**
+   * The SQL-view grid over a plain table. Default: table `leads`, schema store
+   * `grid_schemas` and extension cells `grid_extension_cells` in MySQL (created
+   * by `ensureLeadsStorage` on boot / `__reset`). `schemaStore` overrides the store (tests).
+   */
+  leads?: { tableName?: string; schemaStore?: GridSchemaStore } & Partial<LeadsStorageNames>;
 }
 
 export interface CreatedApp {
@@ -95,14 +103,20 @@ export function createApp(deps: AppDeps): CreatedApp {
   const env: GridEnv = { db: deps.db, tables: deps.tables, gridId: deps.gridId, tz: deps.tz };
   const leadsTableName = deps.leads?.tableName ?? "leads";
   const leads = leadsTable(leadsTableName);
-  // TODO(lane-b): createDrizzleSchemaStore so added leads columns survive a restart.
-  const leadsSchemaStore = deps.leads?.schemaStore ?? createMemorySchemaStore();
+  const leadsStorage: LeadsStorageNames = {
+    schemasTable: deps.leads?.schemasTable ?? DEFAULT_LEADS_STORAGE.schemasTable,
+    extensionTable: deps.leads?.extensionTable ?? DEFAULT_LEADS_STORAGE.extensionTable,
+  };
+  // MySQL-backed: columns added from "+" (schema + values) survive a restart.
+  const leadsSchemaStore =
+    deps.leads?.schemaStore ?? createDrizzleSchemaStore({ db: deps.db, table: leadsStorage.schemasTable });
+  const leadsExtension = createExtensionCellStore({ db: deps.db, table: leadsStorage.extensionTable });
 
   /** Both grids behind one endpoint: `POST /grid/:gridId/:op`, `GET /grid/:gridId/schema`, `GET /grid`. */
   const grids = createGridRegistry<GridRequestContext>(
     [
       admissionsGrid({ ...deps, registry, resolver }),
-      leadsGrid({ db: deps.db, table: leads, tz: deps.tz, schemaStore: leadsSchemaStore }),
+      leadsGrid({ db: deps.db, table: leads, tz: deps.tz, schemaStore: leadsSchemaStore, extension: leadsExtension }),
     ],
     {
       onError: (err, info) => {
@@ -293,7 +307,7 @@ export function createApp(deps: AppDeps): CreatedApp {
   app.post("/__reset", async (c) => {
     const now = context(c).now;
     await deps.store.exclusive(() => resetGrid(env, deps.store, now()));
-    await resetLeads(deps.db, leads, leadsTableName, now(), deps.tz);
+    await resetLeads(deps.db, leads, leadsTableName, now(), deps.tz, leadsStorage);
     if ("clear" in leadsSchemaStore && typeof leadsSchemaStore.clear === "function") leadsSchemaStore.clear();
     return c.json({ ok: true });
   });
