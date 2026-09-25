@@ -141,7 +141,7 @@ describe("editing keys (integration)", () => {
     act(() => g.handle.current?.api()?.setFocusedCell(0, "name"));
     fireEvent.keyDown(cellEl(g, "r1", "name"), { key: "Enter", code: "Enter" });
     await waitFor(() =>
-      expect(g.handle.current?.api()?.getEditingCells().map((c) => [c.rowIndex, c.column.getColId()])).toEqual([[0, "name"]]),
+      expect(g.handle.current?.api()?.getEditingCells().map((c) => [c.rowIndex, c.column?.getColId()])).toEqual([[0, "name"]]),
     );
     expect(g.handle.current?.api()?.getFocusedCell()?.rowIndex).toBe(0);
   });
