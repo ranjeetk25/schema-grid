@@ -73,3 +73,18 @@ export {
 } from "./schema/lookup";
 export type { DataSource, RowPartial } from "./datasource/types";
 export type { GridEventName, GridEvents } from "./events/types";
+export type {
+  Access,
+  PermissionContext,
+  PermissionResolver,
+  PermissionUser,
+} from "./permissions/types";
+export {
+  createRolePermissionResolver,
+  type RolePermissionResolverOptions,
+} from "./permissions/role-resolver";
+export {
+  editableColumnIds,
+  readableColumnIds,
+  resolveColumnAccess,
+} from "./permissions/column-access";
