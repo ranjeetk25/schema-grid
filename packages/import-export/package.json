@@ -12,6 +12,32 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./import": {
+      "development": "./src/import/index.ts",
+      "types": "./dist/import/index.d.ts",
+      "import": "./dist/import/index.js",
+      "require": "./dist/import/index.cjs"
+    },
+    "./export": {
+      "development": "./src/export/index.ts",
+      "types": "./dist/export/index.d.ts",
+      "import": "./dist/export/index.js",
+      "require": "./dist/export/index.cjs"
+    },
+    "./clipboard": {
+      "development": "./src/clipboard/index.ts",
+      "types": "./dist/clipboard/index.d.ts",
+      "import": "./dist/clipboard/index.js",
+      "require": "./dist/clipboard/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "import": ["./dist/import/index.d.ts"],
+      "export": ["./dist/export/index.d.ts"],
+      "clipboard": ["./dist/clipboard/index.d.ts"]
     }
   },
   "files": ["dist"],
