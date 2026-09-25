@@ -5,9 +5,10 @@ import type { GridRow } from "../rows/types";
 import { getColumnById } from "../schema/lookup";
 import type { ColumnDef, GridSchema } from "../schema/types";
 import { addCalendarDays, getZonedParts, zonedToInstant } from "../time/zoned";
+import { isFilterGroup } from "./guards";
 import { isNegativeOperator } from "./operators";
 import { resolveRelativeDate } from "./relative-date";
-import type { FilterCondition, FilterGroup, FilterNode, RelativeDate } from "./types";
+import type { FilterCondition, FilterNode, RelativeDate } from "./types";
 
 export interface FilterMatchContext {
   schema: GridSchema;
@@ -67,12 +68,8 @@ export function matchesFilter(node: FilterNode | null, row: GridRow, ctx: Filter
   }
 }
 
-function isGroup(node: FilterNode): node is FilterGroup {
-  return typeof node === "object" && node !== null && Array.isArray((node as FilterGroup).children);
-}
-
 function matchNode(node: FilterNode, row: GridRow, ctx: FilterMatchContext): boolean {
-  if (isGroup(node)) {
+  if (isFilterGroup(node)) {
     if (node.op === "and") return node.children.every((child) => matchNode(child, row, ctx));
     if (node.op === "or") return node.children.some((child) => matchNode(child, row, ctx));
     return false;

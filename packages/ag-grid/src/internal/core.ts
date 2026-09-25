@@ -21,7 +21,6 @@ import {
   type ChangeResult as CoreChangeResult,
   type ColumnDef,
   type FieldTypeRegistry,
-  type FilterGroup,
   type FilterNode,
   type FilterOperatorDef,
   type FilterValidationError,
@@ -186,17 +185,14 @@ export {
   TEXT_OPERATORS,
   USER_OPERATORS,
   findOperator,
+  isFilterCondition,
+  isFilterGroup,
   isNegativeOperator,
   resolveRelativeDate,
 } from "@masai/schema-grid-core";
 
 export const DEFAULT_TZ = DEFAULT_TIME_ZONE;
 export { DEFAULT_TIME_ZONE };
-
-/** LOCAL: type guard for group nodes. */
-export function isFilterGroup(node: FilterNode): node is FilterGroup {
-  return "op" in node && Array.isArray((node as FilterGroup).children);
-}
 
 /** ADAPTER: accepts an array or a set of readable column ids. */
 export function validateFilter(

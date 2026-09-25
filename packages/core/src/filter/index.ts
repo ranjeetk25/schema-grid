@@ -25,7 +25,13 @@ export {
   TEXT_OPERATORS,
   USER_OPERATORS,
 } from "./operators";
-export { resolveRelativeDate, type RelativeDateResult } from "./relative-date";
+export {
+  RELATIVE_DATE_PRESETS,
+  type RelativeDatePreset,
+  resolveRelativeDate,
+  type RelativeDateResult,
+} from "./relative-date";
+export { isFilterCondition, isFilterGroup } from "./guards";
 export {
   type FilterValidationError,
   type FilterValidationErrorCode,

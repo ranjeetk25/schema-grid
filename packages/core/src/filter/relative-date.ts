@@ -1,7 +1,31 @@
 import { type CalendarDay, DEFAULT_TIME_ZONE, addCalendarDays, getZonedParts, zonedToInstant } from "../time/zoned";
-import type { DateRange, RelativeDate } from "./types";
+import type { DateRange, RelativeDate, RelativeDateKind } from "./types";
 
 export type RelativeDateResult = DateRange | { error: string };
+
+export interface RelativeDatePreset {
+  kind: RelativeDateKind;
+  /** Human label for pickers, e.g. "Last N days". */
+  label: string;
+  /** Whether the value needs a positive whole `n` (lastNDays / nextNDays). */
+  needsN: boolean;
+}
+
+const preset = (kind: RelativeDateKind, label: string, needsN = false): RelativeDatePreset =>
+  Object.freeze({ kind, label, needsN });
+
+/** Every `RelativeDateKind`, in display order — exactly the kinds `validateFilter` accepts. */
+export const RELATIVE_DATE_PRESETS: readonly RelativeDatePreset[] = Object.freeze([
+  preset("today", "Today"),
+  preset("yesterday", "Yesterday"),
+  preset("tomorrow", "Tomorrow"),
+  preset("thisWeek", "This week"),
+  preset("lastWeek", "Last week"),
+  preset("thisMonth", "This month"),
+  preset("lastMonth", "Last month"),
+  preset("lastNDays", "Last N days", true),
+  preset("nextNDays", "Next N days", true),
+]);
 
 /**
  * Resolves a relative date to a half-open `[from, to)` range of UTC ISO strings,

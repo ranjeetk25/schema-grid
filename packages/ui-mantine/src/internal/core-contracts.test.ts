@@ -117,8 +117,8 @@ describe("core-contracts (real @masai/schema-grid-core)", () => {
 
 describe("local helpers", () => {
   it("RELATIVE_DATE_PRESETS are exactly the kinds core accepts", () => {
-    for (const relative of RELATIVE_DATE_PRESETS) {
-      const value = relative.endsWith("NDays") ? { relative, n: 3 } : { relative };
+    for (const { kind: relative, needsN } of RELATIVE_DATE_PRESETS) {
+      const value = needsN ? { relative, n: 3 } : { relative };
       expect(validateFilter({ columnId: "call", operator: "isWithin", value }, schema, registry, new Set(["call"]))).toEqual([]);
     }
     expect(RELATIVE_DATE_PRESETS).toHaveLength(9);
