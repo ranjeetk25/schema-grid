@@ -12,9 +12,42 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
-    }
+    },
+    "./field-types": {
+      "development": "./src/field-types/index.ts",
+      "types": "./dist/field-types/index.d.ts",
+      "import": "./dist/field-types/index.js",
+      "require": "./dist/field-types/index.cjs"
+    },
+    "./formula": {
+      "development": "./src/formula/index.ts",
+      "types": "./dist/formula/index.d.ts",
+      "import": "./dist/formula/index.js",
+      "require": "./dist/formula/index.cjs"
+    },
+    "./filter": {
+      "development": "./src/filter/index.ts",
+      "types": "./dist/filter/index.d.ts",
+      "import": "./dist/filter/index.js",
+      "require": "./dist/filter/index.cjs"
+    },
+    "./memory": {
+      "development": "./src/memory/index.ts",
+      "types": "./dist/memory/index.d.ts",
+      "import": "./dist/memory/index.js",
+      "require": "./dist/memory/index.cjs"
+    },
+    "./testing": {
+      "development": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "require": "./dist/testing/index.cjs"
+    },
+    "./package.json": "./package.json"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
