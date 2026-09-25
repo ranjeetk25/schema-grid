@@ -6,9 +6,11 @@ import {
   type GridSchema,
   columnsOf,
   getColumnFieldType,
+  getSelectOptions,
   unwrapParse,
 } from "../internal/core";
 import { ImportConfigError } from "../internal/errors";
+import { addNewOption, matchOption, splitMulti } from "./options";
 import type {
   CellValidation,
   ColumnMapping,
@@ -25,7 +27,7 @@ interface MappedColumn {
   type: AnyFieldType;
 }
 
-/** Per-run state shared by cell parsers (T8 adds option policy / newOptions here). */
+/** Per-run state shared by cell parsers. */
 interface ParseContext {
   opts: ValidateRowsOptions;
   newOptions: Record<string, string[]>;
@@ -37,19 +39,92 @@ function messageOf(err: unknown): string {
   return "Invalid value";
 }
 
+/** Records `label` as a new option of `columnId`; returns the kept spelling. */
+function recordNewOption(
+  ctx: ParseContext,
+  columnId: string,
+  label: string,
+): string {
+  const list = ctx.newOptions[columnId] ?? [];
+  ctx.newOptions[columnId] = list;
+  return addNewOption(list, label);
+}
+
+/** select / creatableSelect: match against config options, then apply the policy. */
+function parseSelectCell(
+  mapped: MappedColumn,
+  raw: string,
+  ctx: ParseContext,
+): CellValidation {
+  const match = matchOption(raw, getSelectOptions(mapped.column));
+  if (match) return { value: match.value, raw };
+  if (ctx.opts.unknownOptions === "reject") {
+    return { value: null, raw, error: `Unknown option "${raw}"` };
+  }
+  return { value: recordNewOption(ctx, mapped.column.id, raw), raw };
+}
+
+/** multiSelect: split, match each piece, then apply the policy to unknowns. */
+function parseMultiSelectCell(
+  mapped: MappedColumn,
+  raw: string,
+  ctx: ParseContext,
+): CellValidation {
+  const options = getSelectOptions(mapped.column);
+  const ids: string[] = [];
+  const unknown: string[] = [];
+  for (const piece of splitMulti(raw)) {
+    const match = matchOption(piece, options);
+    if (!match) unknown.push(piece);
+    else if (!ids.includes(match.value)) ids.push(match.value);
+  }
+  if (unknown.length === 0) return { value: ids, raw };
+  if (ctx.opts.unknownOptions === "reject") {
+    const names = unknown.map((u) => `"${u}"`).join(", ");
+    return { value: null, raw, error: `Unknown option(s) ${names}` };
+  }
+  const labels = unknown.map((u) => recordNewOption(ctx, mapped.column.id, u));
+  return { value: [...ids, ...labels], raw };
+}
+
+/** Any other type: the field type's own parse, honouring `pendingOptions`. */
+function parseWithFieldType(
+  mapped: MappedColumn,
+  raw: string,
+  ctx: ParseContext,
+): CellValidation {
+  const r = unwrapParse(mapped.type.parse(raw, mapped.column.config));
+  if (!r.ok) return { value: null, raw, error: r.error };
+  if (r.pendingOptions && r.pendingOptions.length > 0) {
+    if (ctx.opts.unknownOptions === "reject") {
+      const names = r.pendingOptions.map((u) => `"${u}"`).join(", ");
+      return { value: null, raw, error: `Unknown option(s) ${names}` };
+    }
+    for (const p of r.pendingOptions) recordNewOption(ctx, mapped.column.id, p);
+  }
+  return { value: r.value, raw };
+}
+
 /**
- * Parses one non-empty, trimmed cell through its column's field type.
- * Never throws. Branch on `mapped.column.type` here for select/multiSelect
- * option handling (T8).
+ * Parses one non-empty, trimmed cell. Never throws: a throwing parse becomes a
+ * cell error. Option types use the import's unknown-option policy instead of
+ * the field type's own parse.
  */
 function parseCell(
   mapped: MappedColumn,
   raw: string,
-  _ctx: ParseContext,
+  ctx: ParseContext,
 ): CellValidation {
   try {
-    const r = unwrapParse(mapped.type.parse(raw, mapped.column.config));
-    return r.ok ? { value: r.value, raw } : { value: null, raw, error: r.error };
+    switch (mapped.column.type) {
+      case "select":
+      case "creatableSelect":
+        return parseSelectCell(mapped, raw, ctx);
+      case "multiSelect":
+        return parseMultiSelectCell(mapped, raw, ctx);
+      default:
+        return parseWithFieldType(mapped, raw, ctx);
+    }
   } catch (err) {
     return { value: null, raw, error: messageOf(err) };
   }
@@ -173,7 +248,11 @@ export function validateRows(
   let valid = 0;
   let invalid = 0;
 
-  parsed.rows.forEach((sourceCells, index) => {
+  const sourceRows =
+    opts.limit !== undefined && opts.limit >= 0
+      ? parsed.rows.slice(0, opts.limit)
+      : parsed.rows;
+  sourceRows.forEach((sourceCells, index) => {
     const sourceRow = headerRow + index + 1;
     const rawOf = (m: MappedColumn) => (sourceCells[m.headerIndex] ?? "").trim();
 
