@@ -1,31 +1,48 @@
 import { evaluate } from "../formula/evaluate";
-import { getFormulaEvaluationOrder } from "../formula/graph";
 import { parseFormula } from "../formula/parser";
-import { type FormulaEnv, isFormulaError } from "../formula/types";
+import { type FormulaEnv, type FormulaNode, isFormulaError } from "../formula/types";
 import type { GridRow } from "../rows/types";
 import type { GridSchema } from "../schema/types";
 
+const astCache = new Map<string, FormulaNode | null>();
+
+function parseCached(source: string): FormulaNode | null {
+  let ast = astCache.get(source);
+  if (ast === undefined) {
+    const parsed = parseFormula(source);
+    ast = isFormulaError(parsed) ? null : parsed;
+    if (astCache.size > 1000) astCache.clear();
+    astCache.set(source, ast);
+  }
+  return ast;
+}
+
 /**
- * Writes every formula column's value into `row.cells` (mutates `row`), in
- * dependency order. Formula errors (including cycles) materialise as null.
+ * Writes every formula column's value into `row.cells` (mutates `row`).
+ * `evaluate` recomputes formula refs from source, so no ordering is needed.
+ * Formula errors (including cycles) materialise as null.
  */
 export function materializeFormulas(row: GridRow, schema: GridSchema, env: FormulaEnv): void {
-  const formulaCols = schema.columns.filter((c) => c.type === "formula");
-  if (formulaCols.length === 0) return;
-  const order = getFormulaEvaluationOrder(schema);
-  const keys = isFormulaError(order) ? formulaCols.map((c) => c.key) : order;
-  const byKey = new Map(formulaCols.map((c) => [c.key, c]));
-  for (const key of keys) {
-    const col = byKey.get(key);
-    if (!col) continue;
-    const ast = typeof col.formula === "string" ? parseFormula(col.formula) : null;
-    if (ast === null || isFormulaError(ast)) {
-      row.cells[key] = null;
-      continue;
-    }
-    const value = evaluate(ast, row, schema, env);
-    row.cells[key] = isFormulaError(value) ? null : value;
+  for (const col of schema.columns) {
+    if (col.type !== "formula") continue;
+    const ast = typeof col.formula === "string" ? parseCached(col.formula) : null;
+    const value = ast ? evaluate(ast, row, schema, env) : null;
+    row.cells[col.key] = isFormulaError(value) ? null : value;
   }
+}
+
+/** Removes formula values (the store only keeps editable data; formulas are computed on read). */
+export function stripFormulas(row: GridRow, schema: GridSchema): void {
+  for (const col of schema.columns) {
+    if (col.type === "formula") delete row.cells[col.key];
+  }
+}
+
+/** A deep copy of `row` with formulas computed for `env`. */
+export function materialized<Row extends GridRow>(row: Row, schema: GridSchema, env: FormulaEnv): Row {
+  const copy = structuredClone(row);
+  materializeFormulas(copy, schema, env);
+  return copy;
 }
 
 /** Returns a copy of `row` whose cells only contain the given column keys. */
@@ -34,5 +51,5 @@ export function projectRow<Row extends GridRow>(row: Row, readableKeys: Readonly
   for (const [key, value] of Object.entries(row.cells)) {
     if (readableKeys.has(key)) cells[key] = structuredClone(value);
   }
-  return { ...structuredClone(row), cells };
+  return { ...structuredClone({ ...row, cells: {} }), cells };
 }

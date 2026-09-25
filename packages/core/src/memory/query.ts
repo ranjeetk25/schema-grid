@@ -1,50 +1,13 @@
 import { isEmptyValue } from "../field-types/empty";
-import type { FieldTypeRegistry } from "../field-types/registry";
 import { matchesFilter } from "../filter/match";
 import { validateFilter } from "../filter/validate";
-import type { Access } from "../permissions/types";
 import type { GridQuery, QueryResult, SortSpec } from "../query/types";
 import type { GridRow } from "../rows/types";
-import { getColumnById } from "../schema/lookup";
-import type { ColumnDef, GridSchema } from "../schema/types";
+import type { ColumnDef } from "../schema/types";
+import { type MemoryQueryContext, readableColumns, requireReadableColumn } from "./context";
 import { groupRows } from "./group";
 import { projectRow } from "./materialize";
 import { InMemoryQueryError } from "./types";
-
-export interface MemoryQueryContext {
-  schema: GridSchema;
-  registry: FieldTypeRegistry;
-  access: ReadonlyMap<string, Access>;
-  now: Date;
-  tz: string;
-  userId?: string;
-}
-
-const idCollator = new Intl.Collator(undefined, { numeric: true });
-
-export function readableColumns(ctx: MemoryQueryContext): ColumnDef[] {
-  return ctx.schema.columns.filter((c) => {
-    const a = ctx.access.get(c.id);
-    return a === "read" || a === "edit";
-  });
-}
-
-/** Resolves a column id that must exist and be readable, or throws InMemoryQueryError. */
-export function requireReadableColumn(
-  columnId: string,
-  ctx: MemoryQueryContext,
-  what: string,
-): ColumnDef {
-  const column = getColumnById(ctx.schema, columnId);
-  if (!column) {
-    throw new InMemoryQueryError("unknownColumn", `Cannot ${what} by an unknown column`);
-  }
-  const a = ctx.access.get(column.id);
-  if (a !== "read" && a !== "edit") {
-    throw new InMemoryQueryError("unreadableColumn", `Cannot ${what} by a column you cannot read`);
-  }
-  return column;
-}
 
 function matchesSearch(row: GridRow, needle: string, columns: ColumnDef[], ctx: MemoryQueryContext): boolean {
   for (const column of columns) {
@@ -80,13 +43,14 @@ export function sortRows<Row extends GridRow>(rows: Row[], sort: SortSpec[], ctx
       }
       let c = 0;
       try {
-        c = type ? type.compare(va, vb, column.config) : idCollator.compare(String(va), String(vb));
+        c = type ? type.compare(va, vb, column.config) : String(va) < String(vb) ? -1 : String(va) > String(vb) ? 1 : 0;
       } catch {
         c = 0;
       }
       if (c !== 0) return c * sign;
     }
-    return idCollator.compare(a.id, b.id);
+    // Plain code-unit order (matches a binary SQL collation), locale-independent.
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 }
 

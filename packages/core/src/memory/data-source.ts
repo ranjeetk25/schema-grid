@@ -1,6 +1,5 @@
 import { createDefaultRegistry } from "../field-types/default-registry";
 import { DEFAULT_TIME_ZONE } from "../time/zoned";
-import { resolveColumnAccess } from "../permissions/column-access";
 import { createRolePermissionResolver } from "../permissions/role-resolver";
 import type { Access } from "../permissions/types";
 import type { GridQuery, QueryResult } from "../query/types";
@@ -11,9 +10,10 @@ import type { ColumnDef } from "../schema/types";
 import { ChangeLog } from "./feed";
 import type { RowPartial } from "../datasource/types";
 import type { GridSchema } from "../schema/types";
-import { materializeFormulas, projectRow } from "./materialize";
+import { materialized, projectRow, stripFormulas } from "./materialize";
 import { applyChangeBatch, createStoreRows, deleteStoreRows, type MutationDeps } from "./mutations";
-import { type MemoryQueryContext, runQuery } from "./query";
+import { type MemoryQueryContext, resolveMemoryAccess } from "./context";
+import { runQuery } from "./query";
 import { type InMemoryDataSource, type InMemoryDataSourceOptions, InMemoryQueryError } from "./types";
 
 /**
@@ -35,14 +35,16 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
   const env = () => ({ now: now(), tz });
 
   for (const row of options.rows ?? []) {
+    if (store.has(row.id)) throw new Error(`Duplicate initial row id "${row.id}"`);
     const copy = structuredClone(row);
-    materializeFormulas(copy, schema, env());
+    if (!Number.isInteger(copy.version) || copy.version < 1) copy.version = 1;
+    if (typeof copy.cells !== "object" || copy.cells === null) copy.cells = {};
+    stripFormulas(copy, schema);
     store.set(copy.id, copy);
   }
 
   function accessMap(): Map<string, Access> {
-    if (!options.user) return new Map(schema.columns.map((c) => [c.id, "edit" as Access]));
-    return resolveColumnAccess(schema, resolver, options.user);
+    return resolveMemoryAccess(schema, resolver, options.user);
   }
 
   function queryContext(): MemoryQueryContext {
@@ -85,12 +87,10 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     const column = getColumnById(schema, columnId);
     const access = column ? accessMap().get(column.id) : undefined;
     const ok = need === "edit" ? access === "edit" : access === "read" || access === "edit";
-    if (!column || !ok) {
-      throw new InMemoryQueryError(
-        column ? "unreadableColumn" : "unknownColumn",
-        column ? "You cannot access this column" : "Unknown column",
-      );
+    if (!column || access === "hidden" || access === undefined) {
+      throw new InMemoryQueryError(column ? "unreadableColumn" : "unknownColumn", "Unknown column");
     }
+    if (!ok) throw new InMemoryQueryError("notEditable", "Column is read-only for you");
     return column;
   }
 
@@ -110,19 +110,15 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     async fetch(query: GridQuery): Promise<QueryResult<Row>> {
       const ctx = queryContext();
       const e = { now: ctx.now, tz };
-      const rows = [...store.values()].map((r) => {
-        const copy = structuredClone(r);
-        materializeFormulas(copy, schema, e);
-        return copy;
-      });
-      return runQuery(rows, query, ctx);
+      return runQuery([...store.values()].map((r) => materialized(r, schema, e)), query, ctx);
     },
     async applyChanges(batch: ChangeBatch): Promise<ChangeResult> {
       return applyChangeBatch(batch, mutationDeps());
     },
     async createRows(partials: RowPartial<Row>[]): Promise<Row[]> {
       const keys = readableKeys();
-      return createStoreRows(partials, mutationDeps()).map((r) => projectRow(r, keys));
+      const e = env();
+      return createStoreRows(partials, mutationDeps()).map((r) => projectRow(materialized(r, schema, e), keys));
     },
     async deleteRows(ids: string[]): Promise<void> {
       deleteStoreRows(ids, mutationDeps());
@@ -134,10 +130,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       const e = env();
       const rows = changedIds.flatMap((id) => {
         const stored = store.get(id);
-        if (!stored) return [];
-        const copy = structuredClone(stored);
-        materializeFormulas(copy, schema, e);
-        return [projectRow(copy, keys)];
+        return stored ? [projectRow(materialized(stored, schema, e), keys)] : [];
       });
       return { cursor: log.cursor, rows, deletedRowIds: deletedIds, schemaVersion: schema.schemaVersion };
     },
@@ -153,9 +146,11 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       const allowCreate =
         column.type === "creatableSelect" ||
         (column.type === "multiSelect" && (column.config as { allowCreate?: unknown } | null)?.allowCreate === true);
-      if (!allowCreate) throw new Error("This column does not allow creating options");
+      if (!allowCreate) {
+        throw new InMemoryQueryError("unsupportedColumnType", "This column does not allow creating options");
+      }
       const text = typeof label === "string" ? label.trim() : "";
-      if (text === "") throw new Error("Option label must not be empty");
+      if (text === "") throw new InMemoryQueryError("invalidValue", "Option label must not be empty");
       const options = columnOptions(column);
       const existing = options.find((o) => o.label.trim().toLowerCase() === text.toLowerCase());
       if (existing) return { ...existing };
@@ -167,18 +162,20 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       schema = {
         ...schema,
         schemaVersion: schema.schemaVersion + 1,
-        columns: schema.columns.map((c) =>
-          c.id === column.id
-            ? { ...c, config: { ...(c.config as object), options: [...options, option] } }
-            : c,
-        ),
+        columns: schema.columns.map((c) => {
+          if (c.id !== column.id) return c;
+          const raw = (c.config as { options?: unknown } | null)?.options;
+          return { ...c, config: { ...(c.config as object), options: [...(Array.isArray(raw) ? raw : []), option] } };
+        }),
       };
       log.recordSchemaChange();
       return { ...option };
     },
     async lookup(columnId: string, search: string): Promise<LinkRef[]> {
       const column = requireColumn(columnId, "read");
-      if (column.type !== "link") throw new Error("lookup is only available on link columns");
+      if (column.type !== "link") {
+        throw new InMemoryQueryError("unsupportedColumnType", "lookup is only available on link columns");
+      }
       const needle = typeof search === "string" ? search.trim().toLowerCase() : "";
       return (options.linkTargets?.[column.id] ?? [])
         .filter((ref) => ref.label.toLowerCase().includes(needle))
@@ -189,6 +186,9 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       schema = structuredClone(next);
       log.recordSchemaChange();
     },
-    snapshot: () => [...store.values()].map((r) => structuredClone(r)),
+    snapshot() {
+      const e = env();
+      return [...store.values()].map((r) => materialized(r, schema, e));
+    },
   };
 }

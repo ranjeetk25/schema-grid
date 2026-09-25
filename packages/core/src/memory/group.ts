@@ -5,7 +5,7 @@ import { computeAggregate } from "../query/aggregate";
 import type { GroupAggregateValue, GroupResult, GroupSpec } from "../query/types";
 import type { GridRow } from "../rows/types";
 import type { ColumnDef } from "../schema/types";
-import { type MemoryQueryContext, requireReadableColumn } from "./query";
+import { type MemoryQueryContext, requireReadableColumn } from "./context";
 import { InMemoryQueryError } from "./types";
 
 const EMPTY_KEY = "∅";
@@ -39,8 +39,24 @@ function resolveLevels(groupBy: GroupSpec[], ctx: MemoryQueryContext): ResolvedL
   });
 }
 
+function refId(v: unknown): string | undefined {
+  if (typeof v === "string") return v;
+  if (typeof v === "object" && v !== null && typeof (v as { id?: unknown }).id === "string") {
+    return (v as { id: string }).id;
+  }
+  return undefined;
+}
+
+/**
+ * Stable group key. Reference types group by identity (user id; sorted link
+ * ids; sorted multiSelect ids) so display names never split a group.
+ */
 function groupKey(value: unknown, type: AnyFieldType | undefined): string {
   if (isEmptyValue(value)) return EMPTY_KEY;
+  if (type?.id === "user") return JSON.stringify(refId(value) ?? null);
+  if ((type?.id === "link" || type?.id === "multiSelect") && Array.isArray(value)) {
+    return JSON.stringify(value.map(refId).filter((id) => id !== undefined).sort());
+  }
   try {
     return JSON.stringify(type ? type.serialize(value) : value) ?? EMPTY_KEY;
   } catch {

@@ -14,7 +14,6 @@ import type {
 } from "../rows/types";
 import { getColumnById } from "../schema/lookup";
 import type { ColumnDef, GridSchema } from "../schema/types";
-import { materializeFormulas } from "./materialize";
 
 export interface MutationDeps<Row extends GridRow> {
   schema: GridSchema;
@@ -71,10 +70,11 @@ function pickLimits(v: NonNullable<ColumnDef["validation"]>): Record<string, num
 }
 
 function editProblem(column: ColumnDef, access: Access | undefined): string | null {
+  // Hidden first, so hidden columns (formula or not) are indistinguishable from missing ones.
+  if (access !== "read" && access !== "edit") return "Column not found";
   if (column.type === "formula") return "Formula columns are read-only";
-  if (access === "edit") return null;
   if (access === "read") return "Column is read-only for you";
-  return "Column not found";
+  return null;
 }
 
 /**
@@ -124,12 +124,10 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
         fail(change, "Missing base version for row");
         continue;
       }
-      if (base === row.version) {
-        const invalid = validateCellValue(column, change.next, deps.registry);
-        if (invalid) {
-          fail(change, invalid);
-          continue;
-        }
+      const invalid = validateCellValue(column, change.next, deps.registry);
+      if (invalid) {
+        fail(change, invalid);
+        continue;
       }
       valid.push({ change, column });
     }
@@ -159,7 +157,6 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
     row.version += 1;
     row.updatedAt = deps.env.now.toISOString();
     if (deps.actor) row.updatedBy = structuredClone(deps.actor);
-    materializeFormulas(row, deps.schema, deps.env);
     deps.onRowChanged?.(rowId, false);
   }
   return { applied, conflicts, errors };
@@ -194,21 +191,24 @@ export function createStoreRows<Row extends GridRow>(partials: RowPartial<Row>[]
       const type = deps.registry.get(column.type);
       let value: unknown = type ? type.defaultValue(column.config) : null;
       if (column.defaultValue !== undefined) value = structuredClone(column.defaultValue);
+      const access = deps.access.get(column.id);
       if (Object.hasOwn(provided, column.key)) {
-        const problem = editProblem(column, deps.access.get(column.id));
+        const problem = editProblem(column, access);
         if (problem) throw new InMemoryMutationError(`Row ${i}, column "${column.key}": ${problem}`);
         value = structuredClone(provided[column.key]);
       }
-      const invalid = validateCellValue(column, value, deps.registry);
-      if (invalid) throw new InMemoryMutationError(`Row ${i}, column "${column.key}": ${invalid}`);
+      // Only editable columns are validated: the user can't supply values for
+      // the others, and errors must not reveal hidden columns.
+      if (access === "edit") {
+        const invalid = validateCellValue(column, value, deps.registry);
+        if (invalid) throw new InMemoryMutationError(`Row ${i}, column "${column.key}": ${invalid}`);
+      }
       cells[column.key] = value ?? null;
     }
     for (const key of Object.keys(provided)) {
       const column = byKey.get(key);
-      if (!column) throw new InMemoryMutationError(`Row ${i}: unknown column "${key}"`);
-      if (column.type === "formula") {
-        throw new InMemoryMutationError(`Row ${i}, column "${key}": Formula columns are read-only`);
-      }
+      const problem = column ? editProblem(column, deps.access.get(column.id)) : "Column not found";
+      if (problem) throw new InMemoryMutationError(`Row ${i}, column "${key}": ${problem}`);
     }
     const row = {
       id,
@@ -217,7 +217,6 @@ export function createStoreRows<Row extends GridRow>(partials: RowPartial<Row>[]
       ...(deps.actor ? { updatedBy: structuredClone(deps.actor) } : {}),
       cells,
     } as unknown as Row;
-    materializeFormulas(row, deps.schema, deps.env);
     created.push(row);
   }
   for (const row of created) {

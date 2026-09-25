@@ -20,7 +20,7 @@ export interface InMemoryDataSourceOptions<Row extends GridRow = GridRow> {
   now?: () => Date;
   /** Default: "Asia/Kolkata". */
   timeZone?: string;
-  /** Row / option id generator. Default: sequential ids. */
+  /** Row id generator. Default: sequential ids. */
   generateId?: () => string;
   /** Recorded as `updatedBy` on writes. */
   actor?: ActorRef;
@@ -31,7 +31,7 @@ export interface InMemoryDataSourceOptions<Row extends GridRow = GridRow> {
 export interface InMemoryDataSource<Row extends GridRow = GridRow> extends DataSource<Row> {
   getSchema(): GridSchema;
   setSchema(schema: GridSchema): void;
-  /** Deep copies of all stored rows (unprojected, formulas materialised). */
+  /** Deep copies of all stored rows (unprojected, formulas computed now). */
   snapshot(): Row[];
 }
 
@@ -39,7 +39,10 @@ export type InMemoryQueryErrorCode =
   | FilterValidationErrorCode
   | "invalidAggregation"
   | "invalidPage"
-  | "invalidCursor";
+  | "invalidCursor"
+  | "notEditable"
+  | "unsupportedColumnType"
+  | "invalidValue";
 
 /** Rejection reason for invalid queries against the in-memory DataSource. */
 export class InMemoryQueryError extends Error {
