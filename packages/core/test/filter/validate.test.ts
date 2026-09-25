@@ -110,4 +110,28 @@ describe("validateFilter", () => {
       ["valueKindMismatch", [2, 1]],
     ]);
   });
+
+  it("rejects conditions on filterable:false columns with unfilterableColumn", () => {
+    const locked: GridSchema = {
+      ...schema,
+      columns: schema.columns.map((c) => (c.id === C.name ? { ...c, filterable: false } : c)),
+    };
+    const errors = validateFilter(
+      { op: "and", children: [cond(C.status, "is", "paid"), cond(C.name, "contains", "a")] },
+      locked,
+      registry,
+      all,
+    );
+    expect(errors).toEqual([expect.objectContaining({ code: "unfilterableColumn", path: [1], columnId: C.name })]);
+    expect(validateFilter(cond(C.name, "contains", "a"), schema, registry, all)).toEqual([]);
+  });
+
+  it("reports an unreadable unfilterable column as unreadable (no label leak)", () => {
+    const locked: GridSchema = {
+      ...schema,
+      columns: schema.columns.map((c) => (c.id === C.name ? { ...c, filterable: false } : c)),
+    };
+    const readable = new Set([...all].filter((id) => id !== C.name));
+    expect(validateFilter(cond(C.name, "contains", "a"), locked, registry, readable)[0]?.code).toBe("unreadableColumn");
+  });
 });

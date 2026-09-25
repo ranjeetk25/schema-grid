@@ -1,5 +1,5 @@
 import { Box, Button, Group, Menu, Stack, Text, TextInput } from "@mantine/core";
-import { IconCheck, IconChevronDown, IconDeviceFloppy, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconDeviceFloppy, IconPencil, IconPlus, IconTrash } from "../internal/icons";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ViewDef } from "../internal/core-contracts";
 

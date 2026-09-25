@@ -55,8 +55,11 @@
  * 4. ONE `controller.submit(changes, "paste")` (skipped when empty).
  * 5. `ClipboardReport { pastedCells, skippedReadOnly, conflicts, errors }`:
  *    `pastedCells` = cells the data source applied (0 when vetoed);
- *    `conflicts` = cells it reported as conflicts; `errors` = parse errors +
- *    option errors + the data source's per-cell errors. Planning errors are
+ *    `conflicts` = cells it reported as conflicts; `skippedReadOnly` = cells
+ *    the plan skipped as read-only + cells the controller rejected as
+ *    read-only at submit time (`outcome.readOnly`, v0.2 C3); `errors` = parse
+ *    errors + option errors + the data source's per-cell errors (never the
+ *    controller's read-only rejections). Planning errors are
  *    set on the cell status store in one `setErrors` call (the controller
  *    marks the data source's). Handed to `onClipboardReport` and announced:
  *    "Paste: N pasted, M skipped, K errors" (+ ", C conflicts" when C > 0).
@@ -66,7 +69,7 @@
 import type { GridApi } from "ag-grid-community";
 import { type RefObject, useEffect, useState } from "react";
 import { type Politeness, pasteSummaryMessage } from "../a11y/announcer";
-import type { EditController } from "../editing/editController";
+import type { EditController, SubmitOutcome } from "../editing/editController";
 import {
   isEditableTarget,
   isGridEditing,
@@ -142,6 +145,32 @@ export interface ClipboardHandlers {
 
 /** T30 standard wording; the builder lives in `a11y/announcer` (re-exported here). */
 export { pasteSummaryMessage };
+
+/**
+ * The report numbers one paste submit contributes: applied / conflict counts
+ * (0 when vetoed), controller read-only rejections (`outcome.readOnly`) as
+ * `skippedReadOnly`, and every other per-cell error.
+ */
+export function pasteOutcomeCounts(
+  outcome: SubmitOutcome,
+): Pick<ClipboardReport, "pastedCells" | "conflicts" | "skippedReadOnly" | "errors"> {
+  const readOnly = new Set((outcome.readOnly ?? []).map((c) => pairKey(c.rowId, c.columnId)));
+  const errors: ClipboardReport["errors"] = [];
+  let rejected = 0;
+  for (const e of outcome.result.errors) {
+    if (readOnly.has(pairKey(e.rowId, e.columnId))) {
+      rejected += 1;
+      continue;
+    }
+    if (!outcome.vetoed) errors.push({ rowId: e.rowId, columnId: e.columnId, message: e.message });
+  }
+  return {
+    pastedCells: outcome.vetoed ? 0 : outcome.result.applied.length,
+    conflicts: outcome.vetoed ? 0 : outcome.result.conflicts.length,
+    skippedReadOnly: rejected,
+    errors,
+  };
+}
 
 export const NOTHING_TO_PASTE = "Nothing to paste";
 export const PASTE_FAILED = "Paste failed";
@@ -361,16 +390,17 @@ export function useClipboard<Row extends GridRow = GridRow>(options: UseClipboar
         const errors = [...planningErrors];
         let pastedCells = 0;
         let conflicts = 0;
+        let skippedReadOnly = plan.skippedReadOnly;
         if (resolved.changes.length > 0) {
           const outcome = await latest.current.controller.submit(resolved.changes, "paste");
-          if (!outcome.vetoed) {
-            pastedCells = outcome.result.applied.length;
-            conflicts = outcome.result.conflicts.length;
-            for (const e of outcome.result.errors) errors.push({ rowId: e.rowId, columnId: e.columnId, message: e.message });
-          }
+          const counts = pasteOutcomeCounts(outcome);
+          pastedCells = counts.pastedCells;
+          conflicts = counts.conflicts;
+          skippedReadOnly += counts.skippedReadOnly;
+          errors.push(...counts.errors);
         }
         if (!active) return null;
-        const report: ClipboardReport = { pastedCells, skippedReadOnly: plan.skippedReadOnly, conflicts, errors };
+        const report: ClipboardReport = { pastedCells, skippedReadOnly, conflicts, errors };
         latest.current.onClipboardReport?.(report);
         announce(pasteSummaryMessage(report));
         return report;

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import * as core from "../../../src/internal/core";
 import type {
@@ -37,7 +38,9 @@ import { SCHEMA_GRID_SERVER_VERSION } from "../../../src/index";
 
 describe("core contract (via src/internal/core.ts)", () => {
   it("loads the package source under the development condition", () => {
-    expect(SCHEMA_GRID_SERVER_VERSION).toBe("0.0.1");
+    expect(SCHEMA_GRID_SERVER_VERSION).toBe(
+      (JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")) as { version: string }).version,
+    );
     expect(typeof core.resolveRelativeDate).toBe("function");
   });
 

@@ -1,5 +1,6 @@
 import type { LinkRef, Option } from "../common/types";
 import type { GridQuery, QueryResult } from "../query/types";
+import type { DataSourceCapabilities } from "./capabilities";
 import type { ChangeBatch, ChangeFeedEntry, ChangeResult, GridRow } from "../rows/types";
 
 /** An optional id plus a partial cells record, used to create rows. */
@@ -17,4 +18,6 @@ export interface DataSource<Row extends GridRow = GridRow> {
   getOptions?(columnId: string, search?: string): Promise<Option[]>;
   createOption?(columnId: string, label: string): Promise<Option>;
   lookup?(columnId: string, search: string): Promise<LinkRef[]>;
+  /** What this source supports (see `DataSourceCapabilities`). Absent → `inferCapabilities`. */
+  capabilities?(): Promise<DataSourceCapabilities> | DataSourceCapabilities;
 }

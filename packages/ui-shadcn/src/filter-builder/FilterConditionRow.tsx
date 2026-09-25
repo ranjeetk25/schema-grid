@@ -63,6 +63,12 @@ export function FilterConditionRow({
           emptyText="No columns found"
           className="sg:w-40 sg:shrink-0"
           items={api.columns.map((c) => ({ value: c.id, label: c.label, icon: <FieldTypeIcon type={c.type} /> }))}
+          // A condition on a readable but unfilterable column (e.g. from a saved view) keeps its label; not selectable.
+          selectedFallback={
+            column && api.readable?.has(column.id)
+              ? { value: column.id, label: column.label, icon: <FieldTypeIcon type={column.type} /> }
+              : undefined
+          }
           value={condition.columnId}
           onChange={(v) => api.updateCondition(condition.id, { columnId: v })}
           invalid={Boolean(errors?.column)}

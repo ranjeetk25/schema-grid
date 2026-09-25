@@ -16,4 +16,14 @@ describe("access helpers", () => {
     expect(ids).not.toContain(FIXTURE_IDS.secret);
     expect(ids).toContain(FIXTURE_IDS.payment);
   });
+  it("writable excludes settable:false even when the access map says edit (v0.2 C1)", () => {
+    const unsettable = {
+      ...schema,
+      columns: schema.columns.map((c) => (c.id === FIXTURE_IDS.notes ? { ...c, settable: false } : c)),
+    };
+    const ids = writableColumns(unsettable, access).map((c) => c.id);
+    expect(access.get(FIXTURE_IDS.notes)).toBe("edit");
+    expect(ids).not.toContain(FIXTURE_IDS.notes);
+    expect(ids).toContain(FIXTURE_IDS.payment);
+  });
 });

@@ -1,5 +1,5 @@
 import { Alert, Button, Group, Modal, Radio, SegmentedControl, Stack, Text } from "@mantine/core";
-import { IconDownload } from "@tabler/icons-react";
+import { IconDownload } from "../internal/icons";
 import { useEffect, useState } from "react";
 import type { ExportFormat } from "../internal/io-contracts";
 

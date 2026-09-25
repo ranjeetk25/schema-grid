@@ -16,6 +16,7 @@ function deps(overrides: { sort?: "asc" | "desc"; pinned?: "left" | "right" | nu
     getSort: () => overrides.sort,
     getPinned: () => overrides.pinned ?? null,
     isFilterAllowed: () => true,
+    isSortable: () => true,
   };
   const after = vi.fn();
   return { api, column, after, host: overrides.host };
@@ -102,6 +103,7 @@ describe("SchemaHeader column menu slot", () => {
       getColDef: () => ({}),
       isFilterActive: () => false,
       isFilterAllowed: () => true,
+      isSortable: () => true,
       getSort: () => undefined,
       getSortIndex: () => null,
       getPinned: () => null,

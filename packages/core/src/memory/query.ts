@@ -29,6 +29,9 @@ function matchesSearch(row: GridRow, needle: string, columns: ColumnDef[], ctx: 
 export function sortRows<Row extends GridRow>(rows: Row[], sort: SortSpec[], ctx: MemoryQueryContext): Row[] {
   const keys = sort.map((s) => {
     const column = requireReadableColumn(s.columnId, ctx, "sort");
+    if (column.sortable === false) {
+      throw new InMemoryQueryError("unsortableColumn", `Column "${column.label}" cannot be sorted`);
+    }
     return { column, type: ctx.registry.get(column.type), sign: s.dir === "desc" ? -1 : 1 };
   });
   return [...rows].sort((a, b) => {

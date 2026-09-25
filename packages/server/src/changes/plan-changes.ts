@@ -96,7 +96,7 @@ export function validateCellValue(
 /**
  * Validation phase of `applyChanges` (no DB access). Collapses repeated edits of
  * one cell to the last, rejects per-change (missing/deleted row, missing base
- * version, unknown column, not editable for this user+row, invalid value) and
+ * version, unknown column, not editable for this user+row or `settable: false`, invalid value) and
  * returns one write plan per row with at least one valid change.
  */
 export function planChanges(
@@ -149,7 +149,8 @@ export function planChanges(
         fail(columnId, "Column is read-only (formula)");
         continue;
       }
-      if (access !== "edit") {
+      // `settable: false`: visible, but the data source never writes it (v0.2 C1).
+      if (access !== "edit" || column.settable === false) {
         fail(columnId, "Column is read-only");
         continue;
       }

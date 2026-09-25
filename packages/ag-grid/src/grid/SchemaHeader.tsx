@@ -219,7 +219,7 @@ export function SchemaHeader(props: SchemaHeaderProps) {
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard sorting is AG Grid's own Enter on the focused header cell; this click is the pointer path only. */}
       <div className={SG_HEADER_CLASSES.label} onClick={onLabelClick}>
         <span className="ag-header-cell-text">{label}</span>
-        {sort.sort === "asc" || sort.sort === "desc" ? (
+        {sortable && (sort.sort === "asc" || sort.sort === "desc") ? (
           <span className={SG_HEADER_CLASSES.sort} data-sort={sort.sort}>
             <SortIcon direction={sort.sort} />
             {sort.position !== null ? <span className={SG_HEADER_CLASSES.sortIndex}>{sort.position}</span> : null}

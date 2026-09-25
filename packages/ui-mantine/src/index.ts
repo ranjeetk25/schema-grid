@@ -1,4 +1,8 @@
-export const SCHEMA_GRID_UI_MANTINE_VERSION = "0.0.1";
+// Injected from package.json by tsup (`define`) and by vitest.config.ts; source
+// consumers without either (e.g. the Storybook dev build) get the dev fallback.
+declare const __SCHEMA_GRID_UI_MANTINE_VERSION__: string | undefined;
+export const SCHEMA_GRID_UI_MANTINE_VERSION: string =
+  typeof __SCHEMA_GRID_UI_MANTINE_VERSION__ === "string" ? __SCHEMA_GRID_UI_MANTINE_VERSION__ : "0.0.0-dev";
 
 // Subpath areas (also importable as ./editors, ./filter-builder, ./column-builder, ./import-export)
 export * from "./editors";

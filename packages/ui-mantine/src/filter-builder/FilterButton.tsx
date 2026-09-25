@@ -1,5 +1,5 @@
 import { Badge, Box, Button, Loader, Popover } from "@mantine/core";
-import { IconFilter } from "@tabler/icons-react";
+import { IconFilter } from "../internal/icons";
 import { useRef, useState } from "react";
 import { FilterBuilder, type FilterBuilderHandle, type FilterBuilderProps, type FilterBuilderStatus } from "./FilterBuilder";
 import { countConditions } from "./model";

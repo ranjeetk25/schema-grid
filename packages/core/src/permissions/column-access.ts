@@ -1,6 +1,10 @@
 import type { GridSchema } from "../schema/types";
 import type { Access, PermissionResolver, PermissionUser } from "./types";
 
+/**
+ * Column-level access for `user`. A column with `settable: false` is at most
+ * "read": the data source cannot write it, whatever the permissions say.
+ */
 export function resolveColumnAccess(
   schema: GridSchema,
   resolver: PermissionResolver,
@@ -8,7 +12,8 @@ export function resolveColumnAccess(
 ): Map<string, Access> {
   const access = new Map<string, Access>();
   for (const column of schema.columns) {
-    access.set(column.id, resolver({ user, column }));
+    const a = resolver({ user, column });
+    access.set(column.id, a === "edit" && column.settable === false ? "read" : a);
   }
   return access;
 }

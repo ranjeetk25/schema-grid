@@ -1,5 +1,5 @@
 import { Alert, Button, FileButton, Group, Stack, Text } from "@mantine/core";
-import { IconFileSpreadsheet, IconUpload } from "@tabler/icons-react";
+import { IconFileSpreadsheet, IconUpload } from "../../internal/icons";
 import { useRef, useState } from "react";
 import { formatFileSize } from "../import-model";
 

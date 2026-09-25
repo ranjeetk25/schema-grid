@@ -22,6 +22,7 @@ function makeActions(overrides: Partial<HeaderMenuActions> = {}): HeaderMenuActi
     insertColumn: vi.fn(),
     sortState: null,
     pinnedState: null,
+    canSort: true,
     canFilter: true,
     canGroup: true,
     ...overrides,
@@ -193,5 +194,24 @@ describe("ShadcnHeaderMenu", () => {
     expect(virtual.style.top).toBe("40px");
     expect(virtual.style.width).toBe("160px");
     expect(virtual.style.height).toBe("36px");
+  });
+});
+
+describe("ShadcnHeaderMenu canSort (v0.2 C1)", () => {
+  it("hides Sort ascending / descending / Clear sort when canSort is false", () => {
+    setup({ canSort: false, sortState: "asc" });
+    for (const name of ["Sort ascending", "Sort descending", "Clear sort"]) {
+      expect(screen.queryByRole("menuitem", { name: new RegExp(`^${name}`) })).toBeNull();
+    }
+    expect(item("Pin left")).toBeInTheDocument();
+    // The menu starts with an item, not a separator.
+    const first = screen.getByRole("menu").querySelector('[role="menuitem"], [role="separator"]');
+    expect(first?.getAttribute("role")).toBe("menuitem");
+  });
+
+  it("shows the sort items when canSort is true", () => {
+    setup({ canSort: true });
+    expect(item("Sort ascending")).toBeInTheDocument();
+    expect(item("Clear sort")).toBeInTheDocument();
   });
 });

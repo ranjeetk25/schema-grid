@@ -7,6 +7,7 @@ import { createFixtureLinkTargets, createFixtureRows } from "../../src/testing/r
 import { createFixtureSchema, FIXTURE_COLUMN_IDS as C, FIXTURE_NOW, FIXTURE_USERS } from "../../src/testing/schema";
 import { createDataSourceHandler, unwrapWireResult } from "../../src/wire/handler";
 import { RemoteDataSourceError } from "../../src/wire/errors";
+import { inferCapabilities } from "../../src/datasource/capabilities";
 
 const q = (over: Partial<GridQuery> = {}): GridQuery => ({ filter: null, sort: [], page: { offset: 0, limit: 100 }, ...over });
 
@@ -164,5 +165,23 @@ describe("unwrapWireResult", () => {
     }
     expect(caught).toBeInstanceOf(RemoteDataSourceError);
     expect(caught).toMatchObject({ code: "PERMISSION_DENIED", status: 418, message: "no" });
+  });
+
+  it("answers capabilities from the source when it implements them", async () => {
+    const ds = createInMemoryDataSource({ schema: createFixtureSchema(), capabilities: { maxPageSize: 200, groupBy: false } });
+    const res = await createDataSourceHandler(ds, { validateOutput: true })("capabilities", null);
+    expect(res).toMatchObject({ ok: true, data: { maxPageSize: 200, groupBy: false, search: true } });
+  });
+
+  it("answers a computed default for sources without capabilities()", async () => {
+    const res = await createDataSourceHandler(minimal(), { validateOutput: true })("capabilities", null);
+    expect(res).toEqual({ ok: true, data: inferCapabilities(minimal()) });
+    if (res.ok) expect(res.data).toMatchObject({ changeFeed: false, options: false, lookup: false, groupBy: true });
+  });
+
+  it("normalises a partial capabilities() result", async () => {
+    const ds = minimal({ capabilities: () => ({ maxPageSize: 50 }) as never });
+    const res = await createDataSourceHandler(ds, { validateOutput: true })("capabilities", null);
+    expect(res).toMatchObject({ ok: true, data: { maxPageSize: 50, sort: "all", write: { cells: true } } });
   });
 });

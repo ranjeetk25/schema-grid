@@ -51,6 +51,16 @@
  * version to the server's, which can hide other remote cell changes on that
  * row; the host (sync/T28) should refetch those rows in full.
  *
+ * Client write enforcement (v0.2 C3): with `canEditCell`, every change is
+ * checked BEFORE step 1 and again on a batch returned by `beforeCellsChange`:
+ * the row must be in the row store and `canEditCell(row, columnId)` must be
+ * true (read at call time, so undo/redo re-check at execution). Rejected cells
+ * never touch the row store or the data source and are NOT marked on the cell
+ * status store; they are reported first in `result.errors` (message
+ * `READ_ONLY_MESSAGE`) and in `outcome.readOnly`. When nothing is left,
+ * `beforeCellsChange` / `applyChanges` are skipped and `onCellsChange` still
+ * fires with the rejections.
+ *
  * Ownership (who may settle a cell) is keyed on an internal submit counter,
  * never on `batch.id`, which a transform or idFactory may repeat.
  */
@@ -94,13 +104,29 @@ export interface EditControllerOptions<Row extends GridRow = GridRow> {
   onReverted?(changes: CellChange[]): void;
   /** Rows that had conflicts; the host should refetch them in full (see file header). */
   onRowStale?(rowIds: string[]): void;
+  /**
+   * Per-cell write check (permission edit + settable + not formula, see
+   * `createCellAccess`). Called at submit time for every change; a false
+   * result (or a row missing from the row store) rejects the cell as
+   * "Read-only". Absent → no client-side check.
+   */
+  canEditCell?(row: Row, columnId: string): boolean;
   idFactory?(): string;
 }
+
+/** `ChangeResult.errors[i].message` for cells the controller rejected client-side. */
+export const READ_ONLY_MESSAGE = "Read-only";
 
 export interface SubmitOutcome {
   result: ChangeResult;
   batch: ChangeBatch;
   vetoed: boolean;
+  /**
+   * Cells rejected client-side by `canEditCell` (also listed in
+   * `result.errors` with `READ_ONLY_MESSAGE`). Always set by
+   * `createEditController`.
+   */
+  readOnly?: CellRef[];
 }
 
 export interface EditController<Row extends GridRow = GridRow> {
@@ -295,16 +321,42 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     return { batch, result, changedRowIds, changedCells, formulaDependents };
   };
 
+  /** Splits `changes` by the client write check; `rejected` collects distinct refused cells. */
+  const enforce = (changes: CellChange[], rejected: Map<string, CellRef>): CellChange[] => {
+    const check = opts.canEditCell;
+    if (!check) return changes;
+    const allowed: CellChange[] = [];
+    for (const c of changes) {
+      const row = rowStore.getRow(c.rowId);
+      if (row && check(row, c.columnId)) allowed.push(c);
+      else if (!rejected.has(kOf(c))) rejected.set(kOf(c), ref(c));
+    }
+    return allowed;
+  };
+
   async function submit(changes: CellChange[], source: ChangeSource): Promise<SubmitOutcome> {
-    const built = buildBatch(changes, source);
+    const rejected = new Map<string, CellRef>();
+    const built = buildBatch(enforce(changes, rejected), source);
     let batch = built;
+    const readOnlyErrors = (): ChangeResult["errors"] =>
+      [...rejected.values()].map((c) => ({ ...c, message: READ_ONLY_MESSAGE }));
+    const withReadOnly = (r: ChangeResult): ChangeResult =>
+      rejected.size === 0 ? r : { ...r, errors: [...readOnlyErrors(), ...r.errors] };
+    const readOnly = (): CellRef[] => [...rejected.values()];
 
     // 1. Veto / transform.
-    const before = getEvents()?.beforeCellsChange;
+    const allRejected = built.changes.length === 0 && rejected.size > 0;
+    const before = allRejected ? undefined : getEvents()?.beforeCellsChange;
     if (before) {
       const decided = await before(built);
-      if (decided === false) return { result: emptyResult(), batch: built, vetoed: true };
-      if (decided) batch = decided;
+      if (decided === false) return { result: withReadOnly(emptyResult()), batch: built, vetoed: true, readOnly: readOnly() };
+      if (decided) batch = { ...decided, changes: enforce(decided.changes, rejected) };
+    }
+
+    if (batch.changes.length === 0 && rejected.size > 0) {
+      const result = withReadOnly(emptyResult());
+      getEvents()?.onCellsChange?.(result, batch);
+      return { result, batch, vetoed: false, readOnly: readOnly() };
     }
 
     // 2. Optimistic apply (immediate).
@@ -355,8 +407,9 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
         release(ticket, spans);
         finish();
         if (reverted.length > 0) opts.onReverted?.(reverted);
+        result = withReadOnly(result);
         getEvents()?.onCellsChange?.(result, batch);
-        return { result, batch, vetoed: false };
+        return { result, batch, vetoed: false, readOnly: readOnly() };
       }
 
       // 4. Applied.
@@ -413,10 +466,11 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     await Promise.all(defaults);
 
     // 7. Notify.
+    result = withReadOnly(result);
     events?.onCellsChange?.(result, batch);
 
     // 8.
-    return { result, batch, vetoed: false };
+    return { result, batch, vetoed: false, readOnly: readOnly() };
   }
 
   return { submit, buildBatch };

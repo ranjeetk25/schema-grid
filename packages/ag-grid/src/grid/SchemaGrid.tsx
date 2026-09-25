@@ -35,7 +35,7 @@ import { createAnnouncer, type Politeness, savedAnnouncement } from "../a11y/ann
 import { LiveAnnouncer } from "../a11y/LiveAnnouncer";
 import type { AppliedInfo } from "../editing/editController";
 import { FullWidthRowRenderer } from "../grouping/GroupRowRenderer";
-import type { GridRow, ViewDef } from "../internal/core";
+import type { DataSourceCapabilities, EffectiveCapabilities, GridRow, ViewDef } from "../internal/core";
 import { wrapWithCellShell } from "../range/CellShell";
 import { RANGE_CELL_CLASS_RULES } from "../range/useRangeSelection";
 import { SG_CLASSES, SG_KEYFRAMES_CSS } from "../theme/classNames";
@@ -68,6 +68,10 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   refetch(): Promise<void>;
   stores: SchemaGridStores<Row>;
   announce(message: string, politeness?: Politeness): void;
+  /** Column options ∩ data-source capabilities (defaults until they load). */
+  effectiveCapabilities: EffectiveCapabilities;
+  /** The data source's raw capabilities; undefined until loaded. */
+  capabilities: DataSourceCapabilities | undefined;
 }
 
 export type SchemaGridComponent = <Row extends GridRow = GridRow>(
@@ -126,6 +130,8 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       refetch: grid.refetch,
       stores: grid.stores,
       announce,
+      effectiveCapabilities: grid.effectiveCapabilities,
+      capabilities: grid.capabilities,
     }),
     [
       grid.api,
@@ -136,6 +142,8 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       grid.refetch,
       grid.stores,
       announce,
+      grid.effectiveCapabilities,
+      grid.capabilities,
     ],
   );
 

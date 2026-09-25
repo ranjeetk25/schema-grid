@@ -105,6 +105,8 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
     close();
   };
   const showGroup = typeof actions.groupBy === "function" && canGroup;
+  // `sortable: false` / capability-limited columns: no sort section at all (v0.2 C1).
+  const canSort = actions.canSort !== false;
   const showEdit = typeof actions.editColumn === "function";
   const showInsert = typeof actions.insertColumn === "function";
 
@@ -143,20 +145,24 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
           anchor.focus?.({ preventScroll: true });
         }}
       >
-        <Item
-          icon={<ArrowUpNarrowWideIcon />}
-          label="Sort ascending"
-          checked={sortState === "asc"}
-          onSelect={run(() => actions.sortAsc())}
-        />
-        <Item
-          icon={<ArrowDownWideNarrowIcon />}
-          label="Sort descending"
-          checked={sortState === "desc"}
-          onSelect={run(() => actions.sortDesc())}
-        />
-        <Item icon={<XIcon />} label="Clear sort" disabled={sortState === null} onSelect={run(() => actions.clearSort())} />
-        <DropdownMenuSeparator />
+        {canSort ? (
+          <>
+            <Item
+              icon={<ArrowUpNarrowWideIcon />}
+              label="Sort ascending"
+              checked={sortState === "asc"}
+              onSelect={run(() => actions.sortAsc())}
+            />
+            <Item
+              icon={<ArrowDownWideNarrowIcon />}
+              label="Sort descending"
+              checked={sortState === "desc"}
+              onSelect={run(() => actions.sortDesc())}
+            />
+            <Item icon={<XIcon />} label="Clear sort" disabled={sortState === null} onSelect={run(() => actions.clearSort())} />
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <Item icon={<ArrowLeftToLineIcon />} label="Pin left" checked={pinnedState === "left"} onSelect={run(() => actions.pinLeft())} />
         <Item icon={<ArrowRightToLineIcon />} label="Pin right" checked={pinnedState === "right"} onSelect={run(() => actions.pinRight())} />
         <Item icon={<PinOffIcon />} label="Unpin" disabled={pinnedState === null} onSelect={run(() => actions.unpin())} />

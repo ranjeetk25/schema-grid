@@ -20,7 +20,7 @@ export interface CreateRowsOptions {
 
 /**
  * Inserts rows at version 1. Each cell comes from the partial (must be editable
- * for the user, never a formula), else `ColumnDef.defaultValue`, else the type's
+ * for the user, never a formula nor `settable: false`), else `ColumnDef.defaultValue`, else the type's
  * `defaultValue(config)`. Invalid/unknown/non-editable input throws
  * `RowValidationError` before anything is written. Logs one `create` entry per row.
  */
@@ -42,7 +42,8 @@ export async function createRows(
       const column = byKey.get(key);
       if (!column) throw new RowValidationError(rowIndex, key, "Unknown column");
       if (column.type === "formula") throw new RowValidationError(rowIndex, column.id, "Column is read-only (formula)");
-      if (ctx.resolver({ user: ctx.user, column }) !== "edit") {
+      // `settable: false` rejects explicit values only; its default below is still written (v0.2 C1).
+      if (ctx.resolver({ user: ctx.user, column }) !== "edit" || column.settable === false) {
         throw new RowValidationError(rowIndex, column.id, "Column is read-only");
       }
     }

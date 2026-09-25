@@ -1,4 +1,5 @@
 import type { LinkRef, Option } from "../common/types";
+import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { DataSource, RowPartial } from "../datasource/types";
 import type { GridQuery, QueryResult } from "../query/types";
 import type { ChangeBatch, ChangeFeedEntry, ChangeResult, GridRow } from "../rows/types";
@@ -15,8 +16,11 @@ import { wireSchemas } from "./schemas";
 export type GridTransport = <Op extends GridOperation>(op: Op, input: WireInput<Op>) => Promise<unknown>;
 
 export interface RemoteDataSourceOptions {
-  /** Which optional operations the server implements. Default: all true. */
-  supports?: Partial<Record<OptionalGridOperation, boolean>>;
+  /**
+   * Which optional operations the server implements. Default: all true.
+   * `capabilities: false` for servers older than v0.2 (the grid then infers them).
+   */
+  supports?: Partial<Record<OptionalGridOperation | "capabilities", boolean>>;
   /** Validate responses against the wire schemas. Default true. */
   validateOutput?: boolean;
 }
@@ -66,7 +70,7 @@ export function createRemoteDataSource(
     return raw as WireOutput<Op>;
   }
 
-  const supports = (op: OptionalGridOperation) => options.supports?.[op] !== false;
+  const supports = (op: OptionalGridOperation | "capabilities") => options.supports?.[op] !== false;
 
   const ds: DataSource<GridRow> = {
     fetch: (query: GridQuery): Promise<QueryResult<GridRow>> => call("fetch", query),
@@ -88,6 +92,9 @@ export function createRemoteDataSource(
   }
   if (supports("lookup")) {
     ds.lookup = (columnId: string, search: string): Promise<LinkRef[]> => call("lookup", { columnId, search });
+  }
+  if (supports("capabilities")) {
+    ds.capabilities = (): Promise<DataSourceCapabilities> => call("capabilities", null);
   }
   return ds;
 }

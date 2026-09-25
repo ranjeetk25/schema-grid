@@ -1,14 +1,15 @@
 import type { LinkRef, Option } from "../common/types";
+import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { RowPartial } from "../datasource/types";
 import type { GridSchema } from "../schema/types";
 import type { GridQuery, QueryResult } from "../query/types";
 import type { ChangeBatch, ChangeFeedEntry, ChangeResult, GridRow } from "../rows/types";
 
 /**
- * Every wire operation: the `DataSource` operations (spec §4.6) followed by
- * the grid-level schema operations (`getSchema`, `updateSchema`) that a grid
- * registry (`defineGrid` / `createGridRegistry`) serves. Treat the list as a
- * set — later versions append operations.
+ * Every wire operation: the `DataSource` operations (spec §4.6, plus the v0.2
+ * `capabilities` op) followed by the grid-level schema operations (`getSchema`,
+ * `updateSchema`) that a grid registry (`defineGrid` / `createGridRegistry`) serves.
+ * Treat the list as a set and refer to operations by name, never by index.
  */
 export const GRID_OPERATIONS = [
   "fetch",
@@ -19,13 +20,18 @@ export const GRID_OPERATIONS = [
   "getOptions",
   "createOption",
   "lookup",
+  "capabilities",
   "getSchema",
   "updateSchema",
 ] as const;
 
 export type GridOperation = (typeof GRID_OPERATIONS)[number];
 
-/** Operations a `DataSource` may omit. */
+/**
+ * Operations a `DataSource` may omit (the handler answers 501 for them).
+ * `capabilities` is optional on a `DataSource` too, but the handler answers
+ * it with `inferCapabilities` instead.
+ */
 export const OPTIONAL_GRID_OPERATIONS = ["getChanges", "getOptions", "createOption", "lookup"] as const;
 
 export type OptionalGridOperation = (typeof OPTIONAL_GRID_OPERATIONS)[number];
@@ -52,7 +58,7 @@ export function isGridSchemaOperation(value: unknown): value is GridSchemaOperat
 /**
  * JSON wire shape of every operation. Single-argument operations send the
  * argument itself; multi-argument ones send a named object. `deleteRows`
- * answers `null` (JSON has no `undefined`).
+ * answers `null` (JSON has no `undefined`); `capabilities` takes `null`.
  */
 export interface GridWireContract {
   fetch: { input: GridQuery; output: QueryResult<GridRow> };
@@ -63,6 +69,7 @@ export interface GridWireContract {
   getOptions: { input: { columnId: string; search?: string }; output: Option[] };
   createOption: { input: { columnId: string; label: string }; output: Option };
   lookup: { input: { columnId: string; search: string }; output: LinkRef[] };
+  capabilities: { input: null; output: DataSourceCapabilities };
   /** Grid-level: the grid's current schema. Input `null`. */
   getSchema: { input: null; output: GridSchema };
   /** Grid-level: replace the schema (`schemaVersion` must be current); answers the stored schema (version bumped). */

@@ -1,5 +1,5 @@
 import { ActionIcon, Button, Group, SegmentedControl, Stack, Text, Tooltip } from "@mantine/core";
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { IconPlus, IconX } from "../internal/icons";
 import type { ReactNode } from "react";
 import type { DataSource, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";

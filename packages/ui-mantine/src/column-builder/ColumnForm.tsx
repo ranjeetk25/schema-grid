@@ -16,7 +16,7 @@ import {
   UnstyledButton,
   useCombobox,
 } from "@mantine/core";
-import { IconCheck, IconChevronDown, IconChevronRight, IconLock, IconPencil, IconSearch } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconChevronRight, IconLock, IconPencil, IconSearch } from "../internal/icons";
 import { type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useEditorStyles } from "../editors/EditorCard";
 import type { AccessMap } from "../internal/access";

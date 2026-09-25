@@ -84,6 +84,15 @@ function assertVisible(ids: string[], usage: PermissionUsage, schema: GridSchema
   if (hidden.length > 0) throw new PermissionError(hidden, usage);
 }
 
+/** Rejects sort on readable columns declared `sortable: false` (v0.2 C1). Runs after the hidden checks. */
+function assertSortable(ids: string[], schema: GridSchema): void {
+  const unsortable = new Set(schema.columns.filter((c) => c.sortable === false).map((c) => c.id));
+  const bad = unique(ids.filter((id) => unsortable.has(id)));
+  if (bad.length > 0) {
+    throw new PermissionError(bad, "sort", `Column(s) cannot be sorted: ${bad.join(", ")}`, "UNSORTABLE_COLUMN");
+  }
+}
+
 function unknownColumnErrors(ids: string[], schema: GridSchema, field: string): CoreFilterValidationError[] {
   const known = new Set(schema.columns.map((c) => c.id));
   const out: CoreFilterValidationError[] = [];
@@ -153,6 +162,11 @@ function validate(filter: FilterNode | null, ctx: ServerContext, readable: Reado
  * Enforces column permissions for everything a query references, BEFORE any
  * SQL is built. Hidden columns in filter / sort / groupBy / aggregations throw
  * `PermissionError` (checked before validation, so the error type is stable).
+ * Then sort on a `sortable: false` column throws `PermissionError` with code
+ * `UNSORTABLE_COLUMN` (wire 400); `filterable: false` is rejected by core
+ * `validateFilter` (`unfilterableColumn` → `FilterValidationError`). Free-text
+ * search (`translateSearch`) ignores `filterable`: it still covers every
+ * readable column of a searchable storage kind.
  * Then core `validateFilter` runs with the readable ids; its errors are wrapped
  * in `FilterValidationError`.
  */
@@ -172,6 +186,7 @@ export function assertQueryAccess(
   assertVisible(sortIds, "sort", schema, access);
   assertVisible(groupIds, "groupBy", schema, access);
   assertVisible(aggIds, "aggregate", schema, access);
+  assertSortable(sortIds, schema);
 
   const readable = readableColumnIds(access);
   const errors = [

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("subpath exports", () => {
@@ -48,5 +50,13 @@ describe("subpath exports", () => {
     ]) {
       expect(m, name).toHaveProperty(name);
     }
+  });
+});
+
+describe("SCHEMA_GRID_UI_SHADCN_VERSION", () => {
+  it("equals the package.json version (injected via tsup/vitest `define`)", async () => {
+    const { version } = JSON.parse(readFileSync(join(__dirname, "../package.json"), "utf8")) as { version: string };
+    const mod = await import("./index");
+    expect(mod.SCHEMA_GRID_UI_SHADCN_VERSION).toBe(version);
   });
 });

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 describe("public entry points", () => {
@@ -144,5 +145,13 @@ describe("public entry points", () => {
     vi.doUnmock("drizzle-orm");
     vi.doUnmock("drizzle-orm/mysql-core");
     vi.resetModules();
+  });
+});
+
+describe("SCHEMA_GRID_SERVER_VERSION", () => {
+  it("equals the package.json version (injected via tsup/vitest `define`)", async () => {
+    const { version } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
+    const mod = await import("../../src/index");
+    expect(mod.SCHEMA_GRID_SERVER_VERSION).toBe(version);
   });
 });

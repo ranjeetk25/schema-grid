@@ -65,9 +65,9 @@ const emptyCondition = (): DraftCondition => ({
 // Columns / operators / values
 // ---------------------------------------------------------------------------
 
-/** Columns that may appear in a filter picker: readable ones only (fail closed). */
+/** Columns that may appear in a filter picker: readable ones only (fail closed), minus `filterable: false` (v0.2 C1). */
 export function filterableColumns(schema: GridSchema, access: AccessMap): ColumnDef[] {
-  return readableColumns(schema, access);
+  return readableColumns(schema, access).filter((c) => c.filterable !== false);
 }
 
 /** Operators for a column; formula columns use their `config.resultType`'s operators (core `getColumnOperators`). */

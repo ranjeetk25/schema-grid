@@ -132,6 +132,22 @@ const changeResult = z.object({
   versions: z.record(z.string(), z.number()).optional(),
 });
 
+const columnScope = z.union([z.literal("all"), z.object({ columnIds: z.array(id) })]);
+
+const capabilities = z.object({
+  maxPageSize: z.number().int().positive(),
+  sort: columnScope,
+  filter: columnScope,
+  operators: z.record(z.string(), z.array(z.string())).optional(),
+  groupBy: z.boolean(),
+  search: z.boolean(),
+  changeFeed: z.union([z.boolean(), z.literal("updates-only")]),
+  write: z.object({ cells: z.boolean(), createRows: z.boolean(), deleteRows: z.boolean() }),
+  options: z.boolean(),
+  lookup: z.boolean(),
+  export: z.object({ maxRows: z.number().int().positive().optional() }),
+});
+
 const option = z.object({ id, label: z.string(), color: z.string().optional() });
 const linkRef = z.object({ id, label: z.string() });
 
@@ -207,6 +223,10 @@ export const wireSchemas: WireSchemas = {
   lookup: {
     input: z.object({ columnId: id, search: z.string() }),
     output: z.array(linkRef),
+  },
+  capabilities: {
+    input: z.null(),
+    output: as<GridWireContract["capabilities"]["output"]>(capabilities),
   },
   getSchema: {
     // `null` on the wire; an absent body (undefined) is accepted and normalised to null.

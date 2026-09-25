@@ -1,5 +1,5 @@
 import { Select, SegmentedControl, Stack, Table, Text } from "@mantine/core";
-import { IconArrowRight } from "@tabler/icons-react";
+import { IconArrowRight } from "../../internal/icons";
 import type { ColumnDef } from "../../internal/core-contracts";
 import type { ColumnMapping, ImportMode } from "../../internal/io-contracts";
 import type { MappingErrors } from "../import-model";

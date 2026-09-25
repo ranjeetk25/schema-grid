@@ -8,8 +8,9 @@ export function isReadable(access: AccessMap, columnId: string): boolean {
   return a === "read" || a === "edit";
 }
 
+/** Edit access, not a formula, and not `settable: false` (v0.2 C1; defensive for access maps not built by core). */
 export function isWritable(access: AccessMap, column: ColumnDef): boolean {
-  return access.get(column.id) === "edit" && column.type !== "formula";
+  return access.get(column.id) === "edit" && column.type !== "formula" && column.settable !== false;
 }
 
 /** Non-hidden columns in schema order (by `order`, then declaration). Use for every picker. */
@@ -17,7 +18,7 @@ export function readableColumns(schema: GridSchema, access: AccessMap): ColumnDe
   return [...schema.columns].filter((c) => isReadable(access, c.id)).sort((a, b) => a.order - b.order);
 }
 
-/** Editable, non-formula, non-hidden columns (import targets, etc.). */
+/** Editable, non-formula, non-hidden, settable columns (import targets, etc.). */
 export function writableColumns(schema: GridSchema, access: AccessMap): ColumnDef[] {
   return readableColumns(schema, access).filter((c) => isWritable(access, c));
 }

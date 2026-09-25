@@ -14,7 +14,7 @@ import {
   IconPinnedOff,
   IconSortAscending,
   IconSortDescending,
-} from "@tabler/icons-react";
+} from "../internal/icons";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { HeaderMenuProps } from "./contracts";
@@ -45,7 +45,7 @@ interface Rect {
  * Mantine column menu for ag-grid's `SchemaHeader` slot:
  * `<SchemaGrid headerMenu={MantineHeaderMenu} …/>`.
  *
- * Sections: sort · filter / group · pin · autosize · edit / insert · hide.
+ * Sections: sort (only when `actions.canSort`) · filter / group · pin · autosize · edit / insert · hide.
  * Host-only actions (`groupBy`, `editColumn`, `insertColumn`) appear only when
  * the grid got the matching callback. The menu portals to `document.body`
  * (it is not inside an AG Grid popup, so that is safe) and anchors to a fixed
@@ -97,6 +97,9 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
   const sort = actions.sortState;
   const hasHostEdits = Boolean(actions.editColumn || actions.insertColumn);
   const insert = actions.insertColumn;
+  // `sortable: false` / capability-limited columns: no sort section at all (v0.2 C1).
+  const canSort = actions.canSort !== false;
+  const hasFilterGroup = Boolean(actions.canFilter || (actions.groupBy && actions.canGroup));
 
   return createPortal(
     <Menu
@@ -121,19 +124,23 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
         />
       </Menu.Target>
       <Menu.Dropdown ref={dropdownRef} data-sg-header-menu="">
-        <Menu.Item leftSection={<IconSortAscending {...ICON} />} rightSection={sort === "asc" ? check : null} onClick={actions.sortAsc}>
-          Sort ascending
-        </Menu.Item>
-        <Menu.Item leftSection={<IconSortDescending {...ICON} />} rightSection={sort === "desc" ? check : null} onClick={actions.sortDesc}>
-          Sort descending
-        </Menu.Item>
-        {sort ? (
-          <Menu.Item leftSection={<IconArrowsSort {...ICON} />} onClick={actions.clearSort}>
-            Clear sort
-          </Menu.Item>
+        {canSort ? (
+          <>
+            <Menu.Item leftSection={<IconSortAscending {...ICON} />} rightSection={sort === "asc" ? check : null} onClick={actions.sortAsc}>
+              Sort ascending
+            </Menu.Item>
+            <Menu.Item leftSection={<IconSortDescending {...ICON} />} rightSection={sort === "desc" ? check : null} onClick={actions.sortDesc}>
+              Sort descending
+            </Menu.Item>
+            {sort ? (
+              <Menu.Item leftSection={<IconArrowsSort {...ICON} />} onClick={actions.clearSort}>
+                Clear sort
+              </Menu.Item>
+            ) : null}
+          </>
         ) : null}
 
-        {actions.canFilter || (actions.groupBy && actions.canGroup) ? <Menu.Divider /> : null}
+        {canSort && hasFilterGroup ? <Menu.Divider /> : null}
         {actions.canFilter ? (
           <Menu.Item leftSection={<IconFilter {...ICON} />} rightSection={<Hint>{isMac() ? "⌘↵" : "Ctrl+↵"}</Hint>} onClick={actions.openFilter}>
             Filter…
@@ -145,7 +152,7 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
           </Menu.Item>
         ) : null}
 
-        <Menu.Divider />
+        {canSort || hasFilterGroup ? <Menu.Divider /> : null}
         <Menu.Item leftSection={<IconPinned {...ICON} />} rightSection={pinned === "left" ? check : null} onClick={actions.pinLeft}>
           Pin left
         </Menu.Item>

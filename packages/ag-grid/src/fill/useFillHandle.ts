@@ -25,7 +25,10 @@
  *   inside `.sg-root`) plus a document `keydown` listener (focus elsewhere).
  * - Read-only targets (and formula columns) are skipped by `planFill`. The
  *   outcome is announced once the save settles, as ONE polite message
- *   ("Fill: 3 cells filled, 1 read-only cell skipped, saved"), and handed to `onReport` as a `FillReport`. It is deliberately NOT routed
+ *   ("Fill: 3 cells filled, 1 read-only cell skipped, saved"), and handed to `onReport` as a `FillReport`
+ *   at the same time (synchronously when nothing is submitted). Cells the
+ *   controller rejected as read-only at submit time (`outcome.readOnly`) count
+ *   as skipped, not filled. It is deliberately NOT routed
  *   through `onClipboardReport`: that callback's `pastedCells` would make
  *   hosts miscount pastes. A public `onFillReport` prop can forward `onReport`
  *   later if hosts need it.
@@ -131,9 +134,9 @@ export function computeFillTarget(
 /** "Fill: 3 cells filled, 1 read-only cell skipped"; the builder lives in `a11y/announcer` (re-exported here). */
 export { fillMessage };
 
-/** Distinct cells in an applied change list. */
-function countAppliedCells(applied: readonly { rowId: string; columnId: string }[]): number {
-  return new Set(applied.map((c) => `${c.rowId}\u0000${c.columnId}`)).size;
+/** Distinct cells in a cell list. */
+function countDistinctCells(cells: readonly { rowId: string; columnId: string }[]): number {
+  return new Set(cells.map((c) => `${c.rowId}\u0000${c.columnId}`)).size;
 }
 
 interface FillSession {
@@ -201,21 +204,26 @@ export function useFillHandle<Row extends GridRow = GridRow>(
       rangeStore.setAnchor({ rowIndex: target.rowStart, colId: firstCol });
       rangeStore.setFocus({ rowIndex: target.rowEnd, colId: lastCol });
     }
-    const announce = (saved?: number) => {
-      const message = fillMessage(changes.length, skippedReadOnly, saved);
+    // Cells the controller rejected as read-only at submit time (v0.2 C3) move
+    // from "filled" to "skipped" in both the announcement and the report.
+    const report = (rejected = 0, saved?: number) => {
+      const filled = Math.max(0, changes.length - rejected);
+      const skipped = skippedReadOnly + rejected;
+      const message = fillMessage(filled, skipped, saved);
       if (message) latest.current.announce?.(message, "polite");
+      latest.current.onReport?.({ axis, filledCells: filled, skippedReadOnly: skipped });
     };
     if (changes.length > 0) {
-      // Announce once the save settles, folding it in: a separate "Saved N cells"
+      // Report once the save settles, folding it in: a separate "Saved N cells"
       // would overwrite the fill summary in the polite live region.
       void o.controller.submit(changes, "fill").then(
-        (outcome) => announce(outcome.vetoed ? 0 : countAppliedCells(outcome.result.applied)),
-        () => announce(),
+        (outcome) =>
+          report(countDistinctCells(outcome.readOnly ?? []), outcome.vetoed ? 0 : countDistinctCells(outcome.result.applied)),
+        () => report(),
       );
     } else {
-      announce();
+      report();
     }
-    o.onReport?.({ axis, filledCells: changes.length, skippedReadOnly });
   }, [apiRef, exit, rangeStore]);
 
   const onFillHandlePointerDown = useCallback(

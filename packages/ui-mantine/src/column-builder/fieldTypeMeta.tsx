@@ -16,7 +16,7 @@ import {
   IconUser,
   IconWorld,
   type Icon,
-} from "@tabler/icons-react";
+} from "../internal/icons";
 
 export interface FieldTypeMeta {
   icon: Icon;

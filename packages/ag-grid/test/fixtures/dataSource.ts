@@ -4,11 +4,13 @@
  */
 import { createInMemoryDataSource as createCoreInMemory } from "@ranjeetk25/schema-grid-core/memory";
 import { vi } from "vitest";
+import { normalizeCapabilities } from "../../src/internal/core";
 import type {
   ChangeBatch,
   ChangeFeedEntry,
   ChangeResult,
   DataSource,
+  DataSourceCapabilities,
   FieldTypeRegistry,
   GridQuery,
   GridRow,
@@ -30,9 +32,18 @@ export interface InMemoryOptions {
   links?: Record<string, LinkRef[]>;
   /** Artificial latency for every call. */
   delayMs?: number;
+  /**
+   * Exposes `capabilities()` (a spy in `calls.capabilities`). An object is
+   * handed to core's in-memory source (which also enforces `maxPageSize`); a
+   * function is called on every `capabilities()` (script rejections/changes).
+   */
+  capabilities?:
+    | Partial<DataSourceCapabilities>
+    | (() => Promise<Partial<DataSourceCapabilities>> | Partial<DataSourceCapabilities>);
 }
 
-export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<Required<DataSource<Row>>, "applyChanges"> {
+export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<Required<DataSource<Row>>, "applyChanges" | "capabilities"> {
+  capabilities?(): Promise<DataSourceCapabilities> | DataSourceCapabilities;
   /** Reports the new per-row `versions` (core `ChangeResult`, spec §4.5 addendum). */
   applyChanges(batch: ChangeBatch): Promise<ChangeResult>;
   /** Current server copy. */
@@ -53,6 +64,7 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<
     getOptions: ReturnType<typeof vi.fn>;
     createOption: ReturnType<typeof vi.fn>;
     lookup: ReturnType<typeof vi.fn>;
+    capabilities: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -74,6 +86,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     ...(opts.tz ? { timeZone: opts.tz } : {}),
     ...(opts.links ? { linkTargets: opts.links } : {}),
     ...(user ? { actor: { id: user.id } } : {}),
+    ...(opts.capabilities && typeof opts.capabilities === "object" ? { capabilities: opts.capabilities } : {}),
   });
   let failNext: Error | null = null;
   const scriptedErrors: { rowId: string; columnId: string; message: string }[] = [];
@@ -135,6 +148,12 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     getOptions: vi.fn(getOptions),
     createOption: vi.fn(createOption),
     lookup: vi.fn(lookup),
+    capabilities: vi.fn(async (): Promise<DataSourceCapabilities> => {
+      const scripted = opts.capabilities;
+      if (typeof scripted === "function") return normalizeCapabilities(await scripted());
+      if (!inner.capabilities) throw new Error("capabilities unsupported");
+      return inner.capabilities();
+    }),
   };
 
   return {
@@ -146,6 +165,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     getOptions: calls.getOptions,
     createOption: calls.createOption,
     lookup: calls.lookup,
+    ...(opts.capabilities ? { capabilities: calls.capabilities } : {}),
     calls,
     rows: () => inner.snapshot(),
     async remoteEdit(rowId, cells) {

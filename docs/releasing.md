@@ -106,28 +106,32 @@ Two related settings:
 
 Do these in order. Steps a to d happen once. Step e is the first release.
 
-### (a) Create the npm org `masai`
+### (a) The npm scope `@ranjeetk25`
 
-1. Sign in at <https://www.npmjs.com> with the account that should own the
-   packages. Turn on 2FA, which npm requires for org owners.
-2. Go to **Add Organization** at <https://www.npmjs.com/org/create>, name it
-   `masai`, and pick the free plan (unlimited public packages).
-3. Optionally add other maintainers under **Members**.
+The packages publish under `@ranjeetk25`, the personal scope of the npm user
+`ranjeetk25`, so no npm organization is needed:
 
-**If `masai` is taken or unavailable**, pick another scope (for example
-`masai-school`) and rename every reference in the repo:
+1. Sign in at <https://www.npmjs.com> as `ranjeetk25` and turn on 2FA.
+2. Scoped packages are private by default on npm; every package.json carries
+   `publishConfig: { "access": "public", "provenance": true }` (checked by
+   `bun run verify:pack`), so nothing else is required.
+
+**To move to an organization scope later** (for example `@masai-school`),
+create the org at <https://www.npmjs.com/org/create> and rename every
+reference in the repo:
 
 ```bash
-bun scripts/rename-scope.ts --to @masai-school            # dry run: lists files and counts
-bun scripts/rename-scope.ts --to @masai-school --write    # apply
+bun scripts/rename-scope.ts --from @ranjeetk25 --to @masai-school            # dry run: lists files and counts
+bun scripts/rename-scope.ts --from @ranjeetk25 --to @masai-school --write    # apply
 bun install && bun run typecheck && bun run test && bun run build && bun run verify:pack
 git diff    # review, then commit on a branch and open a PR
 ```
 
-The script only rewrites `@ranjeetk25/schema-grid…` tokens in git-tracked text
-files. It updates package names, imports, docs, the changeset `fixed` glob and
-the changeset front-matter. Anything else under `@masai/` is left alone. Update
-the scope in the admissions app's imports the same way.
+Pass `--from` explicitly: the script's default is the original `@masai` scope.
+It only rewrites `<from>/schema-grid…` tokens in git-tracked text files
+(package names, imports, docs, the changeset `fixed` glob and the changeset
+front-matter); anything else under `<from>/` is left alone. Update the scope in
+the admissions app's imports the same way.
 
 ### (b) Create an npm token and add it as `NPM_TOKEN`
 
@@ -137,8 +141,9 @@ the scope in the admissions app's imports the same way.
    - Name: `schema-grid GitHub Actions`
    - Expiration: the longest you accept (maximum 365 days; set a reminder to
      rotate it)
-   - Packages and scopes: **Read and write**, scope `@masai` (packages do not
-     exist yet, so select the scope, not individual packages)
+   - Packages and scopes: **Read and write**, scope `@ranjeetk25` (before the
+     first release the packages do not exist yet, so select the scope, not
+     individual packages)
    - Organizations: no access needed
    - Allowed IP ranges: leave empty (GitHub runners have no fixed IPs)
    - If the form offers **Bypass 2FA** / automation use, enable it. Without

@@ -1,5 +1,5 @@
 import { Avatar, Box, Button, Checkbox, ScrollArea, Stack, TextInput, useMantineTheme } from "@mantine/core";
-import { IconSearch } from "@tabler/icons-react";
+import { IconSearch } from "../internal/icons";
 import { useEffect, useMemo, useState } from "react";
 import type { FilterCondition, GridRow } from "../internal/core-contracts";
 import { resolveOptionColor } from "../internal/options";
