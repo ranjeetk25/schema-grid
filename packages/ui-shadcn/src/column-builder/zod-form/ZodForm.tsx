@@ -205,7 +205,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
     case "optionList":
       return (
         <OptionListField
-          label={label}
+          label={label === "Options" ? "Choices" : label}
           description={description}
           error={error}
           value={value}

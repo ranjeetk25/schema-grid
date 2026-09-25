@@ -52,7 +52,7 @@ describe("helpers", () => {
 describe("ZodForm", () => {
   it("renders the select configSchema as an option list with an add button", () => {
     renderUi(<ZodForm schema={selectSchema()} value={{}} onChange={vi.fn()} />);
-    expect(screen.getByText("Options")).toBeInTheDocument();
+    expect(screen.getByText("Choices")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add option" })).toBeInTheDocument();
   });
 

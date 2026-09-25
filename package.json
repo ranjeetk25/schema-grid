@@ -1,7 +1,10 @@
 {
   "name": "schema-grid",
   "private": true,
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "vitest run",
@@ -15,7 +18,10 @@
     "dev:api": "bun run --cwd apps/demo-api dev",
     "storybook": "bun run --cwd apps/storybook storybook",
     "build-storybook": "bun run --cwd apps/storybook build-storybook",
-    "e2e": "bun run --cwd apps/storybook e2e"
+    "e2e": "bun run --cwd apps/storybook e2e",
+    "storybook:shadcn": "bun run --cwd apps/storybook-shadcn storybook",
+    "build-storybook:shadcn": "bun run --cwd apps/storybook-shadcn build-storybook",
+    "e2e:shadcn": "bun run --cwd apps/storybook-shadcn e2e"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
@@ -32,5 +38,7 @@
     "@testing-library/jest-dom": "^6.5.0",
     "jsdom": "^25.0.0"
   },
-  "trustedDependencies": ["@biomejs/biome"]
+  "trustedDependencies": [
+    "@biomejs/biome"
+  ]
 }

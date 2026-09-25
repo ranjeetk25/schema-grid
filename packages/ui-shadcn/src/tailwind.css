@@ -125,6 +125,10 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+  /* Inside a grid cell, keep AG Grid's row-height line box so text renderers centre vertically like badges. */
+  .ag-cell .sg-ui {
+    line-height: inherit;
+  }
   .sg-ui,
   .sg-ui *,
   .sg-ui ::before,
