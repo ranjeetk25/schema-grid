@@ -10,7 +10,9 @@ import {
   type FilterValidationError,
   type GridSchema,
   MAX_FILTER_DEPTH,
+  isFilterGroup,
   validateFilter,
+  valueMatchesKind,
 } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { FilterGroupEditor } from "./FilterGroupEditor";
@@ -23,6 +25,7 @@ import {
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
   filterableColumns,
+  findOperator,
   fromDraftIndexed,
   operatorsFor,
   removeNode,
@@ -56,7 +59,7 @@ export interface FilterDraftApi {
   /** Columns offered by the column picker (readable only). */
   columns: ColumnDef[];
   maxDepth: number;
-  operatorsForColumnId(columnId: string | null): FilterOperatorDef[];
+  operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
   addCondition(groupId: string): void;
   addGroup(groupId: string): void;
   remove(id: string): void;
@@ -80,6 +83,28 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
     out.set(id, row);
   }
   return out;
+}
+
+/**
+ * Core validation plus the UI's stricter completeness rule: a blank string is
+ * a valid single value for core, but an unfinished draft here.
+ */
+function draftErrors(node: FilterNode, ctx: DraftContext, readable: ReadonlySet<string>): FilterValidationError[] {
+  const errors = validateFilter(node, ctx.schema, ctx.registry, readable);
+  const flagged = new Set(errors.map((e) => e.path.join(".")));
+  const walk = (n: FilterNode, path: number[]) => {
+    if (isFilterGroup(n)) {
+      n.children.forEach((c, i) => walk(c, [...path, i]));
+      return;
+    }
+    if (flagged.has(path.join("."))) return;
+    const def = findOperator(n.columnId, n.operator, ctx);
+    if (def && !valueMatchesKind(def.valueKind, n.value)) {
+      errors.push({ code: "valueKindMismatch", path, columnId: n.columnId, operator: n.operator, message: "A value is required" });
+    }
+  };
+  walk(node, []);
+  return errors;
 }
 
 /**
@@ -125,7 +150,7 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
       const { node } = fromDraftIndexed(next, ctx);
       let out: FilterNode | null | undefined;
       if (!node) out = null;
-      else if (validateFilter(node, schema, registry, readable).length === 0) out = node;
+      else if (draftErrors(node, ctx, readable).length === 0) out = node;
       if (out === undefined) return;
       const s = serialize(out);
       if (s === lastEmitted.current) return;
@@ -137,13 +162,13 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
 
   const errors = useMemo(() => {
     const { node, idByPath } = fromDraftIndexed(draft, ctx);
-    return node ? errorsToRows(validateFilter(node, schema, registry, readable), idByPath) : new Map<string, RowErrors>();
+    return node ? errorsToRows(draftErrors(node, ctx, readable), idByPath) : new Map<string, RowErrors>();
   }, [draft, ctx, schema, registry, readable]);
 
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, schema, registry) : [];
+      return column ? operatorsFor(column, registry) : [];
     },
     [schema, registry],
   );

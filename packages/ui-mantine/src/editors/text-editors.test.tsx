@@ -101,10 +101,10 @@ describe("EmailEditor", () => {
     const input = getByRole("textbox");
     expect(input).toHaveAttribute("inputmode", "email");
     await user.type(input, "abc");
-    expect(getByText(/not a valid email/i)).toBeInTheDocument();
+    expect(getByText(/invalid email address/i)).toBeInTheDocument();
     await user.clear(input);
     await user.type(input, "a@b.co");
-    expect(queryByText(/not a valid email/i)).not.toBeInTheDocument();
+    expect(queryByText(/invalid email address/i)).not.toBeInTheDocument();
   });
 });
 

@@ -2,12 +2,17 @@ import { Avatar, Group, Text } from "@mantine/core";
 import type { UserRef } from "../internal/core-contracts";
 import type { UiRendererProps } from "../internal/grid-contracts";
 
-const isUserRef = (v: unknown): v is UserRef => !!v && typeof v === "object" && "id" in v && "name" in v;
+/** Core `UserRef` plus an optional UI-only avatar. */
+type RenderableUser = UserRef & { avatarUrl?: string };
 
-/** Renders a user as an avatar (image, or initials when there is none) plus their name. */
-export function UserRenderer({ value }: UiRendererProps<string | UserRef, unknown>) {
+const isUserRef = (v: unknown): v is RenderableUser =>
+  !!v && typeof v === "object" && typeof (v as UserRef).id === "string";
+
+/** Renders a user as an avatar (image, or initials when there is none) plus their name (falls back to the id). */
+export function UserRenderer({ value }: UiRendererProps<RenderableUser | string, unknown>) {
   if (value === null || value === undefined || value === "") return null;
-  const user: UserRef = isUserRef(value) ? value : { id: String(value), name: String(value) };
+  const ref: RenderableUser = isUserRef(value) ? value : { id: String(value) };
+  const user = { ...ref, name: ref.name ?? ref.id };
 
   return (
     <Group gap="xs" wrap="nowrap">

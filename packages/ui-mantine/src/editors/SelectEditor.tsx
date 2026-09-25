@@ -3,10 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 import { createPopupEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
-import type { SelectOption } from "../internal/core-contracts";
+import type { Option } from "../internal/core-contracts";
 
 export interface SelectEditorConfig {
-  options?: SelectOption[];
+  options?: Option[];
   dynamic?: boolean;
 }
 
@@ -43,7 +43,7 @@ export function SelectEditor({
   const theme = useMantineTheme();
   // Static options follow `config` live (e.g. a column builder adding options); dynamic ones are fetched.
   const configOptions = useMemo(() => getSelectOptions(config), [config]);
-  const [fetched, setFetched] = useState<SelectOption[] | null>(null);
+  const [fetched, setFetched] = useState<Option[] | null>(null);
   const options = config?.dynamic ? (fetched ?? configOptions) : configOptions;
 
   const dynamic = config?.dynamic === true;
@@ -63,14 +63,14 @@ export function SelectEditor({
 
   return (
     <Select
-      data={options.map((o) => ({ value: o.value, label: o.label }))}
+      data={options.map((o) => ({ value: o.id, label: o.label }))}
       value={value}
       error={error}
       searchable
       comboboxProps={{ withinPortal: false }}
       defaultDropdownOpened={autoFocus !== false}
       renderOption={({ option }) => {
-        const match = options.find((o) => o.value === option.value);
+        const match = options.find((o) => o.id === option.value);
         return (
           <>
             <OptionColorDot color={resolveOptionColor(match, theme)} />

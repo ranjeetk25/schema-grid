@@ -138,9 +138,9 @@ describe("FilterBuilder", () => {
     const { user } = setup(null);
     await user.click(screen.getByRole("button", { name: "Add condition" }));
     await pick(user, "Column", "Payment status");
-    expect(screen.getByText("A value is required")).toBeInTheDocument();
+    expect(screen.getByText("Expected a single value")).toBeInTheDocument();
     await pick(user, "Value", "Paid");
-    expect(screen.queryByText("A value is required")).toBeNull();
+    expect(screen.queryByText("Expected a single value")).toBeNull();
   });
 
   it("toggling to OR updates the emitted op", async () => {
@@ -189,7 +189,7 @@ describe("FilterBuilder review follow-ups", () => {
       op: "and",
       children: [{ op: "or", children: [{ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] }] }],
     });
-    expect(screen.getByRole("alert")).toHaveTextContent(/nest at most 2/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/nested at most 2 levels/);
   });
 
   it("caps maxDepth at the core limit", () => {

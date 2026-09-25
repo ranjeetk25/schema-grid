@@ -28,7 +28,7 @@ describe("describeCondition", () => {
 
   it("formats range, none, multi and me operators", () => {
     expect(describeCondition({ columnId: FIXTURE_IDS.amount, operator: "between", value: { from: 100, to: 200 } }, schema, registry)).toMatch(
-      /^Amount between ₹\s?100 and ₹\s?200$/,
+      /^Amount is between ₹\s?100 and ₹\s?200$/,
     );
     expect(describeCondition({ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }, schema, registry)).toBe("Notes is empty");
     expect(

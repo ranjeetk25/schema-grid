@@ -1,6 +1,6 @@
 import { Box, Combobox, Group, InputBase, Loader, useCombobox, useMantineTheme } from "@mantine/core";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { Option, SelectOption } from "../internal/core-contracts";
+import type { Option } from "../internal/core-contracts";
 import { type UiEditorProps, createPopupEditor } from "../internal/grid-contracts";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 
@@ -15,7 +15,7 @@ export type CreatableSelectEditorProps = UiEditorProps<string, unknown>;
 const errorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : typeof err === "string" && err ? err : "Could not create option";
 
-function OptionDot({ option }: { option: SelectOption }) {
+function OptionDot({ option }: { option: Option }) {
   const theme = useMantineTheme();
   const color = resolveOptionColor(option, theme);
   const background = color in theme.colors ? `var(--mantine-color-${color}-filled)` : color;
@@ -42,13 +42,13 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   // Synchronous guard: state updates are too late to block a second submit.
   const creatingRef = useRef(false);
   const gridMode = autoFocus !== false;
-  const [created, setCreated] = useState<SelectOption[]>([]);
+  const [created, setCreated] = useState<Option[]>([]);
   const options = useMemo(() => {
     const base = getSelectOptions(config);
-    const extra = created.filter((c) => !base.some((b) => b.value === c.value));
+    const extra = created.filter((c) => !base.some((b) => b.id === c.id));
     return [...base, ...extra];
   }, [config, created]);
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find((o) => o.id === value);
   const valueLabel = selected?.label ?? (value == null || value === "" ? undefined : String(value));
 
   const [search, setSearch] = useState(gridMode ? "" : (valueLabel ?? ""));
@@ -79,11 +79,11 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
     else combobox.resetSelectedOption();
   }, [search]);
 
-  const pick = (option: SelectOption) => {
+  const pick = (option: Option) => {
     setCreateError(null);
     setSearch(option.label);
-    latest.current.onChange(option.value);
-    latest.current.onCommit(option.value);
+    latest.current.onChange(option.id);
+    latest.current.onCommit(option.id);
     comboboxRef.current.closeDropdown();
   };
 
@@ -114,7 +114,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
     // The option exists server-side now, so always report it.
     latest.current.onOptionCreate?.(option);
     if (!mounted.current) return;
-    setCreated((prev) => [...prev, { label: option.label, value: option.value, color: option.color }]);
+    setCreated((prev) => [...prev, { id: option.id, label: option.label, color: option.color }]);
     setCreating(false);
     pick(option);
   };
@@ -125,7 +125,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
       void create(query);
       return;
     }
-    const option = options.find((o) => o.value === submitted);
+    const option = options.find((o) => o.id === submitted);
     if (option) pick(option);
   };
 
@@ -172,7 +172,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
       <Combobox.Dropdown>
         <Combobox.Options mah={240} style={{ overflowY: "auto" }}>
           {filtered.map((option) => (
-            <Combobox.Option value={option.value} key={option.value} active={option.value === value} disabled={creating}>
+            <Combobox.Option value={option.id} key={option.id} active={option.id === value} disabled={creating}>
               <Group gap={8} wrap="nowrap">
                 <OptionDot option={option} />
                 <span>{option.label}</span>

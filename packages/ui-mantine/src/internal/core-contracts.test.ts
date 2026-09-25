@@ -1,24 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
-  BUILT_IN_FIELD_TYPE_IDS,
+  BUILTIN_FIELD_TYPE_IDS,
   type ColumnDef,
   type GridSchema,
+  RELATIVE_DATE_PRESETS,
   createDefaultRegistry,
   createRolePermissionResolver,
+  currencySymbol,
   dependencies,
+  getColumnOperators,
   inferResultType,
+  isFilterGroup,
   isFormulaError,
   parseFormula,
   resolveColumnAccess,
   validateFilter,
+  valueMatchesKind,
 } from "./core-contracts";
+
+const registry = createDefaultRegistry();
 
 const col = (id: string, type: string, extra: Partial<ColumnDef> = {}): ColumnDef => ({
   id,
   key: id,
   label: id,
   type,
-  config: {},
+  config: registry.get(type)?.defaultConfig ?? {},
   order: 0,
   createdAt: "",
   updatedAt: "",
@@ -29,51 +36,42 @@ const schema: GridSchema = {
   id: "s",
   schemaVersion: 1,
   columns: [
-    col("pay", "select", { config: { options: [{ label: "Paid", value: "paid" }] } }),
+    col("pay", "select", { config: { options: [{ id: "paid", label: "Paid" }] } }),
     col("call", "date"),
     col("amount", "currency"),
     col("notes", "longText"),
     col("secret", "text", { permissions: { read: { roles: ["admin"] }, edit: { roles: ["admin"] } } }),
-    col("total", "formula", { formula: "{amount} * 2" }),
+    col("total", "formula", { formula: "{amount} * 2", config: { resultType: "number" } }),
   ],
 };
 
-describe("core-contracts fallback", () => {
-  const registry = createDefaultRegistry();
-
-  it("registers all 16 built-ins with label, configSchema and operators", () => {
-    expect(registry.list().map((t) => t.id)).toEqual([...BUILT_IN_FIELD_TYPE_IDS]);
-    for (const t of registry.list()) {
-      expect(t.label).toBeTruthy();
-      expect(t.configSchema.safeParse(t.defaultConfig).success).toBe(true);
-    }
-    expect(registry.get("number")?.aggregations).toContain("sum");
-    expect(registry.get("currency")?.aggregations).toContain("sum");
+describe("core-contracts (real @masai/schema-grid-core)", () => {
+  it("re-exports the default registry with all 16 built-ins", () => {
+    expect(registry.list().map((t) => t.id)).toEqual([...BUILTIN_FIELD_TYPE_IDS]);
     expect(registry.get("select")?.operators.find((o) => o.id === "isNot")?.negative).toBe(true);
   });
 
-  it("formats select labels and INR currency", () => {
-    const sel = registry.get("select");
-    expect(sel?.format("paid", { options: [{ label: "Paid", value: "paid" }] })).toBe("Paid");
-    const cur = registry.get("currency");
-    expect(cur?.format(123456, cur.defaultConfig)).toBe("₹1,23,456");
+  it("formula operators follow config.resultType via getColumnOperators", () => {
+    const total = schema.columns.find((c) => c.id === "total") as ColumnDef;
+    expect(getColumnOperators(total, registry).map((o) => o.id)).toContain("between");
   });
 
   it("validateFilter accepts the §8 filter and flags problems", () => {
-    const readable = ["pay", "call", "amount", "notes", "total"];
-    const ok = validateFilter(
-      {
-        op: "and",
-        children: [
-          { columnId: "pay", operator: "isNot", value: "paid" },
-          { columnId: "call", operator: "isWithin", value: { relative: "yesterday" } },
-        ],
-      },
-      schema,
-      registry,
-      readable,
-    );
-    expect(ok).toEqual([]);
+    const readable = new Set(["pay", "call", "amount", "notes", "total"]);
+    expect(
+      validateFilter(
+        {
+          op: "and",
+          children: [
+            { columnId: "pay", operator: "isNot", value: "paid" },
+            { columnId: "call", operator: "isWithin", value: { relative: "yesterday" } },
+          ],
+        },
+        schema,
+        registry,
+        readable,
+      ),
+    ).toEqual([]);
     const bad = validateFilter(
       {
         op: "and",
@@ -81,7 +79,7 @@ describe("core-contracts fallback", () => {
           { columnId: "nope", operator: "is" },
           { columnId: "secret", operator: "is", value: "x" },
           { columnId: "pay", operator: "bogus" },
-          { columnId: "pay", operator: "is", value: "" },
+          { columnId: "pay", operator: "is", value: null },
           { op: "or", children: [{ op: "and", children: [] }] },
           { columnId: "total", operator: "gt", value: 3 },
         ],
@@ -97,27 +95,16 @@ describe("core-contracts fallback", () => {
       "valueKindMismatch",
       "depthExceeded",
     ]);
-    expect(bad[4]?.path).toEqual([4, 0]);
   });
 
   it("parses formulas and infers types", () => {
     const a = parseFormula("{amount} * 2");
-    expect(isFormulaError(a)).toBe(false);
-    if (!isFormulaError(a)) {
-      expect(inferResultType(a, schema)).toBe("number");
-      expect(dependencies(a)).toEqual(["amount"]);
-    }
-    const c = parseFormula('CONCAT({notes}, "x")');
-    expect(!isFormulaError(c) && inferResultType(c, schema)).toBe("text");
-    const d = parseFormula("DATEADD({call}, 1)");
-    expect(!isFormulaError(d) && inferResultType(d, schema)).toBe("date");
-    const i = parseFormula('IF(IS_EMPTY({pay}), 0, {amount} + 1)');
-    expect(!isFormulaError(i) && inferResultType(i, schema)).toBe("number");
-    expect(!isFormulaError(parseFormula("{amount} > 5")) && inferResultType(parseFormula("{amount} > 5") as never, schema)).toBe("boolean");
+    if (isFormulaError(a)) throw new Error(a.message);
+    expect(inferResultType(a, schema)).toBe("number");
+    expect(dependencies(a)).toEqual(["amount"]);
     const err = parseFormula("{amount} *");
     expect(isFormulaError(err)).toBe(true);
-    expect(isFormulaError(err) && typeof err.position).toBe("number");
-    expect(isFormulaError(parseFormula("FOO(1)"))).toBe(true);
+    expect(isFormulaError(err) && typeof err.start).toBe("number");
   });
 
   it("resolves column access from role permissions", () => {
@@ -125,5 +112,29 @@ describe("core-contracts fallback", () => {
     expect(access.get("secret")).toBe("hidden");
     expect(access.get("pay")).toBe("edit");
     expect(access.get("total")).toBe("read");
+  });
+});
+
+describe("local helpers", () => {
+  it("RELATIVE_DATE_PRESETS are exactly the kinds core accepts", () => {
+    for (const relative of RELATIVE_DATE_PRESETS) {
+      const value = relative.endsWith("NDays") ? { relative, n: 3 } : { relative };
+      expect(validateFilter({ columnId: "call", operator: "isWithin", value }, schema, registry, new Set(["call"]))).toEqual([]);
+    }
+    expect(RELATIVE_DATE_PRESETS).toHaveLength(9);
+  });
+
+  it("valueMatchesKind is stricter than core for blank strings", () => {
+    expect(validateFilter({ columnId: "notes", operator: "is", value: "" }, schema, registry, new Set(["notes"]))).toEqual([]);
+    expect(valueMatchesKind("single", "")).toBe(false);
+    expect(valueMatchesKind("single", "x")).toBe(true);
+    expect(valueMatchesKind("relativeDate", { relative: "lastNDays" })).toBe(false);
+    expect(valueMatchesKind("relativeDate", { relative: "lastNDays", n: 7 })).toBe(true);
+  });
+
+  it("isFilterGroup and currencySymbol", () => {
+    expect(isFilterGroup({ op: "and", children: [] })).toBe(true);
+    expect(isFilterGroup({ columnId: "x", operator: "is" })).toBe(false);
+    expect(currencySymbol("INR", "en-IN")).toBe("₹");
   });
 });

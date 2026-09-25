@@ -1,10 +1,10 @@
 import { Pill, useMantineTheme } from "@mantine/core";
-import type { SelectOption } from "../internal/core-contracts";
+import type { Option } from "../internal/core-contracts";
 import type { UiRendererProps } from "../internal/grid-contracts";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 
 export interface MultiSelectRendererConfig {
-  options?: SelectOption[];
+  options?: Option[];
 }
 
 export interface MultiSelectRendererProps extends UiRendererProps<string[], MultiSelectRendererConfig> {
@@ -25,7 +25,7 @@ export function MultiSelectRenderer({ value, config, limit = 3 }: MultiSelectRen
   return (
     <Pill.Group>
       {visible.map((v) => {
-        const option = options.find((o) => o.value === v);
+        const option = options.find((o) => o.id === v);
         const color = resolveOptionColor(option, theme);
         return (
           <Pill key={v} style={{ backgroundColor: `var(--mantine-color-${color}-light)`, color: `var(--mantine-color-${color}-light-color)` }}>

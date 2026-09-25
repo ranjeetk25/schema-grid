@@ -1,12 +1,12 @@
 import { MultiSelect, useMantineTheme } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
-import type { SelectOption } from "../internal/core-contracts";
+import type { Option } from "../internal/core-contracts";
 import { createPopupEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 
 export interface MultiSelectEditorConfig {
-  options?: SelectOption[];
+  options?: Option[];
   dynamic?: boolean;
 }
 
@@ -42,7 +42,7 @@ export function MultiSelectEditor({
   const theme = useMantineTheme();
   // Static options follow `config` live (e.g. a column builder adding options); dynamic ones are fetched.
   const configOptions = useMemo(() => getSelectOptions(config), [config]);
-  const [fetched, setFetched] = useState<SelectOption[] | null>(null);
+  const [fetched, setFetched] = useState<Option[] | null>(null);
   const options = config?.dynamic ? (fetched ?? configOptions) : configOptions;
   const [selected, setSelected] = useState<string[]>(value ?? []);
 
@@ -63,14 +63,14 @@ export function MultiSelectEditor({
 
   return (
     <MultiSelect
-      data={options.map((o) => ({ value: o.value, label: o.label }))}
+      data={options.map((o) => ({ value: o.id, label: o.label }))}
       value={selected}
       error={error}
       searchable
       comboboxProps={{ withinPortal: false }}
       defaultDropdownOpened={autoFocus !== false}
       renderOption={({ option }) => {
-        const match = options.find((o) => o.value === option.value);
+        const match = options.find((o) => o.id === option.value);
         return (
           <>
             <OptionColorDot color={resolveOptionColor(match, theme)} />

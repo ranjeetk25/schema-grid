@@ -23,7 +23,7 @@ describe("fixtures", () => {
 
 describe("options helpers", () => {
   it("reads select options from config", () => {
-    expect(getSelectOptions({ options: [{ label: "A", value: "a" }, { bad: 1 }] })).toEqual([{ label: "A", value: "a" }]);
+    expect(getSelectOptions({ options: [{ id: "a", label: "A" }, { label: "B", value: "b" }, { bad: 1 }] })).toEqual([{ id: "a", label: "A" }]);
     expect(getSelectOptions(null)).toEqual([]);
   });
 

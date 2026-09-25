@@ -1,9 +1,13 @@
-import type {
-  ColumnDef,
-  ColumnPermissions,
-  FieldTypeId,
-  FieldTypeRegistry,
-  GridSchema,
+import {
+  type ColumnDef,
+  type ColumnPermissions,
+  type FieldTypeId,
+  type FieldTypeRegistry,
+  type FormulaResultType,
+  type GridSchema,
+  inferResultType,
+  isFormulaError,
+  parseFormula,
 } from "../internal/core-contracts";
 import { KEY_PATTERN, slugifyKey, uniqueKey } from "./keys";
 
@@ -144,13 +148,21 @@ export function validateColumnDraft(
   else if (!KEY_PATTERN.test(draft.key)) errors.key = "Use lowercase letters, digits and _, starting with a letter";
   else if (draft.existingKeys.includes(draft.key)) errors.key = "This key is already used by another column";
   if (fieldType && draft.type !== "formula") {
-    const parsed = fieldType.configSchema.safeParse(draft.config);
+    const parsed = fieldType.configSchema.safeParse({ ...asRecord(fieldType.defaultConfig), ...draft.config });
     if (!parsed.success) errors.config = parsed.error.issues[0]?.message ?? "Invalid configuration";
   }
   return errors;
 }
 
 const isBlank = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
+
+/** The inferred result type of a formula source, or "text" when it does not type-check. */
+export function formulaResultType(src: string, schema: GridSchema): FormulaResultType {
+  const ast = parseFormula(src);
+  if (isFormulaError(ast)) return "text";
+  const rt = inferResultType(ast, schema);
+  return isFormulaError(rt) ? "text" : rt;
+}
 
 /** Builds the full ColumnDef. `config` goes through the type's `configSchema` (throws on invalid config). */
 export function buildColumnDef(
@@ -160,8 +172,12 @@ export function buildColumnDef(
   if (!draft.type) throw new Error("Column type is required");
   const fieldType = registry.get(draft.type);
   if (!fieldType) throw new Error(`Unknown field type "${draft.type}"`);
-  const config = fieldType.configSchema.parse(draft.config) as unknown;
   const isFormula = draft.type === "formula";
+  // Core keys formula semantics (operators, format, aggregations) on `config.resultType`.
+  // Core field types treat persisted config as an overlay on `defaultConfig`; store it complete.
+  const merged = { ...asRecord(fieldType.defaultConfig), ...draft.config };
+  const rawConfig = isFormula ? { ...merged, resultType: formulaResultType(draft.formula, schema) } : merged;
+  const config = fieldType.configSchema.parse(rawConfig) as unknown;
   const original = draft.mode === "edit" ? draft.original : null;
   const maxOrder = schema.columns.reduce((m, c) => Math.max(m, c.order), -1);
 

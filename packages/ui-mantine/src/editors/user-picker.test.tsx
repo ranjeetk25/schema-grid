@@ -98,11 +98,11 @@ describe("UserPickerEditor", () => {
     expect(screen.getByText("VS")).toBeInTheDocument();
   });
 
-  it("selecting emits the user id and commits", async () => {
+  it("selecting emits a UserRef and commits", async () => {
     const { user, props } = setup();
     await user.click(await screen.findByRole("option", { name: /Vikram Singh/ }));
-    expect(props.onChange).toHaveBeenCalledWith("u_vikram");
-    expect(props.onCommit).toHaveBeenCalledWith("u_vikram");
+    expect(props.onChange).toHaveBeenCalledWith({ id: "u_vikram", name: "Vikram Singh" });
+    expect(props.onCommit).toHaveBeenCalledWith({ id: "u_vikram", name: "Vikram Singh" });
   });
 
   it("Enter picks the first result while searching", async () => {
@@ -114,7 +114,7 @@ describe("UserPickerEditor", () => {
     await user.type(screen.getByRole("textbox"), "vik");
     await waitFor(() => expect(screen.queryByText("Asha Rao")).not.toBeInTheDocument());
     await user.keyboard("{Enter}");
-    expect(props.onCommit).toHaveBeenCalledWith("u_vikram");
+    expect(props.onCommit).toHaveBeenCalledWith({ id: "u_vikram", name: "Vikram Singh" });
   });
 
   it("Escape cancels", async () => {
@@ -148,7 +148,7 @@ describe("UserPickerEditor", () => {
     expect(screen.getByText("Asha Rao")).toBeInTheDocument();
     expect(screen.queryByText("Vikram Singh")).not.toBeInTheDocument();
     await act(async () => {
-      slow.resolve([{ label: "Stale Person", value: "u_stale" }]);
+      slow.resolve([{ id: "u_stale", label: "Stale Person" }]);
     });
     expect(screen.queryByText("Stale Person")).not.toBeInTheDocument();
     expect(screen.getByText("Asha Rao")).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe("AsyncCombobox", () => {
     renderWithMantine(
       <AsyncCombobox<Option>
         load={async () => []}
-        getKey={(o) => o.value}
+        getKey={(o) => o.id}
         getLabel={(o) => o.label}
         onSelect={vi.fn()}
       />,
@@ -177,7 +177,7 @@ describe("AsyncCombobox", () => {
   it("shows the loading state", async () => {
     const d = deferred<Option[]>();
     renderWithMantine(
-      <AsyncCombobox<Option> load={() => d.promise} getKey={(o) => o.value} getLabel={(o) => o.label} onSelect={vi.fn()} />,
+      <AsyncCombobox<Option> load={() => d.promise} getKey={(o) => o.id} getLabel={(o) => o.label} onSelect={vi.fn()} />,
     );
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     await act(async () => {
@@ -192,7 +192,7 @@ describe("AsyncCombobox", () => {
         load={async () => {
           throw new Error("Network down");
         }}
-        getKey={(o) => o.value}
+        getKey={(o) => o.id}
         getLabel={(o) => o.label}
         onSelect={vi.fn()}
       />,
@@ -204,9 +204,9 @@ describe("AsyncCombobox", () => {
     renderWithMantine(
       <AsyncCombobox<Option>
         load={async () => FIXTURE_USERS}
-        getKey={(o) => o.value}
+        getKey={(o) => o.id}
         getLabel={(o) => o.label}
-        renderItem={(o) => <b>custom-{o.value}</b>}
+        renderItem={(o) => <b>custom-{o.id}</b>}
         onSelect={vi.fn()}
       />,
     );

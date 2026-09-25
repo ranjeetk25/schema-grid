@@ -91,7 +91,7 @@ describe("filter draft model", () => {
   });
 
   it("operators for select are exactly the option set; date includes isWithin", () => {
-    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.payment), schema, registry).map((o) => o.id)).toEqual([
+    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.payment), registry).map((o) => o.id)).toEqual([
       "is",
       "isNot",
       "isAnyOf",
@@ -99,11 +99,11 @@ describe("filter draft model", () => {
       "isEmpty",
       "isNotEmpty",
     ]);
-    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.call), schema, registry).map((o) => o.id)).toContain("isWithin");
+    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.call), registry).map((o) => o.id)).toContain("isWithin");
   });
 
-  it("formula columns use the inferred result type's operators", () => {
-    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.total), schema, registry).map((o) => o.id)).toContain("between");
+  it("formula columns use their config.resultType's operators", () => {
+    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.total), registry).map((o) => o.id)).toContain("between");
   });
 
   it("defaultValueFor each valueKind", () => {
@@ -137,7 +137,7 @@ describe("filter draft model", () => {
     d = updateCondition(d, id, { columnId: FIXTURE_IDS.call }, ctx);
     const c = firstCondition(d) as DraftCondition;
     expect(c.operator).toBe("is");
-    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.call), schema, registry).map((o) => o.id)).toContain(c.operator);
+    expect(operatorsFor(fixtureColumn(FIXTURE_IDS.call), registry).map((o) => o.id)).toContain(c.operator);
     expect(c.value).toBeNull();
   });
 

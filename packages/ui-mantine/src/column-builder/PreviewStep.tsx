@@ -16,7 +16,7 @@ const isBlank = (v: unknown) => v === undefined || v === null || v === "" || (Ar
 
 /** The type's default value when it is meaningful, else a representative sample. */
 export function sampleValueFor(type: FieldTypeId, config: unknown, registry: FieldTypeRegistry): unknown {
-  const options = getSelectOptions(config).map((o) => o.value);
+  const options = getSelectOptions(config).map((o) => o.id);
   switch (type) {
     case "select":
     case "creatableSelect":

@@ -97,7 +97,7 @@ describe("LinkPickerEditor", () => {
   });
 
   it("without lookup it shows the notice, is read-only and does not throw", () => {
-    const { props } = setup({ dataSource: {}, value: LEAD_1 });
+    const { props } = setup({ dataSource: { ...buildStubDataSource(), lookup: undefined }, value: LEAD_1 });
     expect(screen.getByText("Lookup not configured")).toBeInTheDocument();
     expect(screen.getByText("Lead #1")).toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();

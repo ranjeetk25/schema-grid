@@ -11,7 +11,7 @@ import { PreviewStep, sampleValueFor } from "./PreviewStep";
 const registry = buildFixtureRegistry();
 
 function BadgeRenderer({ value, config }: UiRendererProps<string>) {
-  const opt = getSelectOptions(config).find((o) => o.value === value);
+  const opt = getSelectOptions(config).find((o) => o.id === value);
   return opt ? <Badge data-testid="preview-badge">{opt.label}</Badge> : null;
 }
 
@@ -19,7 +19,7 @@ function OptionButtonsEditor({ config, onChange }: UiEditorProps<string>) {
   return (
     <div>
       {getSelectOptions(config).map((o) => (
-        <button type="button" key={o.value} onClick={() => onChange(o.value)}>
+        <button type="button" key={o.id} onClick={() => onChange(o.id)}>
           {`pick ${o.label}`}
         </button>
       ))}

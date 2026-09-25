@@ -2,6 +2,7 @@ import { Badge, Combobox, Group, Stack, Text, Textarea, useCombobox } from "@man
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type AccessMap, readableColumns } from "../internal/access";
 import {
+  type FormulaNode,
   type FormulaResultType,
   type GridSchema,
   dependencies,
@@ -27,7 +28,7 @@ export type FormulaCheck = { valid: true; resultType: FormulaResultType } | { va
 export function checkFormula(src: string, schema: GridSchema, access: AccessMap, selfKey?: string): FormulaCheck {
   const ast = parseFormula(src);
   if (isFormulaError(ast)) {
-    return { valid: false, error: ast.position === undefined ? ast.message : `${ast.message} (at position ${ast.position})` };
+    return { valid: false, error: ast.start === undefined ? ast.message : `${ast.message} (at position ${ast.start})` };
   }
   const readable = new Map(readableColumns(schema, access).map((c) => [c.key, c]));
   for (const key of dependencies(ast)) {
@@ -37,10 +38,17 @@ export function checkFormula(src: string, schema: GridSchema, access: AccessMap,
   if (selfKey && reaches(ast, selfKey, schema, new Set())) {
     return { valid: false, error: "Circular reference through another formula column" };
   }
-  return { valid: true, resultType: inferResultType(ast, schema) };
+  const resultType = inferResultType(ast, schema);
+  if (isFormulaError(resultType)) {
+    return {
+      valid: false,
+      error: resultType.start === undefined ? resultType.message : `${resultType.message} (at position ${resultType.start})`,
+    };
+  }
+  return { valid: true, resultType };
 }
 
-function reaches(ast: Exclude<ReturnType<typeof parseFormula>, { kind: "error" }>, target: string, schema: GridSchema, seen: Set<string>): boolean {
+function reaches(ast: FormulaNode, target: string, schema: GridSchema, seen: Set<string>): boolean {
   for (const key of dependencies(ast)) {
     if (key === target) return true;
     if (seen.has(key)) continue;

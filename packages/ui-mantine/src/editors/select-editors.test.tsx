@@ -119,7 +119,7 @@ describe("select editors follow config changes", () => {
     const column = { id: "c", key: "c", label: "C", type: "select", config: {}, order: 0, createdAt: "", updatedAt: "" };
     const base = { value: null, onChange: () => {}, onCommit: () => {}, onCancel: () => {}, column };
     const { rerender, user } = renderWithMantine(<SelectEditor {...base} config={{ options: [] }} autoFocus={false} />);
-    rerender(<SelectEditor {...base} config={{ options: [{ label: "Paid", value: "paid" }] }} autoFocus={false} />);
+    rerender(<SelectEditor {...base} config={{ options: [{ id: "paid", label: "Paid" }] }} autoFocus={false} />);
     await user.click(screen.getByRole("textbox"));
     expect(await screen.findByRole("option", { name: /Paid/ })).toBeInTheDocument();
   });

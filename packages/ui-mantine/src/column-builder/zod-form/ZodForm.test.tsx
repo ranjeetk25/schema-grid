@@ -52,10 +52,10 @@ describe("ZodForm", () => {
     const { user } = renderWithMantine(<Harness schema={selectSchema()} onChange={onChange} />);
     await user.click(screen.getByRole("button", { name: "Add option" }));
     await user.type(screen.getByRole("textbox", { name: "Option label" }), "Paid");
-    expect(screen.getByRole("textbox", { name: "Option value" })).toHaveValue("paid");
+    expect(screen.getByRole("textbox", { name: "Option id" })).toHaveValue("paid");
     await user.click(screen.getByRole("button", { name: "Option colour" }));
     await user.click(screen.getByRole("button", { name: "green" }));
-    expect(lastCall(onChange)).toStrictEqual({ options: [{ label: "Paid", value: "paid", color: "green" }] });
+    expect(lastCall(onChange)).toStrictEqual({ options: [{ id: "paid", label: "Paid", color: "green" }] });
   });
 
   it("omits color when none was chosen, and when the schema has no color field", async () => {
@@ -63,7 +63,7 @@ describe("ZodForm", () => {
     const { user } = renderWithMantine(<Harness schema={selectSchema()} onChange={onChange} />);
     await user.click(screen.getByRole("button", { name: "Add option" }));
     await user.type(screen.getByRole("textbox", { name: "Option label" }), "Paid");
-    expect(lastCall(onChange)).toStrictEqual({ options: [{ label: "Paid", value: "paid" }] });
+    expect(lastCall(onChange)).toStrictEqual({ options: [{ id: "paid", label: "Paid" }] });
 
     const onChange2 = vi.fn();
     const noColor = z.object({ options: z.array(z.object({ label: z.string(), value: z.string() })) });
@@ -72,49 +72,49 @@ describe("ZodForm", () => {
     expect(within(r2.container).queryByRole("button", { name: "Option colour" })).toBeNull();
   });
 
-  it("stops auto-deriving the value once the user edits it", async () => {
+  it("stops auto-deriving the id once the user edits it", async () => {
     const onChange = vi.fn();
     const { user } = renderWithMantine(<Harness schema={selectSchema()} onChange={onChange} />);
     await user.click(screen.getByRole("button", { name: "Add option" }));
     const label = screen.getByRole("textbox", { name: "Option label" });
-    const value = screen.getByRole("textbox", { name: "Option value" });
+    const value = screen.getByRole("textbox", { name: "Option id" });
     await user.type(label, "Paid");
     await user.clear(value);
     await user.type(value, "p1");
     await user.type(label, " up");
     expect(value).toHaveValue("p1");
-    expect(lastCall(onChange)).toStrictEqual({ options: [{ label: "Paid up", value: "p1" }] });
+    expect(lastCall(onChange)).toStrictEqual({ options: [{ id: "p1", label: "Paid up" }] });
   });
 
-  it("does not rewrite values of existing options when their label changes", async () => {
+  it("does not rewrite ids of existing options when their label changes", async () => {
     const onChange = vi.fn();
     const { user } = renderWithMantine(
-      <Harness schema={selectSchema()} initial={{ options: [{ label: "Paid", value: "paid_v1", color: "green" }] }} onChange={onChange} />,
+      <Harness schema={selectSchema()} initial={{ options: [{ id: "paid_v1", label: "Paid", color: "green" }] }} onChange={onChange} />,
     );
     await user.type(screen.getByRole("textbox", { name: "Option label" }), "!");
-    expect(lastCall(onChange)).toStrictEqual({ options: [{ label: "Paid!", value: "paid_v1", color: "green" }] });
+    expect(lastCall(onChange)).toStrictEqual({ options: [{ id: "paid_v1", label: "Paid!", color: "green" }] });
   });
 
   it("reorders and removes options", async () => {
     const onChange = vi.fn();
     const initial = {
       options: [
-        { label: "A", value: "a" },
-        { label: "B", value: "b" },
-        { label: "C", value: "c" },
+        { id: "a", label: "A" },
+        { id: "b", label: "B" },
+        { id: "c", label: "C" },
       ],
     };
     const { user } = renderWithMantine(<Harness schema={selectSchema()} initial={initial} onChange={onChange} />);
     const ups = screen.getAllByRole("button", { name: "Move option up" });
     expect(ups[0]).toBeDisabled();
     await user.click(ups[1] as HTMLElement);
-    expect((lastCall(onChange) as { options: { value: string }[] }).options.map((o) => o.value)).toEqual(["b", "a", "c"]);
+    expect((lastCall(onChange) as { options: { id: string }[] }).options.map((o) => o.id)).toEqual(["b", "a", "c"]);
     const downs = screen.getAllByRole("button", { name: "Move option down" });
     expect(downs[2]).toBeDisabled();
     await user.click(downs[1] as HTMLElement);
-    expect((lastCall(onChange) as { options: { value: string }[] }).options.map((o) => o.value)).toEqual(["b", "c", "a"]);
+    expect((lastCall(onChange) as { options: { id: string }[] }).options.map((o) => o.id)).toEqual(["b", "c", "a"]);
     await user.click(screen.getAllByRole("button", { name: "Remove option" })[0] as HTMLElement);
-    expect((lastCall(onChange) as { options: { value: string }[] }).options.map((o) => o.value)).toEqual(["c", "a"]);
+    expect((lastCall(onChange) as { options: { id: string }[] }).options.map((o) => o.id)).toEqual(["c", "a"]);
   });
 
   it("renders a boolean as a switch", async () => {

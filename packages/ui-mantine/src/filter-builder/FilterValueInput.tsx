@@ -10,10 +10,8 @@ import {
   type GridSchema,
   RELATIVE_DATE_PRESETS,
   type RelativeDate,
-  type RelativeDatePreset,
-  inferResultType,
-  isFormulaError,
-  parseFormula,
+  type RelativeDateKind,
+  resolveFormulaOperandTypeId,
 } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
@@ -26,12 +24,12 @@ export interface FilterValueInputProps {
   /** UI registry; its `filterComponent`s render `single` values for non-option types. */
   registry: UiFieldTypeRegistry;
   dataSource?: DataSource;
-  /** Needed to resolve a formula column's result type. */
+  /** @deprecated Unused: formula columns resolve through `config.resultType`. */
   schema?: GridSchema;
   error?: string;
 }
 
-export const RELATIVE_DATE_LABELS: Record<RelativeDatePreset, string> = {
+export const RELATIVE_DATE_LABELS: Record<RelativeDateKind, string> = {
   today: "Today",
   yesterday: "Yesterday",
   tomorrow: "Tomorrow",
@@ -43,8 +41,8 @@ export const RELATIVE_DATE_LABELS: Record<RelativeDatePreset, string> = {
   nextNDays: "Next N days",
 };
 
-const RELATIVE_DATA = RELATIVE_DATE_PRESETS.map((p) => ({ value: p, label: RELATIVE_DATE_LABELS[p] }));
-const N_PRESETS: readonly RelativeDatePreset[] = ["lastNDays", "nextNDays"];
+const RELATIVE_DATA = RELATIVE_DATE_PRESETS.map((p) => ({ value: p as string, label: RELATIVE_DATE_LABELS[p] }));
+const N_PRESETS: readonly RelativeDateKind[] = ["lastNDays", "nextNDays"];
 
 const OPTION_TYPES = new Set<FieldTypeId>(["select", "creatableSelect", "multiSelect"]);
 const NUMERIC_TYPES = new Set<FieldTypeId>(["number", "currency"]);
@@ -52,12 +50,11 @@ const DATE_TYPES = new Set<FieldTypeId>(["date", "datetime"]);
 
 const COMBOBOX = { withinPortal: false } as const;
 
-/** The type a filter value is typed as: formula columns resolve to their result type. */
-export function effectiveFilterType(column: ColumnDef, schema?: GridSchema): FieldTypeId {
+/** The type a filter value is typed as: formula columns resolve through `config.resultType` (as core does). */
+export function effectiveFilterType(column: ColumnDef): FieldTypeId {
   if (column.type !== "formula") return column.type;
-  if (!schema || !column.formula) return "text";
-  const ast = parseFormula(column.formula);
-  return isFormulaError(ast) ? "text" : inferResultType(ast, schema);
+  const rt = (column.config as { resultType?: unknown } | null)?.resultType;
+  return resolveFormulaOperandTypeId(typeof rt === "string" ? rt : undefined);
 }
 
 const numberOrNull = (v: number | string): number | null => {
@@ -111,7 +108,7 @@ function useUserOptions(enabled: boolean, column: ColumnDef, dataSource?: DataSo
     let alive = true;
     dataSource.getOptions(column.id).then(
       (opts) => {
-        if (alive) setOptions(opts.map((o) => ({ value: o.value, label: o.label })));
+        if (alive) setOptions(opts.map((o) => ({ value: o.id, label: o.label })));
       },
       () => {},
     );
@@ -129,7 +126,7 @@ function useUserOptions(enabled: boolean, column: ColumnDef, dataSource?: DataSo
  */
 export function FilterValueInput(props: FilterValueInputProps) {
   const { column, operator, value, onChange, registry, dataSource, schema, error } = props;
-  const type = effectiveFilterType(column, schema);
+  const type = effectiveFilterType(column);
   const isOptionType = OPTION_TYPES.has(type);
   const userOptions = useUserOptions(operator.valueKind === "multi" && type === "user", column, dataSource);
 
@@ -147,7 +144,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
 
     case "single": {
       if (type === "select" || type === "creatableSelect") {
-        const data = getSelectOptions(column.config).map((o) => ({ value: o.value, label: o.label }));
+        const data = getSelectOptions(column.config).map((o) => ({ value: o.id, label: o.label }));
         return (
           <Select
             aria-label="Value"
@@ -196,7 +193,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
       const current = Array.isArray(value) ? value.map((v) => String(v)) : [];
       if (isOptionType || type === "user") {
         const data =
-          type === "user" ? userOptions : getSelectOptions(column.config).map((o) => ({ value: o.value, label: o.label }));
+          type === "user" ? userOptions : getSelectOptions(column.config).map((o) => ({ value: o.id, label: o.label }));
         return (
           <MultiSelect
             aria-label="Values"
@@ -285,7 +282,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
             allowDeselect={false}
             onChange={(p) => {
               if (!p) return;
-              const nextPreset = p as RelativeDatePreset;
+              const nextPreset = p as RelativeDateKind;
               const keepN = N_PRESETS.includes(nextPreset) && typeof rd?.n === "number";
               onChange(keepN ? { relative: nextPreset, n: rd?.n as number } : { relative: nextPreset });
             }}

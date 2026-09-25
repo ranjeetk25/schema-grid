@@ -6,7 +6,7 @@ import {
   type GridSchema,
   type RelativeDate,
   isFilterGroup,
-  operatorsForColumn,
+  getColumnOperators,
 } from "../internal/core-contracts";
 import { type AccessMap, isReadable } from "../internal/access";
 import { countConditions } from "./model";
@@ -52,7 +52,7 @@ export function describeCondition(
   if (access && !isReadable(access, cond.columnId)) return "Hidden column";
   const column = schema.columns.find((c) => c.id === cond.columnId);
   const label = column?.label ?? cond.columnId;
-  const operator = column ? operatorsForColumn(column, schema, registry).find((o) => o.id === cond.operator) : undefined;
+  const operator = column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined;
   const opLabel = operator?.label ?? cond.operator;
   const head = `${label} ${opLabel}`;
   const fmt = formatter(column, registry);

@@ -4,10 +4,16 @@ import { vi } from "vitest";
 import {
   type Access,
   type ColumnDef,
+  type ChangeBatch,
+  type ChangeResult,
   type DataSource,
+  type GridRow,
+  type GridQuery,
   type GridSchema,
   type LinkRef,
   type Option,
+  type QueryResult,
+  type UserOption,
   createDefaultRegistry,
   createRolePermissionResolver,
   resolveColumnAccess,
@@ -33,16 +39,20 @@ export const FIXTURE_IDS = {
   total: "col_total",
 } as const;
 
-export const PAYMENT_OPTIONS = [
-  { label: "Paid", value: "paid", color: "green" },
-  { label: "Pending", value: "pending", color: "yellow" },
-  { label: "Failed", value: "failed", color: "red" },
+export const PAYMENT_OPTIONS: Option[] = [
+  { id: "paid", label: "Paid", color: "green" },
+  { id: "pending", label: "Pending", color: "yellow" },
+  { id: "failed", label: "Failed", color: "red" },
 ];
 
+const DEFAULTS = createDefaultRegistry();
+
+/** Fixture column whose config is the type's full `defaultConfig` overlaid with `c.config`. */
 const column = (c: Omit<ColumnDef, "createdAt" | "updatedAt">): ColumnDef => ({
   createdAt: FIXTURE_NOW,
   updatedAt: FIXTURE_NOW,
   ...c,
+  config: { ...(DEFAULTS.get(c.type)?.defaultConfig as object), ...(c.config as object) },
 });
 
 export function buildFixtureSchema(): GridSchema {
@@ -57,11 +67,11 @@ export function buildFixtureSchema(): GridSchema {
         key: "amount",
         label: "Amount",
         type: "currency",
-        config: { currency: "INR", locale: "en-IN", decimalScale: 0, fixedDecimalScale: false },
+        config: { currencyCode: "INR", locale: "en-IN", precision: 0 },
         order: 2,
       }),
       column({ id: FIXTURE_IDS.notes, key: "notes", label: "Notes", type: "longText", config: {}, order: 3 }),
-      column({ id: FIXTURE_IDS.owner, key: "owner", label: "Owner", type: "user", config: { multiple: false }, order: 4 }),
+      column({ id: FIXTURE_IDS.owner, key: "owner", label: "Owner", type: "user", config: {}, order: 4 }),
       column({ id: FIXTURE_IDS.website, key: "website", label: "Website", type: "url", config: {}, order: 5 }),
       column({
         id: FIXTURE_IDS.secret,
@@ -72,7 +82,7 @@ export function buildFixtureSchema(): GridSchema {
         order: 6,
         permissions: { read: { roles: ["admin"] }, edit: { roles: ["admin"] } },
       }),
-      column({ id: FIXTURE_IDS.total, key: "total", label: "Total", type: "formula", config: {}, formula: "{amount} * 2", order: 7 }),
+      column({ id: FIXTURE_IDS.total, key: "total", label: "Total", type: "formula", config: { resultType: "number" }, formula: "{amount} * 2", order: 7 }),
     ],
   };
 }
@@ -92,9 +102,9 @@ export function fixtureColumn(id: string, schema: GridSchema = buildFixtureSchem
   return c;
 }
 
-export const FIXTURE_USERS: Option[] = [
-  { label: "Asha Rao", value: "u_asha", avatarUrl: "https://example.com/asha.png" },
-  { label: "Vikram Singh", value: "u_vikram" },
+export const FIXTURE_USERS: UserOption[] = [
+  { id: "u_asha", label: "Asha Rao", avatarUrl: "https://example.com/asha.png" },
+  { id: "u_vikram", label: "Vikram Singh" },
 ];
 
 export const FIXTURE_LINKS: LinkRef[] = [
@@ -102,12 +112,17 @@ export const FIXTURE_LINKS: LinkRef[] = [
   { id: "r_2", label: "Lead #2" },
 ];
 
+/** A full core `DataSource` whose option/lookup methods return fixtures; row methods are inert. */
 export function buildStubDataSource() {
   return {
+    fetch: vi.fn(async (_query: GridQuery): Promise<QueryResult<GridRow>> => ({ rows: [] })),
+    applyChanges: vi.fn(async (_batch: ChangeBatch): Promise<ChangeResult> => ({ applied: [], conflicts: [], errors: [] })),
+    createRows: vi.fn(async (_partials: unknown[]): Promise<GridRow[]> => []),
+    deleteRows: vi.fn(async (_ids: string[]): Promise<void> => {}),
     getOptions: vi.fn(async (_columnId: string, _search?: string): Promise<Option[]> => FIXTURE_USERS),
     createOption: vi.fn(async (_columnId: string, label: string): Promise<Option> => ({
+      id: label.toLowerCase().replace(/\s+/g, "_"),
       label,
-      value: label.toLowerCase().replace(/\s+/g, "_"),
     })),
     lookup: vi.fn(async (_columnId: string, _search: string): Promise<LinkRef[]> => FIXTURE_LINKS),
   } satisfies DataSource;

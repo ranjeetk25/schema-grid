@@ -19,7 +19,12 @@ export type FormFieldDescriptor = DescriptorBase &
     | { kind: "number"; min?: number; max?: number; int?: boolean }
     | { kind: "boolean" }
     | { kind: "enum"; values: string[] }
-    | { kind: "optionList"; hasColor: boolean }
+    | {
+        kind: "optionList";
+        hasColor: boolean;
+        /** Key holding the stored value: core options use `id`, generic `{label, value}` lists use `value`. */
+        valueKey: "id" | "value";
+      }
     | { kind: "object"; children: FormFieldChild[] }
     | { kind: "unsupported"; reason: string }
   );
@@ -260,12 +265,14 @@ function describe(schema: unknown, depth: number): FormFieldDescriptor {
         const byKey = new Map(el.children.map((c) => [c.key, c.field]));
         const label = byKey.get("label");
         const value = byKey.get("value");
+        const id = byKey.get("id");
         const color = byKey.get("color");
-        if (label?.kind === "string" && value?.kind === "string") {
-          return { ...base, kind: "optionList", hasColor: color?.kind === "string" };
+        if (label?.kind === "string" && (value?.kind === "string" || id?.kind === "string")) {
+          const valueKey = value?.kind === "string" ? "value" : "id";
+          return { ...base, kind: "optionList", hasColor: color?.kind === "string", valueKey };
         }
       }
-      return { ...base, kind: "unsupported", reason: "Arrays are only supported as {label, value} option lists" };
+      return { ...base, kind: "unsupported", reason: "Arrays are only supported as {label, value|id} option lists" };
     }
     default:
       return { ...base, kind: "unsupported", reason: `Unsupported Zod type: ${node.typeName}` };

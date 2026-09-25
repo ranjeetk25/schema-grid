@@ -117,6 +117,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
           error={error}
           value={value}
           hasColor={field.hasColor}
+          valueKey={field.valueKey}
           onChange={onChange}
           rowError={(index, key) => errors[`${path}.${index}.${key}`]}
         />

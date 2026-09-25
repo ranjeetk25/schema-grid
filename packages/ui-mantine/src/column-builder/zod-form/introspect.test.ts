@@ -141,9 +141,14 @@ describe("introspectZod (robustness + core)", () => {
     }
   });
 
-  it("maps the core select configSchema to object > optionList with a [] default", () => {
+  it("maps the core select configSchema to object > id-keyed optionList (core Option = {id, label, color?})", () => {
     const schema = createDefaultRegistry().get("select")?.configSchema;
     const d = introspectZod(schema);
-    expect(child(d, "options")).toMatchObject({ kind: "optionList", hasColor: true, defaultValue: [] });
+    expect(child(d, "options")).toMatchObject({ kind: "optionList", hasColor: true, valueKey: "id", optional: false });
+  });
+
+  it("generic {label, value} arrays keep valueKey value", () => {
+    const d = introspectZod(z.object({ options: z.array(z.object({ label: z.string(), value: z.string() })) }));
+    expect(child(d, "options")).toMatchObject({ kind: "optionList", valueKey: "value", hasColor: false });
   });
 });

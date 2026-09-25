@@ -71,7 +71,7 @@ describe("CreatableSelectEditor", () => {
     await user.click(create);
     await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("refunded"));
     expect(dataSource.createOption).toHaveBeenCalledWith("col_stage", "Refunded");
-    const created: Option = { label: "Refunded", value: "refunded" };
+    const created: Option = { id: "refunded", label: "Refunded" };
     expect(props.onOptionCreate).toHaveBeenCalledWith(created);
     expect(props.onChange).toHaveBeenCalledWith("refunded");
     const createOrder = props.onOptionCreate.mock.invocationCallOrder[0] ?? 0;
@@ -94,7 +94,7 @@ describe("CreatableSelectEditor", () => {
     await user.click(screen.getByRole("option", { name: "Create 'Refunded'" }));
     expect(screen.getByRole("textbox")).toBeDisabled();
     expect(screen.getByTestId("creatable-select-loader")).toBeInTheDocument();
-    resolve({ label: "Refunded", value: "refunded" });
+    resolve({ id: "refunded", label: "Refunded" });
     await waitFor(() => expect(screen.queryByTestId("creatable-select-loader")).not.toBeInTheDocument());
   });
 
@@ -144,7 +144,7 @@ describe("CreatableSelectEditor", () => {
   });
 
   it("hides the create option when the data source cannot create", async () => {
-    const { user } = setup({ dataSource: {} });
+    const { user } = setup({ dataSource: { ...buildStubDataSource(), createOption: undefined } });
     await user.type(screen.getByRole("textbox"), "Refunded");
     expect(screen.queryByText(/Create '/)).not.toBeInTheDocument();
   });
@@ -163,7 +163,7 @@ describe("CreatableSelectEditor", () => {
     const paid = screen.queryByRole("option", { name: "Paid" });
     if (paid) fireEvent.click(paid);
     await act(async () => {
-      resolve({ label: "Pa", value: "pa" });
+      resolve({ id: "pa", label: "Pa" });
     });
     await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("pa"));
     expect(props.onCommit).toHaveBeenCalledTimes(1);
@@ -197,15 +197,15 @@ describe("CreatableSelectEditor", () => {
     await user.click(screen.getByRole("option", { name: "Create 'Refunded'" }));
     unmount();
     await act(async () => {
-      resolve({ label: "Refunded", value: "refunded" });
+      resolve({ id: "refunded", label: "Refunded" });
     });
-    expect(props.onOptionCreate).toHaveBeenCalledWith({ label: "Refunded", value: "refunded" });
+    expect(props.onOptionCreate).toHaveBeenCalledWith({ id: "refunded", label: "Refunded" });
     expect(props.onChange).not.toHaveBeenCalled();
     expect(props.onCommit).not.toHaveBeenCalled();
   });
 
   it("an existing option whose value is literally '$create' is picked, not created", async () => {
-    const options = [...PAYMENT_OPTIONS, { label: "Weird", value: "$create" }];
+    const options = [...PAYMENT_OPTIONS, { id: "$create", label: "Weird" }];
     const { user, props, dataSource } = setup({ config: { options } });
     await user.click(screen.getByRole("option", { name: "Weird" }));
     expect(dataSource.createOption).not.toHaveBeenCalled();
@@ -236,7 +236,7 @@ describe("CreatableSelectEditor", () => {
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-busy", "true");
     expect(screen.getByLabelText("Creating option")).toBeInTheDocument();
     await act(async () => {
-      resolve({ label: "Refunded", value: "refunded" });
+      resolve({ id: "refunded", label: "Refunded" });
     });
   });
 });

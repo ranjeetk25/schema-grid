@@ -41,7 +41,7 @@ const next = () => screen.getByRole("button", { name: "Next" });
 describe("ColumnBuilderModal", () => {
   it("creates a select column end to end", async () => {
     const { user, onSave } = setup();
-    await user.click(screen.getByRole("button", { name: "Single select" }));
+    await user.click(screen.getByRole("button", { name: "Select" }));
     await user.click(next());
     await user.type(screen.getByRole("textbox", { name: /^Label/ }), "Payment Status");
     for (const [i, label] of ["Paid", "Pending", "Failed"].entries()) {
@@ -63,9 +63,9 @@ describe("ColumnBuilderModal", () => {
       updatedAt: NOW,
     });
     expect(saved.config.options).toEqual([
-      { label: "Paid", value: "paid" },
-      { label: "Pending", value: "pending" },
-      { label: "Failed", value: "failed" },
+      { id: "paid", label: "Paid" },
+      { id: "pending", label: "Pending" },
+      { id: "failed", label: "Failed" },
     ]);
   });
 
@@ -112,7 +112,7 @@ describe("ColumnBuilderModal", () => {
     await user.click(screen.getByRole("button", { name: "Save column" }));
     await user.click(screen.getByRole("button", { name: "Save column" }));
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ type: "formula", formula: "{amount} * 2", required: false });
+    expect(onSave.mock.calls[0]?.[0]).toMatchObject({ type: "formula", formula: "{amount} * 2", required: false, config: { resultType: "number" } });
   });
 
   it("edit mode locks the type and keeps the id", async () => {

@@ -46,7 +46,7 @@ describe("column draft model", () => {
       key: "fee",
       label: "Fee",
       type: "currency",
-      config: { currency: "INR", locale: "en-IN", decimalScale: 0, fixedDecimalScale: false },
+      config: { currencyCode: "INR", locale: "en-IN", precision: 2 },
       permissions: { read: "all", edit: "all" },
       order: 8,
       createdAt: now,
@@ -65,6 +65,7 @@ describe("column draft model", () => {
     const col = buildColumnDef(d, { schema, registry, now, generateId: () => "nope" });
     expect(col).toMatchObject({ id: original.id, key: "total", order: original.order, createdAt: original.createdAt, updatedAt: now });
     expect(col.formula).toBe("{amount} * 3");
+    expect(col.config).toEqual({ resultType: "number" });
     expect(col.label).toBe("Grand total");
   });
 

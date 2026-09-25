@@ -6,9 +6,8 @@ import {
   type FieldTypeRegistry,
   type GridSchema,
   type GroupSpec,
-  inferResultType,
-  isFormulaError,
-  parseFormula,
+  getColumnAggregations,
+  getColumnValueFieldType,
 } from "../internal/core-contracts";
 
 export interface GroupByBarProps {
@@ -32,15 +31,16 @@ const AGG_LABELS: Record<AggregationId, string> = {
 
 const NON_GROUPABLE = new Set(["longText"]);
 
-/** Aggregations for number/currency, or a formula whose result type is number. */
-function aggregationsFor(column: ColumnDef, schema: GridSchema, registry: FieldTypeRegistry): AggregationId[] {
-  if (column.type === "formula") {
-    const ast = column.formula ? parseFormula(column.formula) : null;
-    if (!ast || isFormulaError(ast) || inferResultType(ast, schema) !== "number") return [];
-    return registry.get("number")?.aggregations ?? [];
-  }
-  if (column.type !== "number" && column.type !== "currency") return [];
-  return registry.get(column.type)?.aggregations ?? [];
+const NUMERIC_VALUE_TYPES = new Set(["number", "currency"]);
+
+/**
+ * Aggregations for numeric columns only (number, currency, or a formula whose
+ * `config.resultType` is number), as core's `getColumnAggregations` reports them.
+ */
+function aggregationsFor(column: ColumnDef, registry: FieldTypeRegistry): readonly AggregationId[] {
+  const valueType = getColumnValueFieldType(column, registry)?.id;
+  if (!valueType || !NUMERIC_VALUE_TYPES.has(valueType)) return [];
+  return getColumnAggregations(column, registry);
 }
 
 export function GroupByBar({ schema, registry, access, value, onChange, maxGroups = 3 }: GroupByBarProps) {
@@ -49,7 +49,7 @@ export function GroupByBar({ schema, registry, access, value, onChange, maxGroup
   const used = new Set(value.map((g) => g.columnId));
   const addable = readable.filter((c) => !used.has(c.id) && !NON_GROUPABLE.has(c.type));
   const numeric = readable
-    .map((c) => ({ column: c, aggs: aggregationsFor(c, schema, registry) }))
+    .map((c) => ({ column: c, aggs: aggregationsFor(c, registry) }))
     .filter((x) => x.aggs.length > 0);
   const aggregations = value[0]?.aggregations ?? [];
 

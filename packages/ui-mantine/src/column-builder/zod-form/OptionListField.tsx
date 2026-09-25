@@ -12,9 +12,12 @@ export interface OptionListFieldProps {
   label: ReactNode;
   description?: ReactNode;
   value: unknown;
-  onChange: (next: OptionListItem[]) => void;
+  /** Emits options keyed by `valueKey` (e.g. core `{id, label, color?}`). */
+  onChange: (next: Record<string, string>[]) => void;
   /** Whether the schema's option object has a `color` field. */
   hasColor: boolean;
+  /** Key of the stored value: `"id"` for core options (default `"value"`). */
+  valueKey?: "id" | "value";
   error?: string;
   /** Per-row errors, e.g. `rowErrors(0, "label")`. */
   rowError?: (index: number, field: "label" | "value" | "color") => string | undefined;
@@ -37,13 +40,13 @@ export function slugifyOptionValue(label: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-const readOptions = (value: unknown): OptionListItem[] =>
+const readOptions = (value: unknown, valueKey: "id" | "value"): OptionListItem[] =>
   Array.isArray(value)
     ? value
         .filter((o): o is Record<string, unknown> => !!o && typeof o === "object")
         .map((o) => ({
           label: typeof o.label === "string" ? o.label : "",
-          value: typeof o.value === "string" ? o.value : "",
+          value: typeof o[valueKey] === "string" ? (o[valueKey] as string) : "",
           ...(typeof o.color === "string" && o.color ? { color: o.color } : {}),
         }))
     : [];
@@ -92,21 +95,30 @@ function ColourPicker({ color, onPick, error }: { color?: string; onPick: (color
   );
 }
 
-function projectRows(rows: Row[], hasColor: boolean | undefined): OptionListItem[] {
-  return rows.map((r) => ({
-    label: r.label,
-    value: r.value,
-    ...(hasColor && r.color ? { color: r.color } : {}),
-  }));
+function projectRows(rows: Row[], hasColor: boolean | undefined, valueKey: "id" | "value"): Record<string, string>[] {
+  return rows.map((r) =>
+    valueKey === "id"
+      ? { id: r.value, label: r.label, ...(hasColor && r.color ? { color: r.color } : {}) }
+      : { label: r.label, value: r.value, ...(hasColor && r.color ? { color: r.color } : {}) },
+  );
 }
 
 /** Editable `{label, value, color?}[]` list: add, remove, reorder, auto-derived values, colour swatches. */
-export function OptionListField({ label, description, value, onChange, hasColor, error, rowError }: OptionListFieldProps) {
+export function OptionListField({
+  label,
+  description,
+  value,
+  onChange,
+  hasColor,
+  valueKey = "value",
+  error,
+  rowError,
+}: OptionListFieldProps) {
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
     options.map((o) => ({ id: nextId.current++, ...o, valueEdited: o.value !== slugifyOptionValue(o.label) }));
 
-  const [rows, setRows] = useState<Row[]>(() => toRows(readOptions(value)));
+  const [rows, setRows] = useState<Row[]>(() => toRows(readOptions(value, valueKey)));
   const lastEmitted = useRef<unknown>(value);
 
   // Resync when the value is replaced from outside (not by our own emit).
@@ -115,13 +127,13 @@ export function OptionListField({ label, description, value, onChange, hasColor,
     if (value === lastEmitted.current) return;
     lastEmitted.current = value;
     // Content-equal echoes (a parent that clones/normalises) must not rebuild rows: that remounts inputs.
-    if (JSON.stringify(readOptions(value)) === JSON.stringify(readOptions(projectRows(rows, hasColor)))) return;
-    setRows(toRows(readOptions(value)));
+    if (JSON.stringify(readOptions(value, valueKey)) === JSON.stringify(readOptions(projectRows(rows, hasColor, valueKey), valueKey))) return;
+    setRows(toRows(readOptions(value, valueKey)));
   }, [value]);
 
   const commit = (next: Row[]) => {
     setRows(next);
-    const options = projectRows(next, hasColor);
+    const options = projectRows(next, hasColor, valueKey);
     lastEmitted.current = options;
     onChange(options);
   };
@@ -156,8 +168,8 @@ export function OptionListField({ label, description, value, onChange, hasColor,
               }}
             />
             <TextInput
-              aria-label="Option value"
-              placeholder="value"
+              aria-label={valueKey === "id" ? "Option id" : "Option value"}
+              placeholder={valueKey}
               value={row.value}
               error={rowError?.(index, "value")}
               style={{ flex: 1 }}

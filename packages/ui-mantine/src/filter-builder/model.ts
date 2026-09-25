@@ -14,9 +14,9 @@ import {
   type FilterOperatorDef,
   type FilterValue,
   type GridSchema,
-  type ValueKind,
+  type FilterValueKind,
+  getColumnOperators,
   isFilterGroup,
-  operatorsForColumn,
 } from "../internal/core-contracts";
 import { type AccessMap, readableColumns } from "../internal/access";
 
@@ -70,12 +70,12 @@ export function filterableColumns(schema: GridSchema, access: AccessMap): Column
   return readableColumns(schema, access);
 }
 
-/** Operators for a column; formula columns use their inferred result type's operators. */
-export function operatorsFor(column: ColumnDef, schema: GridSchema, registry: FieldTypeRegistry): FilterOperatorDef[] {
-  return operatorsForColumn(column, schema, registry);
+/** Operators for a column; formula columns use their `config.resultType`'s operators (core `getColumnOperators`). */
+export function operatorsFor(column: ColumnDef, registry: FieldTypeRegistry): readonly FilterOperatorDef[] {
+  return getColumnOperators(column, registry);
 }
 
-export function defaultValueFor(valueKind: ValueKind): FilterValue | undefined {
+export function defaultValueFor(valueKind: FilterValueKind): FilterValue | undefined {
   switch (valueKind) {
     case "none":
       return undefined;
@@ -101,7 +101,7 @@ export function findOperator(
   if (!columnId || !operatorId) return undefined;
   const column = ctx.schema.columns.find((c) => c.id === columnId);
   if (!column) return undefined;
-  return operatorsFor(column, ctx.schema, ctx.registry).find((o) => o.id === operatorId);
+  return operatorsFor(column, ctx.registry).find((o) => o.id === operatorId);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ export function updateCondition(draft: FilterDraft, id: string, patch: Condition
     if (patch.columnId !== undefined && patch.columnId !== n.columnId) {
       next.columnId = patch.columnId;
       const column = patch.columnId && ctx ? ctx.schema.columns.find((c) => c.id === patch.columnId) : undefined;
-      const first = column && ctx ? operatorsFor(column, ctx.schema, ctx.registry)[0] : undefined;
+      const first = column && ctx ? operatorsFor(column, ctx.registry)[0] : undefined;
       next.operator = first?.id ?? null;
       next.value = first ? defaultValueFor(first.valueKind) : undefined;
       return next;

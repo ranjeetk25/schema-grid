@@ -46,7 +46,7 @@ describe("UserRenderer", () => {
     const column = fixtureColumn(FIXTURE_IDS.owner);
     const { getByText } = renderWithMantine(
       <UserRenderer
-        value={{ id: noAvatarUser.value, name: noAvatarUser.label }}
+        value={{ id: noAvatarUser.id, name: noAvatarUser.label }}
         column={column}
         config={column.config}
         fieldType="user"

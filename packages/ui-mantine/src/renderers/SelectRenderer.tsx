@@ -1,10 +1,10 @@
-import type { SelectOption } from "../internal/core-contracts";
+import type { Option } from "../internal/core-contracts";
 import type { UiRendererProps } from "../internal/grid-contracts";
 import { findOption, getSelectOptions } from "../internal/options";
 import { OptionBadge } from "./OptionBadge";
 
 export interface SelectRendererConfig {
-  options?: SelectOption[];
+  options?: Option[];
 }
 
 /** Renders the value's option as a coloured badge, or nothing when empty. */

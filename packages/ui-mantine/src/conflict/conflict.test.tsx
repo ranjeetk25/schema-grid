@@ -13,7 +13,7 @@ const NOW = new Date("2026-09-25T10:00:00Z");
 const FIVE_MIN_AGO = new Date(NOW.getTime() - 5 * 60_000).toISOString();
 
 function BadgeRenderer({ value, config }: UiRendererProps<string>) {
-  const label = getSelectOptions(config).find((o) => o.value === value)?.label ?? "";
+  const label = getSelectOptions(config).find((o) => o.id === value)?.label ?? "";
   return <Badge data-testid="their-badge">{label}</Badge>;
 }
 

@@ -26,7 +26,7 @@ const registry = buildFixtureRegistry();
 const ui = buildStubUiRegistry();
 
 const opOf = (columnId: string, opId: string): FilterOperatorDef => {
-  const o = operatorsFor(fixtureColumn(columnId), schema, registry).find((x) => x.id === opId);
+  const o = operatorsFor(fixtureColumn(columnId), registry).find((x) => x.id === opId);
   if (!o) throw new Error(`no op ${opId}`);
   return o;
 };
