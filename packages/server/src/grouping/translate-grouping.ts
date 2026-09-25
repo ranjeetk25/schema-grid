@@ -18,6 +18,7 @@ import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } fro
 import { offsetClause, trimPage } from "../pagination/offset";
 import type { GridSqlScope, SelectCapableDb, SelectStatement } from "../query/build-query";
 import { translateSearch } from "../search/translate-search";
+import { binaryText, choiceRank } from "../sql/choice-order";
 import { type ColumnExpr, resolveColumnExpr } from "../sql/column-expr";
 import type { StorageKind } from "../sql/storage-kind";
 
@@ -29,6 +30,11 @@ const UNGROUPABLE_TYPES: ReadonlySet<string> = new Set(["longText"]);
 const KEY = "sg_group_key";
 const EMPTY = "sg_group_empty";
 const COUNT = "sg_count";
+const RANK = "sg_group_rank";
+const TIE = "sg_group_tie";
+
+/** Key of the empty group — the same sentinel core's in-memory grouping uses. */
+export const EMPTY_GROUP_KEY = "∅";
 const aggAlias = (i: number) => `sg_agg_${i}`;
 
 const DATE_FORMAT = "%Y-%m-%d";
@@ -120,8 +126,9 @@ function aggregateSql(
     case "sum":
     case "avg": {
       if (expr.kind !== "number") throw notAllowed();
-      const fn = sql.raw(spec.agg === "sum" ? "SUM" : "AVG");
-      return { sql: sql`${fn}(${expr.typed})`, valueKind: "number" };
+      // Core: "sum of nothing is 0, avg of nothing is null" — SQL SUM over no numbers is NULL.
+      if (spec.agg === "sum") return { sql: sql`COALESCE(SUM(${expr.typed}), 0)`, valueKind: "number" };
+      return { sql: sql`AVG(${expr.typed})`, valueKind: "number" };
     }
     case "min":
     case "max": {
@@ -151,7 +158,7 @@ function aggregateSql(
  * - WHERE: `grid_id`, `deleted_at IS NULL`, filter, search.
  * - The group key is `CASE WHEN <empty> THEN NULL ELSE <typed> END`, so every
  *   empty form (absent, JSON null, `''`) collapses into ONE group with value
- *   `null`, which always sorts last. Date keys are formatted `YYYY-MM-DD`.
+ *   `null` (key `"∅"`, as in core), which always sorts last. Date keys are formatted `YYYY-MM-DD`.
  *   Text keys use the case-insensitive collation, matching the `is` pin filter.
  * - Groups are ordered by key ASC, or DESC when `query.sort` sorts the group
  *   column descending, and paged by offset (offset-mode cursors only).
@@ -194,6 +201,13 @@ export function buildGroupQuery(
     [EMPTY]: sql<number>`MAX(CASE WHEN ${expr.empty} THEN 1 ELSE 0 END)`.as(EMPTY),
     [COUNT]: sql<number>`COUNT(*)`.as(COUNT),
   };
+  // Choice groups follow core's option order (rank, then code point for unknown ids).
+  // Aggregated (MIN) so ONLY_FULL_GROUP_BY accepts them; constant within a group anyway.
+  const choice = expr.kind === "choice";
+  if (choice) {
+    fields[RANK] = sql<number>`MIN(${choiceRank(nullable, column)})`.as(RANK);
+    fields[TIE] = sql`MIN(${binaryText(nullable)})`.as(TIE);
+  }
   (spec.aggregations ?? []).forEach((a, i) => {
     const built = aggregateSql(a, planned);
     aggregations.push({ columnId: a.columnId, agg: a.agg, valueKind: built.valueKind });
@@ -217,7 +231,10 @@ export function buildGroupQuery(
     .from(rows)
     .where(where)
     .groupBy(sql`${sql.identifier(KEY)}`)
-    .orderBy(sql`${sql.identifier(EMPTY)} ASC`, sql`${sql.identifier(KEY)} ${sql.raw(desc ? "DESC" : "ASC")}`)
+    .orderBy(
+      sql`${sql.identifier(EMPTY)} ASC`,
+      ...(choice ? [RANK, TIE] : [KEY]).map((f) => sql`${sql.identifier(f)} ${sql.raw(desc ? "DESC" : "ASC")}`),
+    )
     .limit(paging.limit + 1);
   if (paging.offset > 0) select = select.offset(paging.offset);
 
@@ -280,7 +297,7 @@ function groupValue(raw: unknown, kind: StorageKind): unknown {
 }
 
 function aggregateValue(raw: unknown, a: PlannedAggregation): GroupAggregateValue["value"] {
-  if (a.agg === "count" || a.agg === "countEmpty" || a.agg === "countFilled") return toNumber(raw) ?? 0;
+  if (a.agg === "count" || a.agg === "countEmpty" || a.agg === "countFilled" || a.agg === "sum") return toNumber(raw) ?? 0;
   if (a.valueKind === "date") return toDateString(raw);
   if (a.valueKind === "datetime") return toDatetimeString(raw);
   return toNumber(raw);
@@ -289,7 +306,7 @@ function aggregateValue(raw: unknown, a: PlannedAggregation): GroupAggregateValu
 /**
  * Runs a `BuiltGroupQuery` and shapes the result as core `GroupResult[]`
  * (`rows` is always empty). `key` is `JSON.stringify(value)`; the empty group
- * has value `null`. DECIMAL values (MySQL returns them as strings) become
+ * has value `null` and key `"∅"` (core's `EMPTY_KEY`). DECIMAL values (MySQL returns them as strings) become
  * numbers; date min/max are `YYYY-MM-DD`, datetime min/max UTC ISO strings.
  */
 export async function executeGroupQuery(built: BuiltGroupQuery, _scope: GridSqlScope): Promise<QueryResult<GridRow>> {
@@ -302,7 +319,7 @@ export async function executeGroupQuery(built: BuiltGroupQuery, _scope: GridSqlS
     return {
       columnId: built.columnId,
       value,
-      key: JSON.stringify(value),
+      key: value === null ? EMPTY_GROUP_KEY : JSON.stringify(value),
       count: toNumber(r[COUNT]) ?? 0,
       aggregates: built.aggregations.map((a, i) => ({
         columnId: a.columnId,

@@ -17,7 +17,7 @@ describe("createRowsTableDDL", () => {
         PRIMARY KEY (\`id\`),
         KEY \`idx_grid_rows_grid_deleted_id\` (\`grid_id\`, \`deleted_at\`, \`id\`),
         KEY \`idx_grid_rows_grid_updated\` (\`grid_id\`, \`updated_at\`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci"
     `);
   });
 
@@ -49,7 +49,7 @@ describe("createRowsTableDDL", () => {
         PRIMARY KEY (\`id\`),
         KEY \`idx_grid_rows_grid_deleted_id\` (\`grid_id\`, \`deleted_at\`, \`id\`),
         KEY \`idx_grid_rows_grid_updated\` (\`grid_id\`, \`updated_at\`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci"
     `);
   });
 
@@ -106,7 +106,7 @@ describe("createChangeLogTableDDL", () => {
         \`batch_id\` VARCHAR(64) NULL,
         PRIMARY KEY (\`id\`),
         KEY \`idx_grid_change_log_grid_id\` (\`grid_id\`, \`id\`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci"
     `);
   });
 

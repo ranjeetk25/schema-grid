@@ -14,7 +14,7 @@ const t = (node: FilterNode | null) => {
   return out ? renderSql(out) : undefined;
 };
 
-const NAME = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_ai_ci";
+const NAME = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_as_ci";
 const NAME_EMPTY = `(${NAME} IS NULL OR REGEXP_LIKE(${NAME}, '^[[:space:]]*$'))`;
 const FEE =
   "(CASE WHEN JSON_TYPE(JSON_EXTRACT(`cells`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(`cells`, '$.fee') AS DECIMAL(38,10)) END)";

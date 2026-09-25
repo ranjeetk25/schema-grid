@@ -77,7 +77,7 @@ describe("formulaToSql — translatable subset", () => {
 
   it("text comparison and select refs translate", () => {
     const r = render('{name} = "Bob" && {status} = "paid"');
-    expect(r?.sql).toContain("IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_ai_ci");
+    expect(r?.sql).toContain("IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_as_ci");
     expect(r?.params).toEqual(["Bob", "paid"]);
   });
 

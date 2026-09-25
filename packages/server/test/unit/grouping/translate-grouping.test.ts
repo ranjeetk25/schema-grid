@@ -36,8 +36,11 @@ describe("buildGroupQuery", () => {
   it("groups by payment status with count, sum(fee) and countEmpty(callDate)", () => {
     const built = buildGroupQuery(BY_STATUS, scopeFor(), mockDb());
     const q = renderQuery(built.select);
-    expect(q.sql).toMatchInlineSnapshot(`"select (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci END) as \`sg_group_key\`, MAX(CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$')) THEN 1 ELSE 0 END) as \`sg_group_empty\`, COUNT(*) as \`sg_count\`, COUNT(*) as \`sg_agg_0\`, SUM((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)) as \`sg_agg_1\`, SUM(CASE WHEN (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL) THEN 1 ELSE 0 END) as \`sg_agg_2\` from \`grid_rows\` where (\`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`deleted_at\` is null) group by \`sg_group_key\` order by \`sg_group_empty\` ASC, \`sg_group_key\` ASC limit ?"`);
-    expect(q.params).toEqual(["grid_all", 51]);
+    expect(q.sql).toMatchInlineSnapshot(`"select (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END) as \`sg_group_key\`, MAX(CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN 1 ELSE 0 END) as \`sg_group_empty\`, COUNT(*) as \`sg_count\`, MIN((CASE WHEN CONVERT((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END) USING utf8mb4) COLLATE utf8mb4_bin = ? THEN 0 WHEN CONVERT((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END) USING utf8mb4) COLLATE utf8mb4_bin = ? THEN 1 WHEN CONVERT((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END) USING utf8mb4) COLLATE utf8mb4_bin = ? THEN 2 ELSE 3 END)) as \`sg_group_rank\`, MIN(CONVERT((CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END) USING utf8mb4) COLLATE utf8mb4_bin) as \`sg_group_tie\`, COUNT(*) as \`sg_agg_0\`, COALESCE(SUM((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)), 0) as \`sg_agg_1\`, SUM(CASE WHEN (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL) THEN 1 ELSE 0 END) as \`sg_agg_2\` from \`grid_rows\` where (\`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`deleted_at\` is null) group by \`sg_group_key\` order by \`sg_group_empty\` ASC, \`sg_group_rank\` ASC, \`sg_group_tie\` ASC limit ?"`);
+    expect(q.params).toEqual(["paid", "pending", "failed", "grid_all", 51]);
+    // Core parity: choice groups follow option order; sum of no numbers is 0.
+    expect(q.sql).toContain("COALESCE(SUM(");
+    expect(q.sql.endsWith("order by `sg_group_empty` ASC, `sg_group_rank` ASC, `sg_group_tie` ASC limit ?")).toBe(true);
     expect(built.count).toBeUndefined();
     expect(built.fingerprint).toBe(queryFingerprint(BY_STATUS, schema.schemaVersion));
     expect(built.limit).toBe(50);
@@ -62,7 +65,7 @@ describe("buildGroupQuery", () => {
   it("includeTotal counts groups (distinct non-empty keys + one empty group)", () => {
     const built = buildGroupQuery({ ...BY_STATUS, includeTotal: true }, scopeFor(), mockDb());
     const count = renderQuery(built.count as NonNullable<typeof built.count>);
-    expect(count.sql).toMatchInlineSnapshot(`"select COUNT(DISTINCT (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci END)) + COALESCE(MAX(CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$')) THEN 1 ELSE 0 END), 0) from \`grid_rows\` where (\`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`deleted_at\` is null)"`);
+    expect(count.sql).toMatchInlineSnapshot(`"select COUNT(DISTINCT (CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN NULL ELSE IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci END)) + COALESCE(MAX(CASE WHEN (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$')) THEN 1 ELSE 0 END), 0) from \`grid_rows\` where (\`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`deleted_at\` is null)"`);
     expect(count.params).toEqual(["grid_all"]);
   });
 
@@ -132,7 +135,8 @@ describe("buildGroupQuery", () => {
     const fp = queryFingerprint(BY_STATUS, schema.schemaVersion);
     const ok = encodeCursor({ v: 1, mode: "offset", fp, offset: 50 });
     const q = renderQuery(buildGroupQuery({ ...BY_STATUS, page: { cursor: ok, limit: 50 } }, scopeFor(), mockDb()).select);
-    expect(q.params).toEqual(["grid_all", 51, 50]);
+    // Option ids first: the choice rank `CASE` (option order) is a select field.
+    expect(q.params).toEqual(["paid", "pending", "failed", "grid_all", 51, 50]);
     const stale = encodeCursor({ v: 1, mode: "offset", fp: "nope", offset: 50 });
     expect(() => buildGroupQuery({ ...BY_STATUS, page: { cursor: stale, limit: 50 } }, scopeFor(), mockDb())).toThrow(CursorError);
     const keyset = encodeCursor({ v: 1, mode: "keyset", fp, keys: [], id: "r1" });
@@ -150,12 +154,12 @@ describe("executeGroupQuery", () => {
   }
 
   it("shapes GroupResult[] with numeric conversion, empty group last, nextCursor and total", async () => {
-    // Field order: key, empty flag, count, then one column per aggregation.
+    // Field order: key, empty flag, count, choice rank, choice tie-break, then one column per aggregation.
     const { db, statements } = fake(
       [
-        ["failed", 0, 2, "2", "150.0000000000", "1"],
-        ["paid", 0, 3, 3, "1500.5000000000", "0"],
-        [null, 1, 1, 1, null, "1"],
+        ["failed", 0, 2, 2, "failed", "2", "150.0000000000", "1"],
+        ["paid", 0, 3, 0, "paid", 3, "1500.5000000000", "0"],
+        [null, 1, 1, 3, null, 1, null, "1"],
       ],
       3,
     );
@@ -193,10 +197,10 @@ describe("executeGroupQuery", () => {
     expect(decodeCursor(res.nextCursor as string)).toEqual({ v: 1, mode: "offset", fp: built.fingerprint, offset: 2 });
   });
 
-  it("returns the empty group last with value null and no nextCursor on the last page", async () => {
+  it("returns the empty group last with value null, key \"∅\" (core's EMPTY_KEY), sum 0 and no nextCursor on the last page", async () => {
     const { db } = fake([
-      ["paid", 0, 3, 3, "10", "0"],
-      [null, 1, 1, 1, null, "1"],
+      ["paid", 0, 3, 0, "paid", 3, "10", "0"],
+      [null, 1, 1, 3, null, 1, null, "1"],
     ]);
     const scope = scopeFor();
     const res = await executeGroupQuery(buildGroupQuery(BY_STATUS, scope, db), scope);
@@ -205,11 +209,12 @@ describe("executeGroupQuery", () => {
     expect(res.groups?.at(-1)).toEqual<GroupResult>({
       columnId: "paymentStatus",
       value: null,
-      key: "null",
+      key: "∅",
       count: 1,
       aggregates: [
         { columnId: "fee", agg: "count", value: 1 },
-        { columnId: "fee", agg: "sum", value: null },
+        // core computeAggregate: "sum of nothing is 0"
+        { columnId: "fee", agg: "sum", value: 0 },
         { columnId: "callDate", agg: "countEmpty", value: 1 },
       ],
     });

@@ -1,4 +1,5 @@
 import { SchemaValidationError } from "../errors";
+import { TEXT_COLLATION } from "../sql/column-expr";
 import { assertSafeColumnKey } from "../storage/keys";
 
 export interface DdlStatement {
@@ -59,7 +60,12 @@ function boundedIndexName(table: string, suffix: string, maxLen = 64): string {
  */
 const ID_TYPE = "VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin";
 
-const ENGINE_CLAUSE = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
+/**
+ * Table default = `TEXT_COLLATION` (case-insensitive, accent-SENSITIVE, like
+ * core's `toLowerCase` matching), so physical text columns created here compare
+ * the same way as JSON cells and `gc_<key>` columns.
+ */
+const ENGINE_CLAUSE = `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=${TEXT_COLLATION}`;
 
 export interface CreateRowsTableDDLOptions {
   table: string;

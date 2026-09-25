@@ -53,14 +53,14 @@ describe("resolveColumnExpr", () => {
     }).toMatchInlineSnapshot(`
       {
         "boolean": "(CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'BOOLEAN' THEN JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true' END)",
-        "choice": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci",
+        "choice": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci",
         "date": "CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE)",
         "datetime": "CAST(REPLACE(REPLACE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.calledAt')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), NULL), 'T', ' '), 'Z', '') AS DATETIME(3))",
         "link": "JSON_EXTRACT(\`cells\`, '$.links[*].id')",
         "multi": "JSON_EXTRACT(\`cells\`, '$.tags')",
         "number": "(CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)",
-        "ref": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci",
-        "text": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci",
+        "ref": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_as_ci",
+        "text": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_as_ci",
       }
     `);
     expect(typed("name").params).toEqual([]);
@@ -97,7 +97,7 @@ describe("resolveColumnExpr", () => {
       `"(JSON_EXTRACT(\`cells\`, '$.tags') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.tags')) = 'NULL' OR JSON_LENGTH(JSON_EXTRACT(\`cells\`, '$.tags')) = 0)"`,
     );
     expect(renderSql(isEmptyExpr(column(schema, "name"), scope)).sql).toMatchInlineSnapshot(
-      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$'))"`,
+      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_as_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_as_ci, '^[[:space:]]*$'))"`,
     );
     expect(renderSql(isEmptyExpr(column(schema, "fee"), scope)).sql).not.toContain("= ''");
     expect(renderSql(isEmptyExpr(column(schema, "fee"), scope)).sql).not.toContain("REGEXP_LIKE");

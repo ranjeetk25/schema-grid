@@ -5,7 +5,14 @@ import { generatedColumnName, jsonPath } from "../storage/keys";
 import type { SqlScope } from "./scope";
 import { type StorageKind, storageKindOf } from "./storage-kind";
 
-export const TEXT_COLLATION = "utf8mb4_0900_ai_ci";
+/**
+ * Collation of every text-ish typed expression (and of text `gc_<key>` columns /
+ * the rows-table default). Case-INsensitive but accent-SENSITIVE, matching core's
+ * `toLowerCase()` text matching: "jose" matches "JOSE" but not "José".
+ * (`utf8mb4_0900_ai_ci` would also fold accents — a parity bug caught by the
+ * MySQL integration suite.) Row ids use `utf8mb4_bin` (see tables-ddl).
+ */
+export const TEXT_COLLATION = "utf8mb4_0900_as_ci";
 
 export interface ColumnExpr {
   column: ColumnDef;

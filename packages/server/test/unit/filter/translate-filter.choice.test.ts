@@ -12,9 +12,9 @@ const t = (node: FilterNode | null) => {
   return out ? renderSql(out) : undefined;
 };
 
-const PS = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci";
+const PS = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.paymentStatus'))) COLLATE utf8mb4_0900_as_ci";
 const PS_EMPTY = `(${PS} IS NULL OR REGEXP_LIKE(${PS}, '^[[:space:]]*$'))`;
-const OWNER = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci";
+const OWNER = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.owner.id'))) COLLATE utf8mb4_0900_as_ci";
 const OWNER_EMPTY = `(${OWNER} IS NULL OR REGEXP_LIKE(${OWNER}, '^[[:space:]]*$'))`;
 const TAGS = "JSON_EXTRACT(`cells`, '$.tags')";
 const TAGS_EMPTY = `(${TAGS} IS NULL OR JSON_TYPE(${TAGS}) = 'NULL' OR JSON_LENGTH(${TAGS}) = 0)`;
