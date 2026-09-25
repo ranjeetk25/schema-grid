@@ -32,7 +32,10 @@ import {
 import { createAnnouncer, type Politeness, savedMessage } from "../a11y/announcer";
 import { LiveAnnouncer } from "../a11y/LiveAnnouncer";
 import type { AppliedInfo } from "../editing/editController";
+import { FullWidthRowRenderer } from "../grouping/GroupRowRenderer";
 import type { GridRow, ViewDef } from "../internal/core";
+import { wrapWithCellShell } from "../range/CellShell";
+import { RANGE_CELL_CLASS_RULES } from "../range/useRangeSelection";
 import { SG_CLASSES } from "../theme/classNames";
 import type { SchemaGridStores } from "./gridContext";
 import {
@@ -95,7 +98,16 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
     },
     [announcer],
   );
-  const seams = useMemo<UseSchemaGridSeams<Row>>(() => ({ announce, onApplied }), [announce, onApplied]);
+  const seams = useMemo<UseSchemaGridSeams<Row>>(
+    () => ({
+      announce,
+      onApplied,
+      fullWidthCellRenderer: FullWidthRowRenderer,
+      wrapRenderer: wrapWithCellShell,
+      cellClassRules: RANGE_CELL_CLASS_RULES,
+    }),
+    [announce, onApplied],
+  );
   const grid = useSchemaGrid<Row>(gridPropsIn, seams);
 
   useImperativeHandle(
@@ -129,7 +141,7 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
   const rootStyle = useMemo<CSSProperties>(() => ({ ...ROOT_LAYOUT, height, ...style }), [height, style]);
 
   return (
-    <div className={rootClass} style={rootStyle}>
+    <div className={rootClass} style={rootStyle} onKeyDown={grid.keyboard.handleRootKeyDown}>
       {grid.loadState === "error" ? (
         <div role="alert" className="sg-load-error">
           {errorText(grid.lastError, grid.filterErrors.external.length > 0)}

@@ -48,8 +48,16 @@
  * Seams for later tasks: `UseSchemaGridSeams` (renderer wrapping for the
  * range/fill `CellShell`, extra cell/row class rules, full-width group
  * renderers, announcer, `onApplied` after a successful batch), `rowModelKey`
- * (T27 switches server + groupBy to the client-side model; `<SchemaGrid>` keys `AgGridReact` on it). `poll` is
- * accepted and stored for T28.
+ * (T27 switches server + groupBy to the client-side model; `<SchemaGrid>` keys `AgGridReact` on it).
+ * - Polling (T28): `useRemoteSync` polls `getChanges` (`poll.enabled` defaults
+ *   to document visibility) and applies patches through the row store (client)
+ *   or `setData` (server); see `sync/applyRemotePatch.ts`. Flashes queued by it
+ *   run after new client `rowData` lands; deferred rows are re-planned on
+ *   `onCellEditingStopped` and whenever pending cells settle.
+ * - Range selection (T23): `useRangeSelection` handles cell mouse/focus events
+ *   and registers Shift+Arrow on the `keyboard` registry, whose
+ *   `suppressKeyboardEvent` is composed onto every column (`grid/keyboard.ts`).
+ *   Highlight rules and the `CellShell` fill handle come in via the seams.
  *
  * `schema`, `dataSource`, `resolver`, `registry`, `uiRegistry` and `theme` are
  * compared by reference: pass stable instances. `user` and `externalFilter`
@@ -118,16 +126,20 @@ import {
   type ViewDef,
 } from "../internal/core";
 import { createInfiniteDatasource, INFINITE_DEFAULTS, type PageMode } from "../server/infiniteDatasource";
+import { type ServerGroupsHandle, useServerGroups } from "../server/serverGroups";
 import { type CellRef, type CellStatusStore, createCellStatusStore, parseCellKey } from "../state/cellStatusStore";
 import { createExpansionStore } from "../state/expansionStore";
 import { createQueryStore, type QueryState } from "../state/queryStore";
 import { createRangeStore } from "../state/rangeStore";
+import { useRangeSelection } from "../range/useRangeSelection";
 import { createRowStore, type RowStore } from "../state/rowStore";
+import { rowMatchesView, useRemoteSync } from "../sync/applyRemotePatch";
 import { SG_CLASSES } from "../theme/classNames";
 import { createSchemaGridTheme } from "../theme/theme";
 import { createUndoStack } from "../undo/undoStack";
 import { applyViewState, captureViewState } from "../views/viewState";
 import type { SchemaGridHookContext, SchemaGridStores } from "./gridContext";
+import { createKeyboardRegistry, type KeyboardRegistry, withSuppressKeyboardEvent } from "./keyboard";
 
 export type { ClipboardReport } from "../clipboard/types";
 
@@ -170,7 +182,7 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
    */
   externalFilter?: FilterNode | null;
   onClipboardReport?(report: ClipboardReport): void;
-  /** Accepted and stored; polling is wired in T28. */
+  /** Change-feed polling (needs `dataSource.getChanges`). Default interval 7s; enabled defaults to document visibility. */
   poll?: SchemaGridPollOptions;
   /** Default `createSchemaGridTheme()`. */
   theme?: Theme;
@@ -246,8 +258,10 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   rowModelKey: RowModelKey;
   /** Announcer seam (T21/T30); undefined until one is provided. */
   announce?(message: string, politeness?: "polite" | "assertive"): void;
-  /** Stored `poll` prop for T28. */
+  /** The `poll` prop as given. */
   poll: SchemaGridPollOptions | undefined;
+  /** Cell/root key handler registry (see `grid/keyboard.ts`); `<SchemaGrid>` wires `handleRootKeyDown` on `.sg-root`. */
+  keyboard: KeyboardRegistry<Row>;
 }
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -261,6 +275,10 @@ const EVENT_KEYS_WE_CHAIN = [
   "onColumnResized",
   "onColumnVisible",
   "onColumnPinned",
+  "onCellEditingStopped",
+  "onCellMouseDown",
+  "onCellMouseOver",
+  "onCellFocused",
 ] as const;
 
 const LOCKED_KEYS = [
@@ -469,6 +487,12 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }));
   const [undoStack] = useState(() => createUndoStack());
   const apiRef = useRef<GridApi<Row> | null>(null);
+  // Keyboard registry (grid/keyboard.ts) + range selection (T23).
+  const [keyboard] = useState(() => createKeyboardRegistry<Row>());
+  const rangeSelection = useRangeSelection<Row>(apiRef, stores.range, {
+    keyboard,
+    announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
+  });
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -514,7 +538,14 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     return advancedCache.current.ids;
   }, [stores]);
   const getEvents = useCallback((): SchemaGridEvents<Row> | undefined => latest.current.events, []);
+  // T27: group toggle / load-more for the full-width renderers (`context.grouping`).
+  const serverGroupsRef = useRef<ServerGroupsHandle<Row> | null>(null);
+  const [grouping] = useState(() => ({
+    toggle: (id: string) => (serverGroupsRef.current?.active ? serverGroupsRef.current.toggle(id) : stores.expansion.toggle(id)),
+    loadMore: (id: string) => serverGroupsRef.current?.loadMore(id),
+  }));
   const contextFields = {
+    grouping,
     dataSource,
     events: getEvents,
     stores,
@@ -662,9 +693,24 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     });
   }, []);
 
+  // ---- Remote changes (T28) --------------------------------------------------------------
+  const remote = useRemoteSync<Row>({
+    api: () => apiRef.current,
+    mode,
+    stores,
+    dataSource,
+    ...(props.poll ? { poll: props.poll } : {}),
+    schema,
+    events: getEvents,
+    matchesView: (row) => rowMatchesView(row, cfg.current, stores.query.getState()),
+  });
+  const { flushAfterGridUpdate, onCellEditingStopped } = remote;
+
   useEffect(() => {
-    if (mode === "client") flushPendingRefresh();
-  }, [rowData, mode, flushPendingRefresh]);
+    if (mode !== "client") return;
+    flushPendingRefresh();
+    flushAfterGridUpdate();
+  }, [rowData, mode, flushPendingRefresh, flushAfterGridUpdate]);
 
   // Re-derive when anything the derivation reads changes.
   useEffect(() => {
@@ -824,6 +870,28 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     replaceServerDatasource();
   }, [getServerQuery, replaceServerDatasource]);
 
+  // T27 (Deviation 4): server mode + groupBy → lazy groups on the client-side row model.
+  const serverGroups = useServerGroups<Row>({
+    enabled: mode === "server",
+    queryStore: stores.query,
+    rowStore: stores.rows,
+    getQuery: getServerQuery,
+    getDataSource: () => latest.current.dataSource,
+    dataSource,
+    pageSize,
+    schema,
+    registry,
+    canFetch: () => cfg.current.externalErrors.length === 0,
+    onRows: upsertIncoming,
+    onError: (error) => {
+      setLastError(error);
+      setLoadState("error");
+    },
+    onLoadingChange: (loading) => setLoadState(loading ? "loading" : "idle"),
+  });
+  serverGroupsRef.current = serverGroups;
+  const serverGroupsPostSort = useMemo(() => makePostSortRows<Row>(serverGroups.getOrderIndex), [serverGroups.getOrderIndex]);
+
   // ---- Client loading ----------------------------------------------------------------
   const loadGeneration = useRef(0);
   const loadAll = useCallback(async (): Promise<void> => {
@@ -873,6 +941,10 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       return;
     }
     stores.rows.clearNotInView();
+    if (serverGroupsRef.current?.active) {
+      await serverGroupsRef.current.refetch();
+      return;
+    }
     currentInner.current?.reset();
     apiRef.current?.purgeInfiniteCache();
   }, [loadAll, stores]);
@@ -1058,11 +1130,19 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [viewId, applyView]);
 
   // ---- Grid event handlers -------------------------------------------------------------
+  const carriedColumnState = useRef<ColumnState[] | null>(null);
   const onGridReady = useCallback(
     (event: GridReadyEvent<Row>) => {
       apiRef.current = event.api;
       const view = latest.current.view;
-      if (view) {
+      // A row-model switch (T27) remounts the grid: keep the live query and column state, don't re-apply the view.
+      const carried = carriedColumnState.current;
+      carriedColumnState.current = null;
+      if (view && carried && appliedViewId.current === view.id) {
+        event.api.applyColumnState({ state: carried, applyOrder: true });
+        pushQueryToGrid();
+        seedView();
+      } else if (view) {
         appliedViewId.current = view.id;
         applyView(event.api, view);
       } else {
@@ -1073,6 +1153,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     [applyView, pushQueryToGrid, seedView],
   );
   const onGridPreDestroyed = useCallback(() => {
+    const api = apiRef.current;
+    carriedColumnState.current = api && !api.isDestroyed() ? api.getColumnState() : null;
     apiRef.current = null;
   }, []);
 
@@ -1117,23 +1199,26 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   // state goes through applyViewState, so the view is not a dependency.
   const columnDefs = useMemo(
     () =>
-      compileColumns<Row>(schema, access, registry, uiRegistry, {
-        view: latest.current.view ?? null,
-        cellClassRules,
-        canEditCell,
-        formulas,
-        ...(seams.wrapRenderer ? { wrapRenderer: seams.wrapRenderer } : {}),
-      }),
-    [schema, access, registry, uiRegistry, cellClassRules, canEditCell, formulas, seams.wrapRenderer],
+      withSuppressKeyboardEvent<Row>(
+        compileColumns<Row>(schema, access, registry, uiRegistry, {
+          view: latest.current.view ?? null,
+          cellClassRules,
+          canEditCell,
+          formulas,
+          ...(seams.wrapRenderer ? { wrapRenderer: seams.wrapRenderer } : {}),
+        }),
+        keyboard.suppressKeyboardEvent,
+      ),
+    [schema, access, registry, uiRegistry, cellClassRules, canEditCell, formulas, seams.wrapRenderer, keyboard],
   );
 
   const postSortRows = useMemo(() => makePostSortRows<Row>(() => orderIndexRef.current), []);
   const getRowId = useCallback((p: { data: Row }) => p.data.id, []);
+  const rowModelKey: RowModelKey = mode === "server" && !serverGroups.active ? "infinite" : "clientSide";
   const modules = useMemo(
-    () => (mode === "server" ? [...SCHEMA_GRID_INFINITE_MODULES] : [...SCHEMA_GRID_CLIENT_MODULES]),
-    [mode],
+    () => (rowModelKey === "infinite" ? [...SCHEMA_GRID_INFINITE_MODULES] : [...SCHEMA_GRID_CLIENT_MODULES]),
+    [rowModelKey],
   );
-  const rowModelKey: RowModelKey = mode === "server" ? "infinite" : "clientSide";
   const fullWidthCellRenderer = seams.fullWidthCellRenderer;
   const isFullWidthRow = useCallback((p: IsFullWidthRowParams<Row>) => {
     const data = p.rowNode.data as DisplayRow<Row> | undefined;
@@ -1208,11 +1293,15 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       onColumnResized,
       onColumnVisible,
       onColumnPinned,
+      onCellEditingStopped,
+      onCellMouseDown: rangeSelection.onCellMouseDown,
+      onCellMouseOver: rangeSelection.onCellMouseOver,
+      onCellFocused: rangeSelection.onCellFocused,
       enterNavigatesVertically: true,
       enterNavigatesVerticallyAfterEdit: true,
       stopEditingWhenCellsLoseFocus: true,
       ...(fullWidthCellRenderer ? { isFullWidthRow, fullWidthCellRenderer } : {}),
-      ...(mode === "server" ? INFINITE_DEFAULTS(pageMode, pageSize) : {}),
+      ...(rowModelKey === "infinite" ? INFINITE_DEFAULTS(pageMode, pageSize) : {}),
     };
 
     const merged: AgGridReactProps<Row> = { ...ours };
@@ -1243,8 +1332,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     merged.context = context;
     merged.getRowId = getRowId;
     merged.maintainColumnOrder = true;
-    if (mode === "server") {
+    if (rowModelKey === "infinite") {
       merged.datasource = serverDatasource;
+    } else if (mode === "server") {
+      merged.rowData = serverGroups.rows as Row[];
+      merged.postSortRows = serverGroupsPostSort;
     } else {
       merged.rowData = rowData as Row[];
       merged.postSortRows = postSortRows;
@@ -1263,6 +1355,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     onColumnResized,
     onColumnVisible,
     onColumnPinned,
+    onCellEditingStopped,
+    rangeSelection,
     fullWidthCellRenderer,
     isFullWidthRow,
     mode,
@@ -1271,6 +1365,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     pageSize,
     rowData,
     postSortRows,
+    serverGroups.rows,
+    serverGroupsPostSort,
     userOptions,
     onCellEditRequest,
     modules,
@@ -1297,5 +1393,6 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     rowModelKey,
     ...(seams.announce ? { announce: seams.announce } : {}),
     poll: props.poll,
+    keyboard,
   };
 }
