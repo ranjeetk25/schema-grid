@@ -1,0 +1,40 @@
+{
+  "name": "schema-grid-storybook-shadcn",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev -p 6007 --no-open",
+    "build-storybook": "storybook build -o storybook-static --quiet",
+    "build": "storybook build -o storybook-static --quiet",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@ranjeetk25/schema-grid-ag-grid": "workspace:*",
+    "@ranjeetk25/schema-grid-core": "workspace:*",
+    "@ranjeetk25/schema-grid-io": "workspace:*",
+    "@ranjeetk25/schema-grid-ui-shadcn": "workspace:*",
+    "ag-grid-community": "^36.2.0",
+    "ag-grid-react": "^36.2.0",
+    "lucide-react": "^1.48.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sonner": "^2.0.8",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "storybook": "^8.6.18",
+    "tailwindcss": "^4.3.3",
+    "vite": "^6.0.0"
+  }
+}

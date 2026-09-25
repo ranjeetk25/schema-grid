@@ -1,0 +1,11 @@
+/* The kit's Tailwind v4 source entry, plus this app's own sg:-prefixed classes. */
+/* Relative import: the package export resolves to dist/, which dev does not build. */
+@import "../../../packages/ui-shadcn/src/tailwind.css";
+@source "../src";
+
+html,
+body {
+  margin: 0;
+  background: var(--sg-ui-background);
+  color: var(--sg-ui-foreground);
+}

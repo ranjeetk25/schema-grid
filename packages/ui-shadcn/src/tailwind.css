@@ -1,0 +1,212 @@
+/*
+ * Tailwind v4 source entry for @ranjeetk25/schema-grid-ui-shadcn.
+ *
+ * - Every utility is prefixed `sg:` (and every theme variable `--sg-*`), so
+ *   this build never collides with a host's own Tailwind.
+ * - No Preflight: a scoped mini-reset lives under `.sg-ui` instead, so the
+ *   host page is untouched.
+ * - Hosts that run Tailwind v4 can import this file as its OWN css entry
+ *   (a second Tailwind root) to re-theme via @theme; everyone else imports
+ *   the prebuilt `@ranjeetk25/schema-grid-ui-shadcn/styles.css`.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme) prefix(sg);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(sg) source(none);
+@import "./styles/tokens.css";
+
+@source "./";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--sg-ui-font);
+  --font-mono: var(--sg-ui-font-mono);
+
+  --color-background: var(--sg-ui-background);
+  --color-foreground: var(--sg-ui-foreground);
+  --color-subtle: var(--sg-ui-subtle);
+  --color-muted: var(--sg-ui-muted);
+  --color-muted-foreground: var(--sg-ui-muted-foreground);
+  --color-faint-foreground: var(--sg-ui-faint-foreground);
+  --color-border: var(--sg-ui-border);
+  --color-input: var(--sg-ui-input);
+  --color-input-hover: var(--sg-ui-input-hover);
+  --color-popover: var(--sg-ui-popover);
+  --color-primary: var(--sg-ui-primary);
+  --color-primary-hover: var(--sg-ui-primary-hover);
+  --color-primary-foreground: var(--sg-ui-primary-foreground);
+  --color-primary-subtle: var(--sg-ui-primary-subtle);
+  --color-ring: var(--sg-ui-ring);
+  --color-danger: var(--sg-ui-danger);
+  --color-danger-subtle: var(--sg-ui-danger-subtle);
+  --color-success: var(--sg-ui-success);
+  --color-warning: var(--sg-ui-warning);
+  --color-overlay: var(--sg-ui-overlay);
+
+  --shadow-xs: var(--sg-ui-shadow-xs);
+  --shadow-popover: var(--sg-ui-shadow-popover);
+  --shadow-dialog: var(--sg-ui-shadow-dialog);
+}
+
+@theme {
+  /* Type: 13px base for chrome, 14px modal copy, 16px titles. */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+
+  /* Radii: 4 badges/kbd, 6 controls, 8 popovers/cards, 12 dialogs. */
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --animate-in: sg-enter 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-out: sg-exit 100ms ease-in;
+  --animate-overlay-in: sg-fade-in 160ms ease-out;
+  --animate-overlay-out: sg-fade-out 100ms ease-in;
+  --animate-dialog-in: sg-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-out: sg-dialog-exit 110ms ease-in;
+
+  @keyframes sg-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-2px) scale(0.98);
+    }
+  }
+  @keyframes sg-exit {
+    to {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+  @keyframes sg-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes sg-fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes sg-dialog-enter {
+    from {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 6px)) scale(0.98);
+    }
+  }
+  @keyframes sg-dialog-exit {
+    to {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.98);
+    }
+  }
+}
+
+/* Scoped mini-reset: only inside `.sg-ui` roots (and portal content). */
+@layer base {
+  .sg-ui {
+    font-family: var(--sg-ui-font);
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--sg-ui-foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  /* Inside a grid cell, keep AG Grid's row-height line box so text renderers centre vertically like badges. */
+  .ag-cell .sg-ui {
+    line-height: inherit;
+  }
+  /*
+   * ag-grid's createPopupEditor container (.sg-popup-editor) has its own card
+   * chrome; when it wraps our card, ours is the only surface (no box-in-a-box).
+   * !important because ag-grid's theme CSS is unlayered.
+   */
+  .sg-popup-editor:has(> .sg-popup-card) {
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-width: 0 !important;
+  }
+  .sg-ui,
+  .sg-ui *,
+  .sg-ui ::before,
+  .sg-ui ::after {
+    box-sizing: border-box;
+    border: 0 solid var(--sg-ui-border);
+  }
+  .sg-ui :where(h1, h2, h3, h4, h5, h6, p, ul, ol, fieldset, legend, figure, blockquote, dl, dd) {
+    margin: 0;
+    padding: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+  .sg-ui :where(ul, ol) {
+    list-style: none;
+  }
+  .sg-ui :where(button, input, select, textarea, optgroup) {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background-color: transparent;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+  }
+  .sg-ui :where(button, [role="button"], [type="button"], [type="submit"]) {
+    cursor: pointer;
+  }
+  .sg-ui :where(button:disabled, [aria-disabled="true"]) {
+    cursor: default;
+  }
+  .sg-ui :where(a) {
+    color: inherit;
+    text-decoration: inherit;
+  }
+  .sg-ui :where(svg, img) {
+    display: block;
+    vertical-align: middle;
+    flex-shrink: 0;
+  }
+  .sg-ui :where(img) {
+    max-width: 100%;
+    height: auto;
+  }
+  .sg-ui :where(table) {
+    border-collapse: collapse;
+    text-indent: 0;
+  }
+  .sg-ui :where(input::placeholder, textarea::placeholder) {
+    color: var(--sg-ui-faint-foreground);
+    opacity: 1;
+  }
+  .sg-ui :where(textarea) {
+    resize: vertical;
+  }
+  .sg-ui :where(kbd, code, pre) {
+    font-family: var(--sg-ui-font-mono);
+  }
+  .sg-ui :where([hidden]:not([hidden="until-found"])) {
+    display: none !important;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sg-ui,
+    .sg-ui * {
+      animation-duration: 1ms !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}

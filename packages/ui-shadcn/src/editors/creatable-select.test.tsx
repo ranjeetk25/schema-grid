@@ -1,0 +1,266 @@
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type { ColumnDef, Option } from "../internal/core-contracts";
+import { resolveEditorComponent } from "../internal/grid-contracts";
+import { FIXTURE_NOW, PAYMENT_OPTIONS, buildStubDataSource } from "../test/fixtures";
+import { renderUi } from "../test/render";
+import { CREATE_OPTION_VALUE, CreatableSelectEditor, CreatableSelectPopupEditor } from "./CreatableSelectEditor";
+
+const COLUMN: ColumnDef = {
+  id: "col_stage",
+  key: "stage",
+  label: "Stage",
+  type: "creatableSelect",
+  config: { options: PAYMENT_OPTIONS },
+  order: 0,
+  createdAt: FIXTURE_NOW,
+  updatedAt: FIXTURE_NOW,
+};
+
+function setup(overrides: Partial<Parameters<typeof CreatableSelectEditor>[0]> = {}) {
+  const dataSource = buildStubDataSource();
+  const props = {
+    onChange: vi.fn(),
+    onCommit: vi.fn(),
+    onCancel: vi.fn(),
+    onOptionCreate: vi.fn(),
+  };
+  const utils = renderUi(
+    <CreatableSelectEditor value={null} column={COLUMN} config={COLUMN.config} dataSource={dataSource} {...props} {...overrides} />,
+  );
+  return { ...utils, props, dataSource };
+}
+
+const input = () => screen.getByRole("combobox");
+const createOption = (label: string) => screen.getByRole("option", { name: `Create “${label}”` });
+
+describe("CreatableSelectEditor", () => {
+  it("is exported as a popup editor", () => {
+    expect(CreatableSelectPopupEditor.cellEditorPopup).toBe(true);
+    expect(resolveEditorComponent(CreatableSelectPopupEditor.component)).toBe(CreatableSelectEditor);
+  });
+
+  it("keeps the NUL-prefixed sentinel for parity", () => {
+    expect(CREATE_OPTION_VALUE).toBe("\u0000$create");
+  });
+
+  it("opens on mount in grid mode and lists the configured options", () => {
+    setup();
+    expect(input()).toHaveFocus();
+    expect(screen.getByRole("option", { name: "Paid" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Failed" })).toBeInTheDocument();
+  });
+
+  it("does not auto-open or grab focus when autoFocus is false", () => {
+    setup({ autoFocus: false });
+    expect(document.activeElement).toBe(document.body);
+    expect(screen.queryByRole("option", { name: "Paid" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the list inside the editor card", () => {
+    const { container } = setup();
+    const card = container.querySelector('[data-slot="editor-card"]') as HTMLElement;
+    expect(card.contains(screen.getByText("Pending"))).toBe(true);
+  });
+
+  it("typing an existing label (any case) shows no create option", async () => {
+    const { user } = setup();
+    await user.type(input(), "paid");
+    expect(screen.getByRole("option", { name: "Paid" })).toBeInTheDocument();
+    expect(screen.queryByText(/Create “/)).not.toBeInTheDocument();
+  });
+
+  it("typing a new label shows the create option; clicking it creates, emits and commits", async () => {
+    const { user, props, dataSource } = setup();
+    await user.type(input(), "Refunded");
+    await user.click(createOption("Refunded"));
+    await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("refunded"));
+    expect(dataSource.createOption).toHaveBeenCalledWith("col_stage", "Refunded");
+    const created: Option = { id: "refunded", label: "Refunded" };
+    expect(props.onOptionCreate).toHaveBeenCalledWith(created);
+    expect(props.onChange).toHaveBeenCalledWith("refunded");
+    const createOrder = props.onOptionCreate.mock.invocationCallOrder[0] ?? 0;
+    const changeOrder = props.onChange.mock.invocationCallOrder[0] ?? 0;
+    const commitOrder = props.onCommit.mock.invocationCallOrder[0] ?? 0;
+    expect(createOrder).toBeLessThan(changeOrder);
+    expect(changeOrder).toBeLessThan(commitOrder);
+  });
+
+  it("shows a loader and disables the input while creating", async () => {
+    let resolve: (o: Option) => void = () => {};
+    const { user, dataSource } = setup();
+    dataSource.createOption.mockImplementationOnce(
+      () =>
+        new Promise<Option>((r) => {
+          resolve = r;
+        }),
+    );
+    await user.type(input(), "Refunded");
+    await user.click(createOption("Refunded"));
+    expect(input()).toBeDisabled();
+    expect(screen.getByTestId("creatable-select-loader")).toBeInTheDocument();
+    await act(async () => {
+      resolve({ id: "refunded", label: "Refunded" });
+    });
+    await waitFor(() => expect(screen.queryByTestId("creatable-select-loader")).not.toBeInTheDocument());
+  });
+
+  it("a rejected createOption shows the error inline, stays open and does not commit", async () => {
+    const { user, props, dataSource, container } = setup();
+    dataSource.createOption.mockRejectedValueOnce(new Error("Option limit reached"));
+    await user.type(input(), "Refunded");
+    await user.click(createOption("Refunded"));
+    const message = await screen.findByText(/Option limit reached/);
+    expect((container.querySelector('[data-slot="editor-card"]') as HTMLElement).contains(message)).toBe(true);
+    expect(props.onCommit).not.toHaveBeenCalled();
+    expect(props.onChange).not.toHaveBeenCalled();
+    expect(input()).not.toBeDisabled();
+    expect(await screen.findByRole("option", { name: "Create “Refunded”" })).toBeInTheDocument();
+  });
+
+  it("picking an existing option calls onChange and onCommit with its value", async () => {
+    const { user, props } = setup();
+    await user.click(screen.getByRole("option", { name: "Pending" }));
+    expect(props.onChange).toHaveBeenCalledWith("pending");
+    expect(props.onCommit).toHaveBeenCalledWith("pending");
+  });
+
+  it("Enter selects the first matching option while searching", async () => {
+    const { user, props } = setup();
+    await user.type(input(), "fa{Enter}");
+    expect(props.onCommit).toHaveBeenCalledWith("failed");
+  });
+
+  it("arrow keys navigate the options", async () => {
+    const { user, props } = setup();
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(props.onCommit).toHaveBeenCalledWith("pending");
+  });
+
+  it("Enter on a highlighted option never reaches the grid", async () => {
+    const gridKeys: string[] = [];
+    const { user, props, container } = setup();
+    container.addEventListener("keydown", (e) => gridKeys.push(e.key));
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(props.onCommit).toHaveBeenCalledWith("paid");
+    expect(gridKeys).not.toContain("Enter");
+  });
+
+  it("Enter on a new label creates it", async () => {
+    const { user, props, dataSource } = setup();
+    await user.type(input(), "Refunded{Enter}");
+    await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("refunded"));
+    expect(dataSource.createOption).toHaveBeenCalledTimes(1);
+  });
+
+  it("Escape cancels", async () => {
+    const { user, props } = setup();
+    await user.keyboard("{Escape}");
+    expect(props.onCancel).toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("hides the create option when the data source cannot create", async () => {
+    const { user } = setup({ dataSource: { ...buildStubDataSource(), createOption: undefined } });
+    await user.type(input(), "Refunded");
+    expect(screen.queryByText(/Create “/)).not.toBeInTheDocument();
+  });
+
+  it("existing options cannot be picked while a create is pending", async () => {
+    let resolve: (o: Option) => void = () => {};
+    const { user, props, dataSource } = setup();
+    dataSource.createOption.mockImplementationOnce(
+      () =>
+        new Promise<Option>((r) => {
+          resolve = r;
+        }),
+    );
+    await user.type(input(), "Pa");
+    await user.click(createOption("Pa"));
+    const paid = screen.queryByRole("option", { name: "Paid" });
+    if (paid) fireEvent.click(paid);
+    await act(async () => {
+      resolve({ id: "pa", label: "Pa" });
+    });
+    await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("pa"));
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+    expect(props.onChange).toHaveBeenCalledTimes(1);
+    expect(props.onChange).toHaveBeenCalledWith("pa");
+  });
+
+  it("a double click on the create option calls createOption exactly once", async () => {
+    const { user, props, dataSource } = setup();
+    await user.type(input(), "Refunded");
+    const create = createOption("Refunded");
+    act(() => {
+      fireEvent.click(create);
+      fireEvent.click(create);
+    });
+    await waitFor(() => expect(props.onCommit).toHaveBeenCalledWith("refunded"));
+    expect(dataSource.createOption).toHaveBeenCalledTimes(1);
+    expect(props.onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("unmounting during a pending create still reports the created option but does not commit", async () => {
+    let resolve: (o: Option) => void = () => {};
+    const { user, props, dataSource, unmount } = setup();
+    dataSource.createOption.mockImplementationOnce(
+      () =>
+        new Promise<Option>((r) => {
+          resolve = r;
+        }),
+    );
+    await user.type(input(), "Refunded");
+    await user.click(createOption("Refunded"));
+    unmount();
+    await act(async () => {
+      resolve({ id: "refunded", label: "Refunded" });
+    });
+    expect(props.onOptionCreate).toHaveBeenCalledWith({ id: "refunded", label: "Refunded" });
+    expect(props.onChange).not.toHaveBeenCalled();
+    expect(props.onCommit).not.toHaveBeenCalled();
+  });
+
+  it("an existing option whose value is literally '$create' is picked, not created", async () => {
+    const options = [...PAYMENT_OPTIONS, { id: "$create", label: "Weird" }];
+    const { user, props, dataSource } = setup({ config: { options } });
+    await user.click(screen.getByRole("option", { name: "Weird" }));
+    expect(dataSource.createOption).not.toHaveBeenCalled();
+    expect(props.onCommit).toHaveBeenCalledWith("$create");
+  });
+
+  it("shows a value that is not among the options (form mode trigger)", () => {
+    setup({ value: "legacy_stage", autoFocus: false });
+    expect(screen.getByRole("combobox", { name: "Stage" })).toHaveTextContent("legacy_stage");
+  });
+
+  it("shows a value that is not among the options as the placeholder in grid mode", () => {
+    setup({ value: "legacy_stage" });
+    expect(input()).toHaveAttribute("placeholder", "legacy_stage");
+  });
+
+  it("marks the input busy and labels the loader while creating", async () => {
+    let resolve: (o: Option) => void = () => {};
+    const { user, dataSource } = setup();
+    dataSource.createOption.mockImplementationOnce(
+      () =>
+        new Promise<Option>((r) => {
+          resolve = r;
+        }),
+    );
+    await user.type(input(), "Refunded");
+    await user.click(createOption("Refunded"));
+    expect(input()).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByLabelText("Creating option")).toBeInTheDocument();
+    await act(async () => {
+      resolve({ id: "refunded", label: "Refunded" });
+    });
+  });
+
+  it("form mode: picking from the popover commits", async () => {
+    const { user, props } = setup({ autoFocus: false });
+    await user.click(screen.getByRole("combobox", { name: "Stage" }));
+    await user.click(await screen.findByRole("option", { name: "Failed" }));
+    expect(props.onCommit).toHaveBeenCalledWith("failed");
+  });
+});

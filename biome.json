@@ -15,7 +15,9 @@
       "**/storybook-static/**",
       "**/test-results/**",
       "**/playwright-report/**",
-      "apps/demo-api/data/**"
+      "apps/demo-api/data/**",
+      "packages/ui-shadcn/src/tailwind.css",
+      "apps/storybook-shadcn/.storybook/preview.css"
     ]
   },
   "formatter": {

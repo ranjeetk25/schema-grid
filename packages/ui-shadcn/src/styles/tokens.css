@@ -1,0 +1,172 @@
+/*
+ * @ranjeetk25/schema-grid-ui-shadcn design tokens.
+ *
+ * Near-monochrome zinc with ONE accent (indigo #5e6ad2, docs/design/README.md).
+ * Kit tokens are `--sg-ui-*`; the `--sg-*-color` block at the bottom is the
+ * cross-package contract `@ranjeetk25/schema-grid-ag-grid`'s theme reads, derived
+ * from the kit tokens so the grid follows the kit (and `.dark`) automatically.
+ *
+ * Declared on `:root` as well as `.sg-ui` so Radix portal content (rendered
+ * on <body>) always resolves them. Override any of them unlayered in the host
+ * to re-theme; `.dark` on <html> (the shadcn convention) switches schemes.
+ */
+@layer base {
+  :root,
+  .sg-ui {
+    --sg-ui-font: "Geist", "Geist Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+    --sg-ui-font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --sg-ui-background: #ffffff;
+    --sg-ui-foreground: #09090b;
+    --sg-ui-subtle: #fafafa;
+    --sg-ui-muted: #f4f4f5;
+    --sg-ui-muted-foreground: #71717a;
+    --sg-ui-faint-foreground: #a1a1aa;
+    --sg-ui-border: #e4e4e7;
+    --sg-ui-input: #e4e4e7;
+    --sg-ui-input-hover: #d4d4d8;
+    --sg-ui-popover: #ffffff;
+
+    --sg-ui-primary: #5e6ad2;
+    --sg-ui-primary-hover: #4f5bc4;
+    --sg-ui-primary-foreground: #ffffff;
+    --sg-ui-primary-subtle: rgb(94 106 210 / 0.1);
+    --sg-ui-ring: rgb(94 106 210 / 0.35);
+
+    --sg-ui-danger: #dc2626;
+    --sg-ui-danger-subtle: rgb(220 38 38 / 0.08);
+    --sg-ui-success: #16a34a;
+    --sg-ui-warning: #d97706;
+
+    --sg-ui-overlay: rgb(9 9 11 / 0.32);
+    --sg-ui-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --sg-ui-shadow-popover: 0 8px 24px -6px rgb(0 0 0 / 0.12), 0 0 0 1px rgb(0 0 0 / 0.06);
+    --sg-ui-shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 0.22), 0 0 0 1px rgb(0 0 0 / 0.06);
+
+    /* Option tones: muted tonal pairs keyed by the core option colour names. */
+    --sg-tone-gray-bg: #f4f4f5;
+    --sg-tone-gray-fg: #52525b;
+    --sg-tone-gray-dot: #a1a1aa;
+    --sg-tone-red-bg: #fef2f2;
+    --sg-tone-red-fg: #b91c1c;
+    --sg-tone-red-dot: #ef4444;
+    --sg-tone-pink-bg: #fdf2f8;
+    --sg-tone-pink-fg: #be185d;
+    --sg-tone-pink-dot: #ec4899;
+    --sg-tone-grape-bg: #fdf4ff;
+    --sg-tone-grape-fg: #a21caf;
+    --sg-tone-grape-dot: #d946ef;
+    --sg-tone-violet-bg: #f5f3ff;
+    --sg-tone-violet-fg: #6d28d9;
+    --sg-tone-violet-dot: #8b5cf6;
+    --sg-tone-indigo-bg: #eef2ff;
+    --sg-tone-indigo-fg: #4338ca;
+    --sg-tone-indigo-dot: #6366f1;
+    --sg-tone-blue-bg: #eff6ff;
+    --sg-tone-blue-fg: #1d4ed8;
+    --sg-tone-blue-dot: #3b82f6;
+    --sg-tone-cyan-bg: #ecfeff;
+    --sg-tone-cyan-fg: #0e7490;
+    --sg-tone-cyan-dot: #06b6d4;
+    --sg-tone-teal-bg: #f0fdfa;
+    --sg-tone-teal-fg: #0f766e;
+    --sg-tone-teal-dot: #14b8a6;
+    --sg-tone-green-bg: #f0fdf4;
+    --sg-tone-green-fg: #15803d;
+    --sg-tone-green-dot: #22c55e;
+    --sg-tone-lime-bg: #f7fee7;
+    --sg-tone-lime-fg: #4d7c0f;
+    --sg-tone-lime-dot: #84cc16;
+    --sg-tone-yellow-bg: #fefce8;
+    --sg-tone-yellow-fg: #a16207;
+    --sg-tone-yellow-dot: #eab308;
+    --sg-tone-orange-bg: #fff7ed;
+    --sg-tone-orange-fg: #c2410c;
+    --sg-tone-orange-dot: #f97316;
+  }
+
+  .dark,
+  .dark .sg-ui,
+  .sg-ui.dark {
+    --sg-ui-background: #18181b;
+    --sg-ui-foreground: #e4e4e7;
+    --sg-ui-subtle: #1f1f23;
+    --sg-ui-muted: #27272a;
+    --sg-ui-muted-foreground: #a1a1aa;
+    --sg-ui-faint-foreground: #71717a;
+    --sg-ui-border: #2e2e33;
+    --sg-ui-input: #34343a;
+    --sg-ui-input-hover: #3f3f46;
+    --sg-ui-popover: #1c1c1f;
+
+    --sg-ui-primary: #7c86dc;
+    --sg-ui-primary-hover: #8d96e2;
+    --sg-ui-primary-foreground: #0b0b10;
+    --sg-ui-primary-subtle: rgb(124 134 220 / 0.16);
+    --sg-ui-ring: rgb(124 134 220 / 0.45);
+
+    --sg-ui-danger: #f87171;
+    --sg-ui-danger-subtle: rgb(248 113 113 / 0.12);
+    --sg-ui-success: #4ade80;
+    --sg-ui-warning: #fbbf24;
+
+    --sg-ui-overlay: rgb(0 0 0 / 0.56);
+    --sg-ui-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --sg-ui-shadow-popover: 0 10px 28px -6px rgb(0 0 0 / 0.55), 0 0 0 1px #2e2e33;
+    --sg-ui-shadow-dialog: 0 24px 64px -12px rgb(0 0 0 / 0.7), 0 0 0 1px #2e2e33;
+
+    --sg-tone-gray-bg: rgb(161 161 170 / 0.14);
+    --sg-tone-gray-fg: #d4d4d8;
+    --sg-tone-red-bg: rgb(239 68 68 / 0.15);
+    --sg-tone-red-fg: #fca5a5;
+    --sg-tone-pink-bg: rgb(236 72 153 / 0.15);
+    --sg-tone-pink-fg: #f9a8d4;
+    --sg-tone-grape-bg: rgb(217 70 239 / 0.15);
+    --sg-tone-grape-fg: #f0abfc;
+    --sg-tone-violet-bg: rgb(139 92 246 / 0.16);
+    --sg-tone-violet-fg: #c4b5fd;
+    --sg-tone-indigo-bg: rgb(99 102 241 / 0.16);
+    --sg-tone-indigo-fg: #a5b4fc;
+    --sg-tone-blue-bg: rgb(59 130 246 / 0.15);
+    --sg-tone-blue-fg: #93c5fd;
+    --sg-tone-cyan-bg: rgb(6 182 212 / 0.14);
+    --sg-tone-cyan-fg: #67e8f9;
+    --sg-tone-teal-bg: rgb(20 184 166 / 0.14);
+    --sg-tone-teal-fg: #5eead4;
+    --sg-tone-green-bg: rgb(34 197 94 / 0.14);
+    --sg-tone-green-fg: #86efac;
+    --sg-tone-lime-bg: rgb(132 204 22 / 0.14);
+    --sg-tone-lime-fg: #bef264;
+    --sg-tone-yellow-bg: rgb(234 179 8 / 0.14);
+    --sg-tone-yellow-fg: #fde047;
+    --sg-tone-orange-bg: rgb(249 115 22 / 0.14);
+    --sg-tone-orange-fg: #fdba74;
+  }
+
+  /*
+   * The ag-grid theme contract (docs/design/README.md "Grid CSS variables"),
+   * re-declared wherever the kit tokens are so it resolves against the
+   * nearest scheme.
+   */
+  :root,
+  .sg-ui,
+  .dark,
+  .dark .sg-ui,
+  .sg-ui.dark {
+    --sg-accent-color: var(--sg-ui-primary);
+    --sg-background-color: var(--sg-ui-background);
+    --sg-foreground-color: var(--sg-ui-foreground);
+    --sg-muted-foreground-color: var(--sg-ui-muted-foreground);
+    --sg-border-color: var(--sg-ui-border);
+    --sg-header-background-color: var(--sg-ui-subtle);
+    --sg-header-foreground-color: var(--sg-ui-muted-foreground);
+    --sg-row-hover-color: color-mix(in srgb, var(--sg-ui-foreground) 3%, transparent);
+    --sg-selected-row-background-color: var(--sg-ui-primary-subtle);
+    --sg-range-bg: color-mix(in srgb, var(--sg-ui-primary) 10%, transparent);
+    --sg-range-border: var(--sg-ui-primary);
+    --sg-danger-color: var(--sg-ui-danger);
+    --sg-popup-shadow: var(--sg-ui-shadow-popover);
+    --sg-font-family: var(--sg-ui-font);
+    --sg-font-size: 13px;
+  }
+}
