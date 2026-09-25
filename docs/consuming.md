@@ -132,6 +132,27 @@ export function AdmissionsGrid({ schema, user }) {
 
 Render it inside your existing `<MantineProvider>`.
 
+### A whole page in one component
+
+For an admin page (views, filter, group, search, import/export, add column,
+conflicts, polling) use the workbench instead of wiring `<SchemaGrid>` by hand:
+
+```tsx
+import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
+import { SchemaGridWorkbench } from "@ranjeetk25/schema-grid-ui-mantine"; // or -ui-shadcn
+
+const leads = createGridClient({ baseUrl: "/api/grid", gridId: "leads" }); // module scope
+
+export const LeadsPage = ({ user }) => (
+  <div style={{ height: "calc(100dvh - 56px)" }}>
+    <SchemaGridWorkbench client={leads} user={user} title="Leads" />
+  </div>
+);
+```
+
+Toolbar features follow the grid's capabilities; see the "One-component page"
+section of the ui-mantine / ui-shadcn READMEs for the props.
+
 ## CI / AWS CodePipeline + CodeBuild
 
 The packages are on the **public** npm registry, so `bun install` in CodeBuild
