@@ -30,6 +30,12 @@ export {
   type ColumnDraftErrors,
 } from "./model";
 export { ZodForm, humanizeKey, type ZodFormProps } from "./zod-form/ZodForm";
+export {
+  humanizeZodIssue,
+  isPathTouched,
+  zodIssuesToErrors,
+  type ZodIssueLike,
+} from "./zod-form/humanizeZodIssue";
 export { OptionListField, slugifyOptionValue, type OptionListFieldProps, type OptionListItem } from "./zod-form/OptionListField";
 export { JsonFallbackField, type JsonFallbackFieldProps } from "./zod-form/JsonFallbackField";
 export { introspectZod, type FormFieldChild, type FormFieldDescriptor, type FormFieldKind } from "./zod-form/introspect";

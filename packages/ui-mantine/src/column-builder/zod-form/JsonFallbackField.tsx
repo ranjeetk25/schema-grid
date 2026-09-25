@@ -48,7 +48,7 @@ export function JsonFallbackField({ label, description, value, onChange, error }
     try {
       parsed = JSON.parse(next);
     } catch {
-      setParseError("Invalid JSON");
+      setParseError("This isn't valid JSON: check brackets, commas and quotes");
       return;
     }
     setParseError(null);

@@ -84,6 +84,43 @@ describe("ColumnPanel", () => {
     ]);
   });
 
+  it("an empty option row shows no error until the user leaves it, then a friendly message under that row", async () => {
+    const { user } = setup();
+    await user.type(nameInput(), "Priority");
+    await pickType(user, "Select");
+    await user.click(screen.getByRole("button", { name: "Add option" }));
+    await user.click(screen.getByRole("button", { name: "Add option" }));
+    const [first] = screen.getAllByRole("textbox", { name: "Option label" }) as HTMLElement[];
+    // Untouched rows: no row error and no block-level error, raw Zod text nowhere.
+    expect(screen.queryByText("Option name is required")).toBeNull();
+    expect(screen.queryByText(/character\(s\)|Expected|Invalid/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // Leave the first row empty → its own message appears under it, the second row stays quiet.
+    await user.click(first as HTMLElement);
+    await user.tab();
+    expect(screen.getAllByText("Option name is required")).toHaveLength(1);
+    expect(first).toHaveAttribute("aria-invalid", "true");
+    // Two empty rows also share the id "": the derived "not unique" block stays hidden behind the row error.
+    expect(screen.queryByText(/must be unique/i)).toBeNull();
+    expect(screen.queryByText(/character\(s\)/)).toBeNull();
+    // The save tooltip reason is friendly too.
+    expect(createButton()).toBeDisabled();
+  });
+
+  it("duplicate option names show one friendly block message once the user has worked on the options", async () => {
+    const { user } = setup();
+    await user.type(nameInput(), "Priority");
+    await pickType(user, "Select");
+    for (const label of ["High", "High"]) {
+      await user.click(screen.getByRole("button", { name: "Add option" }));
+      const inputs = screen.getAllByRole("textbox", { name: "Option label" });
+      await user.type(inputs[inputs.length - 1] as HTMLElement, label);
+    }
+    await user.tab();
+    expect(screen.getByText("Option ids must be unique")).toBeInTheDocument();
+    expect(screen.queryByText(/character\(s\)|Expected/)).toBeNull();
+  });
+
   it("derives the key from the name until the key is edited", async () => {
     const { user, onSave } = setup();
     await user.type(nameInput(), "Lead Source");

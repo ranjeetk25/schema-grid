@@ -20,6 +20,8 @@ export interface OptionListFieldProps {
   /** Key of the stored value: `"id"` for core options (default `"value"`). */
   valueKey?: "id" | "value";
   error?: string;
+  /** Dot-path of the list (e.g. `options`); rows' inputs carry `data-sg-path` for blur tracking. */
+  path?: string;
   /** Per-row errors, e.g. `rowErrors(0, "label")`. */
   rowError?: (index: number, field: "label" | "value" | "color") => string | undefined;
 }
@@ -121,6 +123,7 @@ export function OptionListField({
   hasColor,
   valueKey = "value",
   error,
+  path,
   rowError,
 }: OptionListFieldProps) {
   const nextId = useRef(0);
@@ -160,6 +163,18 @@ export function OptionListField({
     commit(next);
   };
 
+  /**
+   * The row's message goes under the NAME input: while the stored id is
+   * derived from the name, an empty/invalid id is really a missing name.
+   */
+  const labelErrorFor = (row: Row, index: number): string | undefined => {
+    const own = rowError?.(index, "label");
+    if (own) return own;
+    const valueError = row.valueEdited ? undefined : rowError?.(index, "value");
+    if (!valueError) return undefined;
+    return row.label.trim() === "" ? "Option name is required" : valueError;
+  };
+
   return (
     <Input.Wrapper label={label} description={description} error={error}>
       <Stack gap="xs" mt={4}>
@@ -167,9 +182,10 @@ export function OptionListField({
           <Group key={row.id} gap={4} wrap="nowrap" align="flex-start">
             <TextInput
               aria-label="Option label"
+              data-sg-path={path ? `${path}.${index}.label` : undefined}
               placeholder="Option name"
               value={row.label}
-              error={rowError?.(index, "label")}
+              error={labelErrorFor(row, index)}
               style={{ flex: 1, minWidth: 0 }}
               leftSection={
                 hasColor ? <ColourPicker color={row.color} error={rowError?.(index, "color")} onPick={(color) => update(index, { color })} /> : undefined
@@ -182,9 +198,10 @@ export function OptionListField({
             />
             <TextInput
               aria-label={valueKey === "id" ? "Option id" : "Option value"}
+              data-sg-path={path ? `${path}.${index}.${valueKey}` : undefined}
               placeholder={valueKey}
               value={row.value}
-              error={rowError?.(index, "value")}
+              error={row.valueEdited ? rowError?.(index, "value") : undefined}
               w={104}
               styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12, color: "var(--mantine-color-dimmed)" } }}
               onChange={(e) => update(index, { value: e.currentTarget.value, valueEdited: true })}

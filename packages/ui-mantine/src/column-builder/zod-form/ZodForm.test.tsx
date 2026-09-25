@@ -186,10 +186,10 @@ describe("ZodForm", () => {
     expect(textarea.tagName).toBe("TEXTAREA");
     expect(textarea).toHaveValue("1");
     fireEvent.change(textarea, { target: { value: "{ nope" } });
-    expect(screen.getByText("Invalid JSON")).toBeInTheDocument();
+    expect(screen.getByText(/isn.t valid JSON/)).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.change(textarea, { target: { value: '"hello"' } });
-    expect(screen.queryByText("Invalid JSON")).toBeNull();
+    expect(screen.queryByText(/isn.t valid JSON/)).toBeNull();
     expect(lastCall(onChange)).toEqual({ mixed: "hello" });
   });
 

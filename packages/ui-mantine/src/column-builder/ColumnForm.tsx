@@ -28,6 +28,7 @@ import { FormulaEditor } from "./FormulaEditor";
 import { type ColumnDraft, buildColumnDef, columnDraftReducer, createColumnDraft, validateColumnDraft } from "./model";
 import { AccessSection, accessSummary, permissionsError } from "./PermissionsStep";
 import { ZodForm } from "./zod-form/ZodForm";
+import { isPathTouched } from "./zod-form/humanizeZodIssue";
 
 /** Where a new column goes: an index in display order, or next to an existing column. */
 export type ColumnInsertPosition = number | { afterColumnId: string } | { beforeColumnId: string };
@@ -141,6 +142,9 @@ export function ColumnForm({
   const initial = useRef(draftFingerprint(draft));
   const [formulaValid, setFormulaValid] = useState(false);
   const [touched, setTouched] = useState<{ label: boolean; key: boolean }>({ label: false, key: false });
+  /** Config fields the user has left (blurred); their errors may show. Everything shows after a save attempt. */
+  const [configTouched, setConfigTouched] = useState<ReadonlySet<string>>(() => new Set());
+  const [submitted, setSubmitted] = useState(false);
   const [editingKey, setEditingKey] = useState(false);
   const labelChanged = useRef(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -182,6 +186,7 @@ export function ColumnForm({
   const saving = useRef(false);
   const save = () => {
     setTouched({ label: true, key: true });
+    setSubmitted(true);
     if (!canSave || saving.current) return;
     try {
       const def = buildColumnDef(draft, { schema, registry, now: toIso(now ? now() : new Date()), generateId });
@@ -197,8 +202,28 @@ export function ColumnForm({
   const DefaultEditor = draft.type && !isFormula ? resolveEditorComponent(uiRegistry.get(draft.type).editor) : undefined;
   const draftColumn = draftAsColumn(draft);
   const primaryConfig = !!draft.type && PRIMARY_CONFIG_TYPES.has(draft.type);
+  // Per-field config errors, only for fields the user has touched (or after a save attempt).
+  const visibleConfigErrors = useMemo(() => {
+    const all = errors.configFields ?? {};
+    if (submitted) return all;
+    return Object.fromEntries(Object.entries(all).filter(([path]) => isPathTouched(path, configTouched)));
+  }, [errors.configFields, configTouched, submitted]);
+  /** A config problem with no field of its own (the whole object), shown once the user has worked on the settings. */
+  // Held back while any field has its own problem: those are usually the cause (two empty
+  // option rows share the id "", which is also "not unique").
+  const hasFieldErrors = Object.keys(errors.configFields ?? {}).some((path) => path !== "");
+  const configRootError =
+    errors.configFields?.[""] && !hasFieldErrors && (submitted || configTouched.size > 0)
+      ? errors.configFields[""]
+      : undefined;
   const configForm = fieldType ? (
-    <ZodForm schema={fieldType.configSchema} value={draft.config} onChange={(config) => dispatch({ type: "setConfig", config })} />
+    <ZodForm
+      schema={fieldType.configSchema}
+      value={draft.config}
+      onChange={(config) => dispatch({ type: "setConfig", config })}
+      errors={visibleConfigErrors}
+      onFieldBlur={(path) => setConfigTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
+    />
   ) : null;
   const labelError = touched.label && errors.label ? "Give the column a name" : undefined;
   const keyError = (touched.key || editingKey) && draft.label.trim() ? errors.key : undefined;
@@ -306,9 +331,9 @@ export function ColumnForm({
               )}
             </Stack>
           ) : null}
-          {errors.config && (
+          {configRootError && (
             <Alert color="red" variant="light" mt="sm">
-              {errors.config}
+              {configRootError}
             </Alert>
           )}
         </Box>
@@ -322,7 +347,7 @@ export function ColumnForm({
             summary={[draft.required ? "Required" : null, draft.defaultValue != null && draft.defaultValue !== "" ? "Has default" : null, draft.indexed ? "Indexed" : null]
               .filter(Boolean)
               .join(" · ")}
-            opened={optionsOpen || (!primaryConfig && !!errors.config)}
+            opened={optionsOpen || (!primaryConfig && (Object.keys(visibleConfigErrors).length > 0 || !!configRootError))}
             onToggle={() => setOptionsOpen((o) => !o)}
           >
             <Stack gap="md" pb="xs">

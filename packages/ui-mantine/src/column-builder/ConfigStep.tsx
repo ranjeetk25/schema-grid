@@ -1,5 +1,5 @@
 import { Alert, Divider, Stack } from "@mantine/core";
-import type { Dispatch } from "react";
+import { type Dispatch, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import type { DataSource, FieldTypeRegistry, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
@@ -7,6 +7,7 @@ import { CommonFields } from "./CommonFields";
 import { FormulaEditor } from "./FormulaEditor";
 import type { ColumnDraft, ColumnDraftAction, ColumnDraftErrors } from "./model";
 import { ZodForm } from "./zod-form/ZodForm";
+import { isPathTouched } from "./zod-form/humanizeZodIssue";
 
 export interface ConfigStepProps {
   draft: ColumnDraft;
@@ -33,6 +34,11 @@ export function ConfigStep({
   dataSource,
 }: ConfigStepProps) {
   const fieldType = draft.type ? registry.get(draft.type) : undefined;
+  // Errors appear per field, and only for fields the user has left.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  const fieldErrors = Object.fromEntries(Object.entries(errors.configFields ?? {}).filter(([path]) => isPathTouched(path, touched)));
+  const hasFieldErrors = Object.keys(errors.configFields ?? {}).some((path) => path !== "");
+  const rootError = errors.configFields?.[""] && !hasFieldErrors && touched.size > 0 ? errors.configFields[""] : undefined;
   return (
     <Stack gap="md">
       <CommonFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} errors={errors} dataSource={dataSource} />
@@ -51,11 +57,13 @@ export function ConfigStep({
           schema={fieldType.configSchema}
           value={draft.config}
           onChange={(config) => dispatch({ type: "setConfig", config })}
+          errors={fieldErrors}
+          onFieldBlur={(path) => setTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
         />
       ) : null}
-      {errors.config && (
+      {rootError && (
         <Alert color="red" variant="light">
-          {errors.config}
+          {rootError}
         </Alert>
       )}
     </Stack>

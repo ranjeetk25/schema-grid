@@ -24,6 +24,19 @@ describe("fixtures", () => {
 describe("options helpers", () => {
   it("reads select options from config", () => {
     expect(getSelectOptions({ options: [{ id: "a", label: "A" }, { label: "B", value: "b" }, { bad: 1 }] })).toEqual([{ id: "a", label: "A" }]);
+  });
+
+  it("drops options with an empty or repeated id (half-typed drafts must not crash Mantine Select)", () => {
+    expect(
+      getSelectOptions({
+        options: [
+          { id: "", label: "" },
+          { id: "", label: "" },
+          { id: "a", label: "A" },
+          { id: "a", label: "A again" },
+        ],
+      }),
+    ).toEqual([{ id: "a", label: "A" }]);
     expect(getSelectOptions(null)).toEqual([]);
   });
 

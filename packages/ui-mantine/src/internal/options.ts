@@ -21,11 +21,24 @@ export const MANTINE_NAMED_COLORS = [
 const isOption = (v: unknown): v is Option =>
   !!v && typeof v === "object" && typeof (v as Option).label === "string" && typeof (v as Option).id === "string";
 
-/** Reads the core `{id, label, color?}[]` option list from a select-family config (the stored value is `id`). */
+/**
+ * Reads the core `{id, label, color?}[]` option list from a select-family
+ * config (the stored value is `id`). Options without an id, and repeated ids,
+ * are dropped (first wins): a half-typed draft in the column panel can hold
+ * them, and Mantine's Select throws on duplicate values.
+ */
 export function getSelectOptions(config: unknown): Option[] {
   if (!config || typeof config !== "object") return [];
   const options = (config as { options?: unknown }).options;
-  return Array.isArray(options) ? options.filter(isOption) : [];
+  if (!Array.isArray(options)) return [];
+  const seen = new Set<string>();
+  const out: Option[] = [];
+  for (const o of options) {
+    if (!isOption(o) || o.id === "" || seen.has(o.id)) continue;
+    seen.add(o.id);
+    out.push(o);
+  }
+  return out;
 }
 
 const CSS_COLOR_RE = /^(#[0-9a-f]{3,8}|rgba?\(|hsla?\(|var\(--)/i;

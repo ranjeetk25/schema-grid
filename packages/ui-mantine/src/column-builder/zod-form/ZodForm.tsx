@@ -9,8 +9,10 @@ export interface ZodFormProps {
   schema: unknown;
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
-  /** Dot-path → message, e.g. `{ "options.0.label": "Required" }`. */
+  /** Dot-path → message, e.g. `{ "options.0.label": "Option name is required" }`. Pass only the ones to show. */
   errors?: Record<string, string>;
+  /** Called with a field's dot-path when it loses focus (for "show errors after blur"). */
+  onFieldBlur?: (path: string) => void;
 }
 
 /** "maxLength" / "max_length" → "Max length". */
@@ -63,6 +65,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
     case "string":
       return (
         <TextInput
+          data-sg-path={path}
           label={label}
           description={description}
           error={error}
@@ -76,6 +79,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
     case "number":
       return (
         <NumberInput
+          data-sg-path={path}
           label={label}
           description={description}
           error={error}
@@ -90,6 +94,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
     case "boolean":
       return (
         <Switch
+          data-sg-path={path}
           label={label}
           description={description}
           error={error}
@@ -100,6 +105,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
     case "enum":
       return (
         <Select
+          data-sg-path={path}
           label={label}
           description={description}
           error={error}
@@ -120,7 +126,8 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
           hasColor={field.hasColor}
           valueKey={field.valueKey}
           onChange={onChange}
-          rowError={(index, key) => errors[`${path}.${index}.${key}`]}
+          path={path}
+          rowError={(index, key) => errors[`${path}.${index}.${key === "value" ? (field.valueKey ?? "value") : key}`]}
         />
       );
     case "object": {
@@ -188,7 +195,7 @@ function Fields({
 const EMPTY_ERRORS: Record<string, string> = {};
 
 /** Auto-form driven by a Zod object schema (v3 or v4). Missing keys display — and emit — schema defaults. */
-export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS }: ZodFormProps) {
+export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS, onFieldBlur }: ZodFormProps) {
   const descriptor = useMemo(() => introspectZod(schema), [schema]);
   if (descriptor.kind !== "object") {
     return (
@@ -202,5 +209,14 @@ export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS }: ZodF
       />
     );
   }
-  return <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" />;
+  return (
+    <div
+      onBlur={(e) => {
+        const path = (e.target as HTMLElement).closest<HTMLElement>("[data-sg-path]")?.dataset.sgPath;
+        if (path && onFieldBlur) onFieldBlur(path);
+      }}
+    >
+      <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" />
+    </div>
+  );
 }

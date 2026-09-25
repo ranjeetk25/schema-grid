@@ -9,11 +9,14 @@ export interface ColumnFilterOption {
 /** Normalises `{ id | value, label?, color?, avatarUrl? }` objects (core `Option`, older `value` shapes, users). */
 export function toColumnFilterOptions(list: readonly unknown[]): ColumnFilterOption[] {
   const out: ColumnFilterOption[] = [];
+  const seen = new Set<string>();
   for (const o of list) {
     if (typeof o !== "object" || o === null) continue;
     const raw = o as { id?: unknown; value?: unknown; label?: unknown; color?: unknown; avatarUrl?: unknown };
     const id = raw.id ?? raw.value;
-    if (id === undefined || id === null) continue;
+    // Empty / repeated ids would crash Mantine's Select ("duplicate options").
+    if (id === undefined || id === null || String(id) === "" || seen.has(String(id))) continue;
+    seen.add(String(id));
     out.push({
       id: String(id),
       label: raw.label === undefined || raw.label === null ? String(id) : String(raw.label),

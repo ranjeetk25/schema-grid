@@ -10,6 +10,7 @@ import {
   parseFormula,
 } from "../internal/core-contracts";
 import { KEY_PATTERN, slugifyKey, uniqueKey } from "./keys";
+import { type ZodIssueLike, humanizeZodIssue, zodIssuesToErrors } from "./zod-form/humanizeZodIssue";
 
 export interface ColumnDraft {
   mode: "create" | "edit";
@@ -132,7 +133,10 @@ export interface ColumnDraftErrors {
   type?: string;
   label?: string;
   key?: string;
+  /** The first config problem, in plain words (summary / save tooltip). */
   config?: string;
+  /** Config problems by dot-path (`options.0.label`), in plain words — shown per field. */
+  configFields?: Record<string, string>;
 }
 
 /** Field-level errors for the common fields + config (formula validity is checked by FormulaEditor). */
@@ -149,7 +153,11 @@ export function validateColumnDraft(
   else if (draft.existingKeys.includes(draft.key)) errors.key = "This key is already used by another column";
   if (fieldType && draft.type !== "formula") {
     const parsed = fieldType.configSchema.safeParse({ ...asRecord(fieldType.defaultConfig), ...draft.config });
-    if (!parsed.success) errors.config = parsed.error.issues[0]?.message ?? "Invalid configuration";
+    if (!parsed.success) {
+      const issues = parsed.error.issues as readonly ZodIssueLike[];
+      errors.configFields = zodIssuesToErrors(issues);
+      errors.config = issues[0] ? humanizeZodIssue(issues[0]) : "Check the column settings";
+    }
   }
   return errors;
 }
@@ -177,7 +185,12 @@ export function buildColumnDef(
   // Core field types treat persisted config as an overlay on `defaultConfig`; store it complete.
   const merged = { ...asRecord(fieldType.defaultConfig), ...draft.config };
   const rawConfig = isFormula ? { ...merged, resultType: formulaResultType(draft.formula, schema) } : merged;
-  const config = fieldType.configSchema.parse(rawConfig) as unknown;
+  const parsedConfig = fieldType.configSchema.safeParse(rawConfig);
+  if (!parsedConfig.success) {
+    const first = (parsedConfig.error.issues as readonly ZodIssueLike[])[0];
+    throw new Error(first ? humanizeZodIssue(first) : "Check the column settings");
+  }
+  const config = parsedConfig.data as unknown;
   const original = draft.mode === "edit" ? draft.original : null;
   const maxOrder = schema.columns.reduce((m, c) => Math.max(m, c.order), -1);
 
