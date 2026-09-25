@@ -98,7 +98,9 @@ describe("handler -> remote round trip matches the data source", () => {
   it("round-trips the spec §8 filter to rows r2 and r3 and reports a conflict", async () => {
     const { remote } = pair();
     expect((await remote.fetch(q({ filter: spec8 }))).rows.map((r) => r.id)).toEqual(["r2", "r3"]);
-    await remote.applyChanges(batch("b1", "r1", C.name, "Renamed", 1));
+    const first = await remote.applyChanges(batch("b1", "r1", C.name, "Renamed", 1));
+    // `versions` must survive the wire so remote clients do not fall back to the "+1" guess.
+    expect(first.versions).toEqual({ r1: 2 });
     const stale = await remote.applyChanges(batch("b2", "r1", C.name, "Stale", 1));
     expect(stale.applied).toEqual([]);
     expect(stale.conflicts).toEqual([

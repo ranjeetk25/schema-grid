@@ -128,6 +128,7 @@ const changeResult = z.object({
     }),
   ),
   errors: z.array(z.object({ rowId: id, columnId: id, message: z.string() })),
+  versions: z.record(z.string(), z.number()).optional(),
 });
 
 const option = z.object({ id, label: z.string(), color: z.string().optional() });
