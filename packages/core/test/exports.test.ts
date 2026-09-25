@@ -6,6 +6,7 @@ import * as formula from "../src/formula/index";
 import * as root from "../src/index";
 import * as memory from "../src/memory/index";
 import * as testing from "../src/testing/index";
+import * as wire from "../src/wire/index";
 
 const keys = (m: object) => Object.keys(m).sort();
 
@@ -160,6 +161,34 @@ describe("public entry points", () => {
     `);
   });
 
+  it("./wire exposes exactly its documented runtime names", () => {
+    expect(keys(wire)).toMatchInlineSnapshot(`
+      [
+        "GRID_OPERATIONS",
+        "OPTIONAL_GRID_OPERATIONS",
+        "RemoteDataSourceError",
+        "WIRE_ERROR_STATUS",
+        "createDataSourceHandler",
+        "createRemoteDataSource",
+        "filterNodeSchema",
+        "gridQuerySchema",
+        "gridRowSchema",
+        "httpStatusFor",
+        "isGridOperation",
+        "isWireError",
+        "isWireErrorCode",
+        "toWireError",
+        "unwrapWireResult",
+        "wireSchemas",
+      ]
+    `);
+  });
+
+  it("the root entry does not pull in the wire module", () => {
+    expect(keys(root)).not.toContain("createDataSourceHandler");
+    expect(keys(root)).not.toContain("wireSchemas");
+  });
+
   it("spec §4 binding names are importable from their entries", () => {
     for (const fn of [
       root.migrateSchema,
@@ -191,7 +220,7 @@ describe("public entry points", () => {
       exports: Record<string, string | Record<string, string>>;
     };
     expect(pkg.sideEffects).toBe(false);
-    const entries = [".", "./field-types", "./formula", "./filter", "./memory", "./testing"];
+    const entries = [".", "./field-types", "./formula", "./filter", "./memory", "./testing", "./wire"];
     for (const key of entries) {
       const target = pkg.exports[key];
       expect(typeof target).toBe("object");
