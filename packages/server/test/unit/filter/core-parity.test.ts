@@ -41,6 +41,7 @@ type Cell = unknown;
 const SAMPLES: Record<string, { nonEmpty: Cell[]; empty: Cell[] }> = {
   name: { nonEmpty: ["abc", "ABC ", " abc", "x y", "5", "true", "a%b"], empty: [null, ABSENT, "", "  ", " \t\n"] },
   fee: { nonEmpty: [0, 5, -1.5, 100, 5.25], empty: [null, ABSENT] },
+  isActive: { nonEmpty: [true, false], empty: [null, ABSENT] },
   paymentStatus: { nonEmpty: ["paid", "pending", "7"], empty: [null, ABSENT, "", "  "] },
   owner: { nonEmpty: [{ id: "u1" }, { id: "u7" }], empty: [null, ABSENT] },
   tags: { nonEmpty: [["a"], ["a", "b"], ["2"], ["c"]], empty: [null, ABSENT, []] },

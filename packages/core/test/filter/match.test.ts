@@ -362,6 +362,15 @@ describe("boolean", () => {
     expect(m(cond(C.isActive, "isFalse"), { isActive: null })).toBe(false);
     expect(m(cond(C.isActive, "isFalse"), {})).toBe(false);
   });
+  it("isEmpty / isNotEmpty: only null / absent are empty — false is a value", () => {
+    expect(m(cond(C.isActive, "isEmpty"), { isActive: null })).toBe(true);
+    expect(m(cond(C.isActive, "isEmpty"), {})).toBe(true);
+    expect(m(cond(C.isActive, "isEmpty"), { isActive: false })).toBe(false);
+    expect(m(cond(C.isActive, "isEmpty"), { isActive: true })).toBe(false);
+    expect(m(cond(C.isActive, "isNotEmpty"), { isActive: false })).toBe(true);
+    expect(m(cond(C.isActive, "isNotEmpty"), { isActive: null })).toBe(false);
+    expect(m(cond("col_fBool", "isEmpty"), { fBool: null })).toBe(true);
+  });
   it("formula boolean result uses boolean semantics", () => {
     expect(m(cond("col_fBool", "isTrue"), { fBool: true })).toBe(true);
   });

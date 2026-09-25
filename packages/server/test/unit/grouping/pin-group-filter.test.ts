@@ -132,9 +132,10 @@ describe("pinGroupFilter", () => {
     expect(() =>
       pinGroupFilter(base(null, TWO_LEVELS), [{ columnId: "paymentStatus", value: "paid" }, { columnId: "isActive", value: true }, { columnId: "name", value: "x" }], schema, registry),
     ).toThrow(GroupingError);
-    // Booleans have no isEmpty operator, so an empty boolean group cannot be pinned.
-    expect(() =>
-      pinGroupFilter(base(null, [{ columnId: "isActive" }]), [{ columnId: "isActive", value: null }], schema, registry),
-    ).toThrow(GroupingError);
+  });
+
+  it("pins the empty boolean group with isEmpty", () => {
+    const next = pinGroupFilter(base(null, [{ columnId: "isActive" }]), [{ columnId: "isActive", value: null }], schema, registry);
+    expect(next.filter).toEqual({ op: "and", children: [{ columnId: "isActive", operator: "isEmpty" }] });
   });
 });

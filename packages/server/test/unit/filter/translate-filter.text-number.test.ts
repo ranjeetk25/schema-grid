@@ -123,6 +123,12 @@ describe("translateFilter: boolean", () => {
     expect(r?.sql).not.toMatch(/ OR \(JSON_EXTRACT/);
     expect(t({ columnId: "isActive", operator: "isTrue" })?.sql).toContain("= 1 AND NOT");
   });
+
+  it("isEmpty / isNotEmpty test the typed boolean for NULL (false is not empty)", () => {
+    const typed = `(CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'BOOLEAN' THEN JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true' END)`;
+    expect(t({ columnId: "isActive", operator: "isEmpty" })?.sql).toBe(`(${typed} IS NULL)`);
+    expect(t({ columnId: "isActive", operator: "isNotEmpty" })?.sql).toBe(`NOT (${typed} IS NULL)`);
+  });
 });
 
 describe("translateFilter: groups", () => {

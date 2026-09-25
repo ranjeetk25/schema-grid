@@ -84,6 +84,12 @@ describe("validateFilter", () => {
     expect(validate(cond(C.status, "isNoneOf", "paid")).map((e) => e.code)).toEqual(["valueKindMismatch"]);
   });
 
+  it("boolean columns accept isEmpty / isNotEmpty without a value", () => {
+    expect(validate(cond(C.isActive, "isEmpty"))).toEqual([]);
+    expect(validate(cond(C.isActive, "isNotEmpty"))).toEqual([]);
+    expect(validate(cond(C.isActive, "isEmpty", true)).map((e) => e.code)).toEqual(["valueKindMismatch"]);
+  });
+
   it("resolves formula operators through resultType", () => {
     expect(validate(cond(C.balance, "gt", 0))).toEqual([]);
     expect(validate(cond(C.balance, "contains", "1"))[0]?.code).toBe("unknownOperator");
