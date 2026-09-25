@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import type { DataSource, GridRow, GridSchema } from "@ranjeetk25/schema-grid-core";
+import {
+  type DataSource,
+  type GridRow,
+  type GridSchema,
+  createRolePermissionResolver,
+  resolveColumnAccess,
+} from "@ranjeetk25/schema-grid-core";
 import { createFixtureSchema } from "@ranjeetk25/schema-grid-core/testing";
 import {
   CursorError,
@@ -336,6 +342,17 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
     });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: { name: "SchemaVersionConflict" } });
+  });
+});
+
+describe("leads schema", () => {
+  it("aiVerified is settable:false (read for everyone, even admins), not an empty-roles permission", () => {
+    const ai = leadsSchema.columns.find((c) => c.key === "aiVerified");
+    expect(ai?.settable).toBe(false);
+    expect(ai?.permissions).toBeUndefined();
+    const access = resolveColumnAccess(leadsSchema, createRolePermissionResolver(), { id: "a", roles: ["admin"] });
+    expect(access.get("aiVerified")).toBe("read");
+    expect(access.get("name")).toBe("edit");
   });
 });
 

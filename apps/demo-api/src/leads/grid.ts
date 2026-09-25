@@ -10,14 +10,13 @@ const at = "2026-09-01T00:00:00.000Z";
 const col = (order: number, key: string, label: string, type: string, extra: Partial<ColumnDef> = {}): ColumnDef =>
   ({ id: key, key, label, type, config: {}, order, createdAt: at, updatedAt: at, ...extra });
 const options = ["Paid", "Pending", "Failed"].map((label) => ({ id: label.toLowerCase(), label }));
-const readOnly: Partial<ColumnDef> = { permissions: { read: "all", edit: { roles: [] } } }; // TODO(lane-a): settable: false
 
 export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns: [
   col(0, "name", "Name", "text"),
   col(1, "email", "Email", "email"),
   col(2, "paymentStatus", "Payment status", "select", { config: { options } }),
   col(3, "callDate", "Call date", "date", { config: { displayFormat: "dmy", inputOrder: "DMY" } }),
-  col(4, "aiVerified", "AI verified", "boolean", readOnly),
+  col(4, "aiVerified", "AI verified", "boolean", { settable: false }), // set by the AI pipeline, never by the grid
 ] };
 
 type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore?: SchemaStore };
