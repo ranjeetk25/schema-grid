@@ -198,13 +198,15 @@ function Banner({ banner }: { banner: WorkbenchBanner }) {
 interface EmptyContextValue {
   emptyState: ReactNode;
   filtered: boolean;
+  /** A load failure is shown as a banner: no "empty" copy under it. */
+  blocked: boolean;
   clear(): void;
 }
 const EmptyContext = createContext<EmptyContextValue | null>(null);
 
 function EmptyOverlay() {
   const ctx = useContext(EmptyContext);
-  if (!ctx) return null;
+  if (!ctx || ctx.blocked) return null;
   if (ctx.emptyState !== undefined && ctx.emptyState !== null) {
     return <Box style={{ pointerEvents: "auto" }}>{ctx.emptyState}</Box>;
   }
@@ -240,17 +242,19 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   );
 
   const filtered = wb.filter !== null || wb.search.trim() !== "";
+  const blocked = wb.banners.some((b) => b.kind === "network" || b.kind === "permission-denied");
   const emptyValue = useMemo<EmptyContextValue>(
     () => ({
       emptyState,
       filtered,
+      blocked,
       clear: () => {
         wb.applyFilter(null);
         wb.setSearch("");
       },
     }),
     // wb.applyFilter / wb.setSearch are stable callbacks.
-    [emptyState, filtered, wb.applyFilter, wb.setSearch],
+    [emptyState, filtered, blocked, wb.applyFilter, wb.setSearch],
   );
 
   const gridOptions = useMemo(
@@ -281,7 +285,9 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
 
   return (
     <EmptyContext.Provider value={emptyValue}>
-      <Box data-testid={testId} className="sg-workbench" style={rootStyle}>
+      <Box data-testid={testId} className="sg-workbench" data-blocked={blocked || undefined} style={rootStyle}>
+        {/* The banner already says it: hide the grid's own inline load error under it. */}
+        <style>{".sg-workbench[data-blocked] .sg-load-error { display: none; }"}</style>
         {hasHeader ? (
           <Group
             justify="space-between"

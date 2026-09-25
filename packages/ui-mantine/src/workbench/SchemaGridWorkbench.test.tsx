@@ -87,14 +87,14 @@ describe("<SchemaGridWorkbench>", () => {
 
     it("polls the change feed by default", async () => {
       const ds = memory();
-      const getChanges = vi.spyOn(ds, "getChanges");
+      const getChanges = vi.spyOn(ds as Required<DataSource>, "getChanges");
       renderWorkbench({ dataSource: ds, pollIntervalMs: 20 });
       await waitFor(() => expect(getChanges).toHaveBeenCalled());
     });
 
     it("changeFeed:false disables polling", async () => {
       const base = memory();
-      const getChanges = vi.spyOn(base, "getChanges");
+      const getChanges = vi.spyOn(base as Required<DataSource>, "getChanges");
       const { container } = renderWorkbench({ dataSource: source({ changeFeed: false }, base), pollIntervalMs: 20 });
       await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
       await act(() => new Promise((r) => setTimeout(r, 150)));
@@ -103,7 +103,7 @@ describe("<SchemaGridWorkbench>", () => {
 
     it("flags a newer schema version from the feed with a Reload banner", async () => {
       const ds = memory();
-      vi.spyOn(ds, "getChanges").mockResolvedValue({ cursor: "c", rows: [], deletedRowIds: [], schemaVersion: 999 });
+      vi.spyOn(ds as Required<DataSource>, "getChanges").mockResolvedValue({ cursor: "c", rows: [], deletedRowIds: [], schemaVersion: 999 });
       renderWorkbench({ dataSource: ds, pollIntervalMs: 20 });
       const banner = await screen.findByTestId("workbench-banner-schema-changed");
       expect(banner).toHaveTextContent("The columns were changed elsewhere.");
