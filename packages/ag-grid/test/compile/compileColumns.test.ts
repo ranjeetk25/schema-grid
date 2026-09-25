@@ -137,10 +137,10 @@ describe("compileColumns", () => {
     const access = new Map<string, Access>([["a", "edit"], ["b", "edit"], ["c", "edit"]]);
     const defs = compileColumns(schema, access, registry, ui);
     expect(defs.map((d) => d.colId)).toEqual(["b", "c", "a"]);
-    expect(byId(defs, "a").width).toBe(120);
-    expect(byId(defs, "a").pinned).toBe("left");
-    expect(byId(defs, "a").hide).toBe(false);
-    expect(byId(defs, "b").hide).toBe(true);
+    expect(byId(defs, "a").initialWidth).toBe(120);
+    expect(byId(defs, "a").initialPinned).toBe("left");
+    expect(byId(defs, "a").initialHide).toBe(false);
+    expect(byId(defs, "b").initialHide).toBe(true);
   });
 
   it("view columnState overrides width, pinned, hide and order", () => {
@@ -160,11 +160,11 @@ describe("compileColumns", () => {
     // view-known columns first (by view order), then the rest by ColumnDef.order
     expect(defs.slice(0, 3).map((d) => d.colId)).toEqual(["score", "name", "notes"]);
     const name = byId(defs, "name");
-    expect(name.hide).toBe(true);
-    expect(name.width).toBe(300);
-    expect(name.pinned).toBe("right");
-    expect(byId(defs, "score").pinned).toBe("left");
-    expect(byId(defs, "notes").pinned).toBeNull();
+    expect(name.initialHide).toBe(true);
+    expect(name.initialWidth).toBe(300);
+    expect(name.initialPinned).toBe("right");
+    expect(byId(defs, "score").initialPinned).toBe("left");
+    expect(byId(defs, "notes").initialPinned).toBeUndefined();
   });
 
   it("formula columns are never editable and compute from dependencies", () => {

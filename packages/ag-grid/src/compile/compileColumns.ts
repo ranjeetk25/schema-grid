@@ -91,8 +91,11 @@ export function compileColumns<Row extends GridRow = GridRow>(
       valueSetter: () => false,
       editable,
       sortable: true,
-      hide: state ? state.hidden : (column.hidden ?? false),
-      pinned,
+      // Stateful attributes use the `initial*` forms so recompiling ColDefs
+      // (seams, access or formula changes) never resets the user's live column
+      // layout; saved views are applied via `applyViewState` (applyColumnState).
+      initialHide: state ? state.hidden : (column.hidden ?? false),
+      initialPinned: pinned ?? undefined,
       cellRenderer: wrapRenderer ? wrapRenderer(entry.renderer) : entry.renderer,
       cellRendererParams: params,
       cellEditor: entry.editor,
@@ -104,7 +107,7 @@ export function compileColumns<Row extends GridRow = GridRow>(
       floatingFilterComponent: entry.floatingFilter,
       floatingFilter: entry.filterComponent !== undefined && entry.floatingFilter !== undefined,
     };
-    if (width !== undefined) def.width = width;
+    if (width !== undefined) def.initialWidth = width;
     if (cellClassRules) def.cellClassRules = cellClassRules;
     if (column.type === "longText") def.suppressKeyboardEvent = longTextSuppressKeyboardEvent;
     compiled.push({ def, inView: state ? 0 : 1, order: state?.order ?? column.order, index });
