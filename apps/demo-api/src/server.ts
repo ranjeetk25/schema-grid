@@ -6,6 +6,7 @@ import {
 import { createApp } from "./app";
 import { bootstrap } from "./bootstrap";
 import { DEFAULT_DATABASE_URL, connect, gridTables } from "./db";
+import { ensureLeads, leadsTable } from "./leads/table";
 import { SchemaStore } from "./schema-store";
 
 const port = Number(process.env.PORT ?? 3001);
@@ -22,10 +23,11 @@ const store = new SchemaStore(schemaFile, createFixtureSchema);
 const bootNow = clock === "wall" ? new Date() : new Date(clock);
 
 await bootstrap({ db, tables, gridId, tz }, store, persisted, bootNow);
+await ensureLeads(db, leadsTable("leads"), "leads", bootNow, tz);
 
 const { app } = createApp({ db, tables, gridId, store, tz, clock });
 
 Bun.serve({ port, fetch: app.fetch });
 console.error(
-  `demo-api listening on http://localhost:${port} (grid "${gridId}", clock ${clock}, tz ${tz})`,
+  `demo-api listening on http://localhost:${port} (grids "${gridId}" + "leads", clock ${clock}, tz ${tz})`,
 );

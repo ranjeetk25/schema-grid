@@ -10,7 +10,7 @@ and transport-neutral HTTP adapters.
 @ranjeetk25/schema-grid-server         – errors, schema validation, access, cursors, import/export jobs (no drizzle at runtime)
 @ranjeetk25/schema-grid-server/drizzle – createDrizzleDataSource and the SQL translators
 @ranjeetk25/schema-grid-server/ddl     – table / generated-column DDL
-@ranjeetk25/schema-grid-server/http    – mount a DataSource behind any transport (below)
+@ranjeetk25/schema-grid-server/http    – defineGrid / createGridRegistry and transport adapters (below)
 ```
 
 ## Serving a grid (`./http`)
@@ -81,6 +81,63 @@ const dataSource = createRemoteDataSource(async (op, input) => unwrapWireResult(
 
 `createDataSourceHandler` (from `@ranjeetk25/schema-grid-core/wire`) is the same thing without the per-request
 factory, if you already have a `DataSource` in hand.
+
+## Multi-grid endpoint (`defineGrid` + `createGridRegistry`)
+
+Declare each grid once and serve all of them from one endpoint. `defineGrid` takes the grid's `id`
+(URL-safe: `[A-Za-z0-9_-]+`), its `schema` (a `GridSchema`, or `(ctx) => Promise<GridSchema>`), a
+`source(ctx, { gridId, schema })` that builds the per-request `DataSource`, and optionally:
+
+| option | meaning |
+|---|---|
+| `permission(ctx, op)` | gate for every op incl. `getSchema` / `updateSchema`; false → `PERMISSION_DENIED` 403. Default: allow all. |
+| `schemaStore` | `{ get(gridId), put(gridId, schema) }`. A stored schema wins over `schema`. Without one, `updateSchema` → `UNSUPPORTED_OPERATION` 501. `createMemorySchemaStore()` is the in-process default. |
+| `onSchemaChange(ctx, prev, next)` | runs after validation and **before** the new schema is persisted (DDL diff for generated / extension columns); throwing aborts the update. |
+| `registry`, `validation` | field types and `assertValidSchema` options (e.g. `isFormulaTranslatable: formulaTranslatability()` from `./drizzle`). |
+
+```ts
+import {
+  createGridRegistry,
+  createMemorySchemaStore,
+  defineGrid,
+  toExpressRouter,
+  toFetchHandler,
+  toLambdaHandler,
+} from "@ranjeetk25/schema-grid-server/http";
+
+const admissions = defineGrid<Ctx>({
+  id: "admissions",
+  schema,
+  schemaStore: createMemorySchemaStore(),
+  permission: (ctx, op) => op !== "updateSchema" || ctx.user.roles.includes("admin"),
+  source: (ctx, { schema }) => createDrizzleDataSource({ db, gridId: "admissions", schema, registry, resolver, user: ctx.user }),
+});
+const grids = createGridRegistry([admissions, leads], { onError: (err, info) => info.status >= 500 && log(err) });
+```
+
+`grids.handle(gridId, op, input, ctx)` never throws and answers the `WireResult` envelope; `grids.list(ctx)` lists
+the grids whose `getSchema` the context may run. Unknown grid → `UNKNOWN_GRID` 404, unknown op →
+`UNKNOWN_OPERATION` 404. `updateSchema` validates with `assertValidSchema`, requires the current `schemaVersion`
+(else `SCHEMA_CONFLICT` 409 with `details.currentVersion`), bumps it, runs `onSchemaChange`, persists — serialised
+per grid within the process.
+
+Adapters (structural types, no framework dependency), all with the routes `POST /:gridId/:op`,
+`GET /:gridId/schema` and `GET /` (list):
+
+```ts
+// Web Request → Response: Hono, Bun.serve, Next.js route handlers, Workers
+const endpoint = toFetchHandler(grids, { basePath: "/api/grid", context: (request) => ctxFrom(request) });
+app.all("/api/grid/*", (c) => endpoint(c.req.raw));
+
+// Express middleware (unmatched paths go to next())
+app.use("/api/grid", express.json(), toExpressRouter(grids, { context: (req) => ({ user: req.user }) }));
+
+// API Gateway: POST /grid/{gridId}/{op}, GET /grid/{gridId}/schema (or GET /grid/{gridId}), GET /grid
+export const handler = toLambdaHandler(grids, { context: (event) => ctxFromClaims(event) });
+```
+
+The browser side is `createGridClient({ baseUrl: "/api/grid", gridId })` from `@ranjeetk25/schema-grid-ag-grid`
+(`{ dataSource, getSchema, updateSchema, capabilities }`).
 
 ## Upgrading
 

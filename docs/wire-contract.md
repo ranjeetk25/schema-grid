@@ -10,13 +10,15 @@ browser                                     server
 SchemaGrid ── DataSource ── transport ──►  handler(op, input) ── DataSource (drizzle / in-memory / yours)
             createRemoteDataSource          createDataSourceHandler
             createHttpDataSource            createGridRouterAdapter + toExpressHandler / toLambdaHandler
+            createGridClient                createGridRegistry(defineGrid…) + toFetchHandler / toExpressRouter / toLambdaHandler
 ```
 
 - Core: `@ranjeetk25/schema-grid-core/wire` (`GRID_OPERATIONS`, `wireSchemas`, `createDataSourceHandler`,
   `createRemoteDataSource`, `toWireError`, `httpStatusFor`, `RemoteDataSourceError`, `unwrapWireResult`).
-- Server: `@ranjeetk25/schema-grid-server/http` (`createGridRouterAdapter`, `toExpressHandler`, `toLambdaHandler`,
-  `toHttpResponse`).
-- Browser: `@ranjeetk25/schema-grid-ag-grid` (`createHttpDataSource`, re-exported `createRemoteDataSource`).
+- Server: `@ranjeetk25/schema-grid-server/http` (`defineGrid`, `createGridRegistry`, `toFetchHandler`,
+  `toExpressRouter`, `createGridRouterAdapter`, `toExpressHandler`, `toLambdaHandler`, `toHttpResponse`).
+- Browser: `@ranjeetk25/schema-grid-ag-grid` (`createGridClient`, `createHttpDataSource`, re-exported
+  `createRemoteDataSource`).
 
 ## Operations
 
@@ -33,6 +35,14 @@ Every operation takes one JSON value and returns one JSON value. Schemas are Zod
 | `getOptions` | yes | `{ columnId: string, search?: string }` | `Option[]` |
 | `createOption` | yes | `{ columnId: string, label: string }` | `Option` |
 | `lookup` | yes | `{ columnId: string, search: string }` | `LinkRef[]` |
+| `getSchema` | grid | `null` | `GridSchema` |
+| `updateSchema` | grid | `GridSchema` (with the current `schemaVersion`) | `GridSchema` (stored, `schemaVersion` + 1) |
+
+`GRID_OPERATIONS` is a set, not an ordered list: newer versions append operations. The **grid** operations
+(`GRID_SCHEMA_OPERATIONS`) are answered by a grid registry (`createGridRegistry`), not by a `DataSource`; a bare
+`createDataSourceHandler` answers them with `UNSUPPORTED_OPERATION`. `gridSchemaSchema` checks the structure only
+(unknown column / view keys are kept); `updateSchema` is validated semantically by the server's
+`assertValidSchema`.
 
 Notes:
 
@@ -58,11 +68,14 @@ A failed operation yields `WireError { code: string; message: string; details?: 
 | `GROUPING_INVALID` | 400 | invalid `groupBy` / aggregation |
 | `UNAUTHENTICATED` | 401 | thrown by your context/data-source factory (`{ code: "UNAUTHENTICATED" }`) |
 | `PERMISSION_DENIED` | 403 | column/row permission check failed |
-| `UNKNOWN_OPERATION` | 404 | `op` is not one of the eight operations |
+| `UNKNOWN_OPERATION` | 404 | `op` is not a wire operation (or no grid route matches the path) |
+| `UNKNOWN_GRID` | 404 | multi-grid endpoint: no grid registered under that id |
+| `METHOD_NOT_ALLOWED` | 405 | multi-grid endpoint: e.g. `PUT` on an op path |
+| `SCHEMA_CONFLICT` | 409 | `updateSchema` with a stale `schemaVersion` (`details.currentVersion`) |
 | `FORMULA_ROW_CAP` | 413 | filter/sort on a non-SQL formula column exceeded `formulaFallbackRowCap` |
 | `INTERNAL` | 500 | anything unrecognised (message hidden unless `exposeInternalErrors`) |
 | `OUTPUT_INVALID` | 500 | a response failed its output schema (server with `validateOutput`, or the client) |
-| `UNSUPPORTED_OPERATION` | 501 | the data source does not implement an optional operation |
+| `UNSUPPORTED_OPERATION` | 501 | the data source does not implement an optional operation; `updateSchema` on a grid without a schema store |
 
 Clients may also see `HTTP_ERROR` (with the real HTTP status) from `createHttpDataSource` when a non-2xx
 response carries no `WireError` body (proxy/gateway errors).
@@ -95,3 +108,19 @@ Used by `toExpressHandler`, `toLambdaHandler`, `toHttpResponse` and `createHttpD
 
 Any other transport can carry the same `WireResult` envelope
 (`{ ok: true, data } | { ok: false, error, status }`) and unwrap it on the client with `unwrapWireResult`.
+
+## Multi-grid endpoint
+
+A grid registry (`createGridRegistry([defineGrid(…), …])`) serves many grids behind one base URL. Used by
+`toFetchHandler`, `toExpressRouter`, `toLambdaHandler(registry, …)` and `createGridClient`:
+
+| route | op | body |
+|---|---|---|
+| `POST {base}/{gridId}/{op}` | any wire op | the op input (an empty body is `null`) |
+| `GET {base}/{gridId}/schema` | `getSchema` | — |
+| `GET {base}` | list | — → `200 { data: [{ id }] }` (grids whose `getSchema` the caller may run) |
+
+Checks run in this order: unknown grid (`UNKNOWN_GRID` 404) → unknown op (`UNKNOWN_OPERATION` 404) →
+`permission(ctx, op)` (`PERMISSION_DENIED` 403) → input validation → the operation. Responses use the same
+`200 { data }` / `<status> { error }` envelope. The single-grid binding above (`POST {base}/{op}`) is unchanged.
+

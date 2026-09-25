@@ -1,8 +1,14 @@
 # demo-api
 
 Hono + Bun demo backend for Schema Grid, on MySQL via `@ranjeetk25/schema-grid-server`.
-It seeds core's admissions fixture (r1..r5) and pins the clock to `FIXTURE_NOW` so the
-spec §8 scenario is deterministic.
+It serves TWO grids through one `defineGrid` registry + `toFetchHandler` endpoint:
+
+- `admissions` — core's JSON-cells fixture (r1..r5 on `grid_rows`), schema in `data/schema.json`
+  ([`src/admissions-grid.ts`](src/admissions-grid.ts));
+- `leads` — a SQL view over a plain `leads` table (1,200 seeded rows, no `cells` JSON)
+  ([`src/leads/grid.ts`](src/leads/grid.ts), the ≤ 40-line example in `docs/consuming.md`).
+
+The clock is pinned to `FIXTURE_NOW` so the spec §8 scenario is deterministic.
 
 ## Run
 
@@ -17,7 +23,7 @@ bun run test                    # unit tests; add SCHEMA_GRID_MYSQL_IT=1 for the
 
 Boot creates `grid_rows` / `grid_change_log` if missing, reconciles `gc_<key>` generated
 columns against the last applied schema (`data/schema.json`), and seeds when the grid has
-never had a row. `POST /__reset` restores the fixture.
+never had a row; it also creates `leads` and seeds it when empty. `POST /__reset` restores both.
 
 Env: `PORT` (3001), `DATABASE_URL`, `DEMO_NOW` (ISO instant, default core `FIXTURE_NOW`;
 `wall` = real clock), `DEMO_TZ` (`Asia/Kolkata`), `GRID_ID` (`admissions`).
@@ -34,8 +40,12 @@ CORS allows any origin and exposes `content-disposition`.
 
 ## Routes
 
-`POST /grid/:op` is the wire contract ([`docs/wire-contract.md`](../../docs/wire-contract.md)),
-served by `createGridRouterAdapter` from `@ranjeetk25/schema-grid-server/http`: the JSON body **is**
+`POST /grid/:gridId/:op`, `GET /grid/:gridId/schema` and `GET /grid` are the multi-grid endpoint
+(`createGridRegistry` + `toFetchHandler`; browser: `createGridClient({ baseUrl: ".../grid", gridId })`).
+Only admins (`x-roles: admin`) may `updateSchema` the leads grid; its schema store is in memory for now.
+
+`POST /grid/:op` (legacy, the `admissions` grid) is the single-grid wire contract ([`docs/wire-contract.md`](../../docs/wire-contract.md)),
+served by the same registry: the JSON body **is**
 the op input, the answer is `200 { data }` or `<status> { error: { code, message, details? } }`.
 The headers above become the adapter context (`{ user, now }`) that builds the per-request
 Drizzle data source. The browser side is `createHttpDataSource({ baseUrl: ".../grid" })` from
@@ -51,12 +61,15 @@ Drizzle data source. The browser side is `createHttpDataSource({ baseUrl: ".../g
 | `POST /grid/getOptions` | `{ columnId, search? }` | `{ data: Option[] }` |
 | `POST /grid/createOption` | `{ columnId, label }` | `{ data: Option }` (schemaVersion bumped) |
 | `POST /grid/lookup` | `{ columnId, search }` | `{ data: LinkRef[] }` |
-| `GET /schema` | | `GridSchema` |
-| `PUT /schema` | `GridSchema` | new `GridSchema` (409 if `schemaVersion` is stale) |
-| `POST /import` | multipart `file`, `mapping?` (JSON header→columnId), `mode?` (`create`/`upsert`), `keyColumnId?` | 202 `{ jobId }` |
+| `POST /grid/:gridId/:op` | op input | `{ data }` (any op above, plus `getSchema` / `updateSchema`) |
+| `GET /grid/:gridId/schema` | | `{ data: GridSchema }` |
+| `GET /grid` | | `{ data: [{ id: "admissions" }, { id: "leads" }] }` |
+| `GET /schema` | | `GridSchema` (admissions) |
+| `PUT /schema` | `GridSchema` | new `GridSchema` (409 if `schemaVersion` is not current) |
+| `POST /import` | multipart `file`, `grid?` (default `admissions`), `mapping?` (JSON header→columnId), `mode?` (`create`/`upsert`), `keyColumnId?` | 202 `{ jobId }` |
 | `GET /import/:id` | | `{ state, processed, total, errorCount, errorReportUrl?, report? }` |
 | `GET /import/:id/errors.csv` | | CSV of failed rows |
-| `GET /export` | `format=csv\|xlsx`, `viewFilter`, `sort`, `columns` (URL-encoded JSON), `search`, `fileName` | file download |
+| `GET /export` | `grid` (default `admissions`), `format=csv\|xlsx`, `viewFilter`, `sort`, `columns` (URL-encoded JSON), `search`, `fileName` | file download |
 | `POST /__reset` | | `{ ok: true }` |
 | `GET /health` | | `{ ok: true }` |
 
