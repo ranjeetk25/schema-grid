@@ -22,9 +22,9 @@ export function getGroupingActions(ctx: unknown): GroupingActions | undefined {
   return typeof g.toggle === "function" && typeof g.loadMore === "function" ? (g as GroupingActions) : undefined;
 }
 
-/** Indentation (px) for a full-width row at `level`. */
-export function groupIndent(level: number): number {
-  return 8 + level * 20;
+/** Indentation (px) of content `depth` groups deep: cell padding + 24px per level (as grouped data rows). */
+export function groupIndent(depth: number): number {
+  return 12 + depth * 24;
 }
 
 export function isActivationKey(key: string): boolean {

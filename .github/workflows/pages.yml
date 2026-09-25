@@ -1,0 +1,98 @@
+name: Storybook Pages
+
+# Builds apps/storybook (-> /mantine/) and, when it exists, apps/storybook-shadcn
+# (-> /shadcn/) and deploys them to GitHub Pages with a small index page.
+#
+# A no-op until the repository variable DEPLOY_STORYBOOK is set to `true`
+# (Settings -> Secrets and variables -> Actions -> Variables) AND Pages is set to
+# "GitHub Actions" (Settings -> Pages -> Source). See docs/releasing.md.
+#
+# Stories that talk to apps/demo-api need a reachable API; set the repository
+# variable STORYBOOK_DEMO_API_URL to point them at one, otherwise those stories
+# show their connection error on Pages.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: vars.DEPLOY_STORYBOOK == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Storybooks
+        env:
+          DEMO_API_URL: ${{ vars.STORYBOOK_DEMO_API_URL }}
+        run: |
+          set -euo pipefail
+          # Only when set: an empty STORYBOOK_DEMO_API_URL would override the default.
+          if [ -n "${DEMO_API_URL}" ]; then export STORYBOOK_DEMO_API_URL="${DEMO_API_URL}"; fi
+          mkdir -p _site
+          bun run --cwd apps/storybook build-storybook
+          cp -R apps/storybook/storybook-static _site/mantine
+          shadcn_link=""
+          if [ -f apps/storybook-shadcn/package.json ]; then
+            bun run --cwd apps/storybook-shadcn build-storybook
+            cp -R apps/storybook-shadcn/storybook-static _site/shadcn
+            shadcn_link='<li><a href="./shadcn/">shadcn/ui</a> &mdash; <code>@masai/schema-grid-ui-shadcn</code></li>'
+          fi
+          cat > _site/index.html <<EOF
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Schema Grid Storybook</title>
+            <style>
+              body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; color: #1f2328; background: #fff; }
+              a { color: #0969da; }
+              @media (prefers-color-scheme: dark) { body { color: #e6edf3; background: #0d1117; } a { color: #4493f8; } }
+            </style>
+          </head>
+          <body>
+            <h1>Schema Grid</h1>
+            <p>Component explorer for the <code>@masai/schema-grid-*</code> packages.</p>
+            <ul>
+              <li><a href="./mantine/">Mantine</a> &mdash; <code>@masai/schema-grid-ui-mantine</code></li>
+              ${shadcn_link}
+            </ul>
+            <p><a href="https://github.com/${GITHUB_REPOSITORY}">Source on GitHub</a></p>
+          </body>
+          </html>
+          EOF
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

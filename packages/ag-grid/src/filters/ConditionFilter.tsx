@@ -251,6 +251,13 @@ function inputTypeFor(ft: FieldType<unknown, unknown>): "text" | "number" | "dat
   return "text";
 }
 
+/** Our class first: AG Grid's `input[class^=ag-]` rules then don't out-rank the `sg-input` chrome. */
+export const INPUT_CLASS = "sg-input ag-input-field-input ag-text-field-input";
+export const SELECT_CLASS = "sg-select ag-select";
+export const BUTTON_CLASS = "sg-button ag-standard-button";
+const SR_ONLY = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" } as const;
+const FIELDSET_RESET = { border: 0, margin: 0, padding: 0, minWidth: 0 } as const;
+
 /**
  * Condition filter: operator `<select>` + a value input shaped by the
  * operator's `valueKind`. Apply/Enter emits a core `FilterCondition`; Clear
@@ -314,7 +321,8 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
 
   return (
     <div className="sg-filter sg-condition-filter" onKeyDown={onKeyDown}>
-      <select aria-label="Operator" value={opDef?.id ?? ""} onChange={(e) => update({ operator: e.target.value })}>
+      <div className="sg-filter-body ag-filter-body-wrapper">
+      <select className={SELECT_CLASS} aria-label="Operator" value={opDef?.id ?? ""} onChange={(e) => update({ operator: e.target.value })}>
         {operators.map((o) => (
           <option key={o.id} value={o.id}>
             {o.label}
@@ -324,7 +332,7 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
 
       {kind === "single" &&
         (useCheckboxes ? (
-          <select aria-label="Value" value={draft.single} onChange={(e) => update({ single: e.target.value })}>
+          <select className={SELECT_CLASS} aria-label="Value" value={draft.single} onChange={(e) => update({ single: e.target.value })}>
             <option value="" />
             {options.map((o) => (
               <option key={o.id} value={o.id}>
@@ -333,18 +341,24 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
             ))}
           </select>
         ) : (
-          <input aria-label="Value" type={inputType} value={draft.single} onChange={(e) => update({ single: e.target.value })} />
+          <input
+            className={INPUT_CLASS}
+            aria-label="Value"
+            placeholder="Value"
+            type={inputType}
+            value={draft.single}
+            onChange={(e) => update({ single: e.target.value })}
+          />
         ))}
 
       {kind === "multi" &&
         (useCheckboxes ? (
-          <fieldset className="sg-filter-options" style={{ border: 0, margin: 0, padding: 0 }}>
-            <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
-              Values
-            </legend>
+          <fieldset className="sg-filter-options" style={FIELDSET_RESET}>
+            <legend style={SR_ONLY}>Values</legend>
             {options.map((o) => (
-              <label key={o.id}>
+              <label key={o.id} className="sg-filter-option">
                 <input
+                  className="sg-checkbox"
                   type="checkbox"
                   checked={draft.multi.includes(o.id)}
                   onChange={(e) =>
@@ -359,6 +373,7 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
           </fieldset>
         ) : (
           <input
+            className={INPUT_CLASS}
             aria-label="Value"
             type="text"
             placeholder="Comma-separated values"
@@ -369,14 +384,15 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
 
       {kind === "range" && (
         <>
-          <input aria-label="From" type={inputType} value={draft.from} onChange={(e) => update({ from: e.target.value })} />
-          <input aria-label="To" type={inputType} value={draft.to} onChange={(e) => update({ to: e.target.value })} />
+          <input className={INPUT_CLASS} aria-label="From" placeholder="From" type={inputType} value={draft.from} onChange={(e) => update({ from: e.target.value })} />
+          <input className={INPUT_CLASS} aria-label="To" placeholder="To" type={inputType} value={draft.to} onChange={(e) => update({ to: e.target.value })} />
         </>
       )}
 
       {kind === "relativeDate" && (
         <>
           <select
+            className={SELECT_CLASS}
             aria-label="Relative date"
             value={draft.relative}
             onChange={(e) => update({ relative: e.target.value as RelativeDateKind })}
@@ -388,7 +404,7 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
             ))}
           </select>
           {(draft.relative === "lastNDays" || draft.relative === "nextNDays") && (
-            <input aria-label="Number of days" type="number" min={1} value={draft.n} onChange={(e) => update({ n: e.target.value })} />
+            <input className={INPUT_CLASS} aria-label="Number of days" type="number" min={1} value={draft.n} onChange={(e) => update({ n: e.target.value })} />
           )}
         </>
       )}
@@ -398,12 +414,13 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
           {error}
         </div>
       )}
+      </div>
 
-      <div className="sg-filter-actions">
-        <button type="button" onClick={clear}>
+      <div className="sg-filter-actions ag-filter-apply-panel">
+        <button type="button" className={BUTTON_CLASS} onClick={clear}>
           Clear
         </button>
-        <button type="button" onClick={apply}>
+        <button type="button" className={`${BUTTON_CLASS} sg-button-primary`} onClick={apply}>
           Apply
         </button>
       </div>

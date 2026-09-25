@@ -112,10 +112,57 @@ describe("client-mode grouping wiring", () => {
     const { container } = renderGrid({ props: { view: grouped } });
     await waitFor(() => expect(groupRows(container)).toHaveLength(4));
     const text = groupRow(container, "Paid").querySelector(".sg-group-aggs")?.textContent ?? "";
-    expect(text).toContain("Sum Fee:");
+    // Sums read as the bare column label: "Fee ₹1,000.00".
+    expect(groupRow(container, "Paid").querySelector(".sg-group-agg-label")?.textContent).toBe("Fee");
     expect(text).toContain("1,000.00");
     const pending = groupRow(container, "Pending").querySelector(".sg-group-aggs")?.textContent ?? "";
     expect(pending).toContain("500.00");
+  });
+});
+
+describe("group row presentation", () => {
+  const grouped = view([{ columnId: "payment" }, { columnId: "active" }]);
+
+  it("renders the empty group muted, the count separately, and 32px group rows", async () => {
+    const { container, settle } = renderGrid({ props: { view: view([{ columnId: "payment" }]) } });
+    await waitFor(() => expect(groupRows(container)).toHaveLength(4));
+    await settle();
+    const empty = groupRow(container, "(empty)");
+    expect(empty.querySelector(".sg-group-label")).toHaveClass("sg-group-empty");
+    expect(groupRow(container, "Paid").querySelector(".sg-group-count")?.textContent).toBe("1");
+    const rowEl = groupRow(container, "Paid").closest(".ag-full-width-row") as HTMLElement;
+    expect(rowEl.style.height).toBe("32px");
+    expect(rowEl).toHaveClass("sg-row-group");
+    expect(rowEl).toHaveClass("sg-row-group-l0");
+  });
+
+  it("marks data rows under a grouping with their depth", async () => {
+    const { container, settle } = renderGrid({ props: { view: grouped } });
+    await waitFor(() => expect(dataRowIds(container)).toContain("r1"));
+    await settle();
+    const dataRow = container.querySelector('.ag-row[row-id="r1"]:not(.ag-full-width-row)');
+    expect(dataRow).toHaveClass("sg-row-grouped");
+    expect(dataRow).toHaveClass("sg-row-grouped-l2");
+    const nested = groupRows(container).find((el) => el.getAttribute("data-level") === "1")?.closest(".ag-full-width-row");
+    expect(nested).toHaveClass("sg-row-group-l1");
+  });
+
+  it("ArrowLeft/ArrowRight on the focused group row collapse/expand and announce", async () => {
+    const { container, settle } = renderGrid({ props: { view: view([{ columnId: "payment" }]) } });
+    await waitFor(() => expect(dataRowIds(container)).toContain("r1"));
+    await settle();
+    const rowEl = () => groupRow(container, "Paid").closest(".ag-full-width-row") as HTMLElement;
+    act(() => {
+      fireEvent.keyDown(rowEl(), { key: "ArrowLeft" });
+    });
+    await waitFor(() => expect(dataRowIds(container)).not.toContain("r1"));
+    await waitFor(() => expect(container.textContent).toContain("Group Paid, 1 row, collapsed"));
+    act(() => {
+      fireEvent.keyDown(rowEl(), { key: "ArrowRight" });
+    });
+    await waitFor(() => expect(dataRowIds(container)).toContain("r1"));
+    await waitFor(() => expect(container.textContent).toContain("Group Paid, 1 row, expanded"));
+    await settle();
   });
 });
 

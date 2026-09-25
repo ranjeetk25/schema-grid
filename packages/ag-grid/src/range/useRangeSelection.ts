@@ -31,6 +31,7 @@
  *   Column order comes from `api.getAllDisplayedColumns()`, so hidden columns
  *   are never part of a range.
  */
+import { isSyntheticColumnId } from "../compile/syntheticColumns";
 import type {
   CellClassParams,
   CellClassRules,
@@ -86,9 +87,12 @@ export interface RangeSelectionHandlers<Row extends GridRow = GridRow> {
 
 type ApiLike = Pick<GridApi, "getAllDisplayedColumns"> & Partial<Pick<GridApi, "isDestroyed">>;
 
-/** Displayed (visible, ordered) column ids. */
+/** Displayed (visible, ordered) column ids, without grid-only columns (ghost draft, "+"). */
 export function displayedColIds(api: ApiLike): string[] {
-  return api.getAllDisplayedColumns().map((c) => c.getColId());
+  return api
+    .getAllDisplayedColumns()
+    .map((c) => c.getColId())
+    .filter((id) => !isSyntheticColumnId(id));
 }
 
 interface NormalizedCacheEntry {
@@ -108,7 +112,7 @@ export function normalizedRangeFor(api: ApiLike, range: CellRange | null): Norma
   const cols = api.getAllDisplayedColumns();
   const cached = normalizedCache.get(api);
   if (cached && cached.range === range && cached.cols === cols) return cached.n;
-  const ids = cols.map((c) => c.getColId());
+  const ids = cols.map((c) => c.getColId()).filter((id) => !isSyntheticColumnId(id));
   const key = ids.join("\u0000");
   if (cached && cached.range === range && cached.key === key) {
     cached.cols = cols;

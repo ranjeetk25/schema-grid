@@ -70,6 +70,8 @@ export function summarizeCondition(resolved: ResolvedFilterColumn, condition: Fi
 }
 
 /**
+ * Opt-in (`floatingFilters` on `compileColumns` / `SchemaGrid`; the default
+ * grid puts the filter in the header cell via `SchemaHeader` instead).
  * Read-only floating filter: a summary chip of the column's condition with a
  * clear (×) button, or an "Advanced" badge when the column's conditions live
  * in the compound builder (`context.advancedColumnIds`).

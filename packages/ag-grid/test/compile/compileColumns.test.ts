@@ -11,6 +11,7 @@ import {
   type ViewDef,
 } from "../../src/internal/core";
 import { compileColumns } from "../../src/compile/compileColumns";
+import { SchemaHeader, schemaHeaderKeyboardEvent } from "../../src/grid/SchemaHeader";
 import { createCellAccess } from "../../src/compile/cellAccess";
 import { compileFormulaColumns } from "../../src/compile/formulaColumns";
 import { createDefaultUiRegistry } from "../../src/compile/uiRegistry";
@@ -96,9 +97,11 @@ describe("compileColumns", () => {
     expect(payment.cellRenderer).toBe(entry.renderer);
     expect(payment.cellEditor).toBe(entry.editor);
     expect(payment.cellEditorPopup).toBe(entry.editorPopup);
-    expect(payment.cellEditorPopupPosition).toBe(entry.editorPopupPosition);
+    expect(payment.cellEditorPopupPosition).toBe(entry.editorPopupPosition ?? (entry.editorPopup ? "under" : undefined));
     expect(payment.filter).toBe(entry.filterComponent ?? false);
-    expect(payment.floatingFilterComponent).toBe(entry.floatingFilter);
+    // Floating filters are opt-in: no component wired by default.
+    expect(payment.floatingFilterComponent).toBeUndefined();
+    expect(payment.floatingFilter).toBe(false);
     const column = fixtureSchema.columns.find((c) => c.id === "payment");
     expect(payment.cellRendererParams).toEqual({ schemaColumn: column, fieldType: registry.get("select") });
     expect(payment.cellEditorParams).toEqual({ schemaColumn: column, fieldType: registry.get("select") });
@@ -278,7 +281,41 @@ describe("review follow-ups", () => {
     expect(defs.map((d) => d.colId)).toEqual(["z", "y", "x"]);
   });
 
-  it("enables floatingFilter only when a filter and floating filter component exist", () => {
+  it("popup editors open under the cell unless the ui entry sets a position", () => {
+    const Dummy = () => null;
+    const custom = ui.extend({
+      text: { editor: Dummy, editorPopup: true, editorPopupPosition: undefined },
+      number: { editor: Dummy, editorPopup: true, editorPopupPosition: "over" },
+    });
+    const schema: GridSchema = { id: "s", schemaVersion: 1, columns: [col({ id: "x", type: "text" }), col({ id: "n", type: "number" })] };
+    const access = new Map<string, Access>([
+      ["x", "edit"],
+      ["n", "edit"],
+    ]);
+    const defs = compileColumns(schema, access, registry, custom);
+    expect(byId(defs, "x").cellEditorPopupPosition).toBe("under");
+    expect(byId(defs, "n").cellEditorPopupPosition).toBe("over");
+  });
+
+  it("sets SchemaHeader and its keyboard handler on every column", () => {
+    const defs = compileColumns(fixtureSchema, adminAccess, registry, ui);
+    expect(defs.length).toBeGreaterThan(0);
+    for (const def of defs) {
+      expect(def.headerComponent).toBe(SchemaHeader);
+      expect(def.suppressHeaderKeyboardEvent).toBe(schemaHeaderKeyboardEvent);
+    }
+  });
+
+  it("keeps floatingFilter off by default even when a floating filter component exists", () => {
+    const Dummy = () => null;
+    const custom = ui.extend({ text: { filterComponent: Dummy, floatingFilter: Dummy } });
+    const schema: GridSchema = { id: "s", schemaVersion: 1, columns: [col({ id: "x", type: "text" })] };
+    const defs = compileColumns(schema, new Map<string, Access>([["x", "edit"]]), registry, custom);
+    expect(byId(defs, "x").floatingFilter).toBe(false);
+    expect(byId(defs, "x").floatingFilterComponent).toBeUndefined();
+  });
+
+  it("with floatingFilters: true, enables floatingFilter only when a filter and floating filter component exist", () => {
     const Dummy = () => null;
     const custom = ui.extend({
       text: { filterComponent: Dummy, floatingFilter: Dummy },
@@ -289,8 +326,9 @@ describe("review follow-ups", () => {
       ["x", "edit"],
       ["n", "edit"],
     ]);
-    const defs = compileColumns(schema, access, registry, custom);
+    const defs = compileColumns(schema, access, registry, custom, { floatingFilters: true });
     expect(byId(defs, "x").floatingFilter).toBe(true);
+    expect(byId(defs, "x").floatingFilterComponent).toBe(Dummy);
     expect(byId(defs, "n").floatingFilter).toBe(false);
   });
 });

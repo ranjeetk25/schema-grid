@@ -45,7 +45,7 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
       </legend>
       {options.map((o) => (
         <label key={o.id} className="sg-multi-select-option">
-          <input type="checkbox" checked={selected.has(o.id)} onChange={(e) => props.onChange(toNext(o.id, e.target.checked))} />
+          <input className="sg-checkbox" type="checkbox" checked={selected.has(o.id)} onChange={(e) => props.onChange(toNext(o.id, e.target.checked))} />
           {o.label}
         </label>
       ))}

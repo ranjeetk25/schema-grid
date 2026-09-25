@@ -1,6 +1,35 @@
 {
   "name": "@masai/schema-grid-core",
   "version": "0.0.1",
+  "description": "Schema-driven data grid core: schemas, field types, filters, formulas and the wire contract. Zero UI dependencies.",
+  "license": "MIT",
+  "author": "Masai School",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ranjeetk25/schema-grid.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/ranjeetk25/schema-grid/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/ranjeetk25/schema-grid/issues"
+  },
+  "keywords": [
+    "data-grid",
+    "schema",
+    "spreadsheet",
+    "airtable",
+    "filter",
+    "formula",
+    "zod",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
@@ -51,9 +80,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",

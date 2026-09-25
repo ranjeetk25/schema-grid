@@ -150,6 +150,16 @@ import { useUndoKeybindings } from "../undo/useUndoKeybindings";
 import { applyViewState, captureViewState } from "../views/viewState";
 import type { SchemaGridHookContext, SchemaGridStores } from "./gridContext";
 import { createKeyboardRegistry, type KeyboardRegistry, withSuppressKeyboardEvent } from "./keyboard";
+import { createInPlaceHandlers, createReadOnlyCellClassRules } from "../editing/inPlace";
+import { createGroupingRowClassRules, groupingRowHeight } from "../grouping/groupRowClasses";
+import type { HeaderMenuComponent, HeaderMenuContext } from "./headerMenu";
+import {
+  type AddColumnPosition,
+  DRAFT_COLUMN_ID,
+  type DraftColumn,
+  ghostTargetIndex,
+  isSyntheticColumnId,
+} from "../compile/syntheticColumns";
 
 export type { ClipboardReport } from "../clipboard/types";
 
@@ -202,6 +212,37 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
   poll?: SchemaGridPollOptions;
   /** Default `createSchemaGridTheme()`. */
   theme?: Theme;
+  /**
+   * Where AG Grid mounts popups (popup editors, column filters, menus).
+   * Default `document.body`, so popups are never cropped by the grid
+   * viewport; `null` keeps AG Grid's own default (inside the grid). A
+   * `gridOptions.popupParent` still wins.
+   */
+  popupParent?: HTMLElement | null;
+  /**
+   * Column menu UI rendered by the header's `⋯` button / right-click (see
+   * `HeaderMenuProps`). Default: the framework-free `DefaultHeaderMenu`.
+   */
+  headerMenu?: HeaderMenuComponent;
+  /**
+   * Live preview of the host's column builder: "create" shows a read-only
+   * ghost column (`__sg_draft__`) at `insertAt`; "edit" renders the real
+   * column with the draft's label/config. `null` reverts. Compared by value.
+   */
+  draftColumn?: DraftColumn | null;
+  /** Renders a trailing "+" column ("Add column at end") that calls this. */
+  onAddColumn?(position: AddColumnPosition): void;
+  /** Offered as "Group by" in the column menu when provided. */
+  onGroupByColumn?(colId: string): void;
+  /** Offered as "Edit column" in the column menu when provided. */
+  onEditColumn?(colId: string): void;
+  /** Offered as "Insert column left/right" in the column menu when provided. */
+  onInsertColumn?(colId: string, side: "left" | "right"): void;
+  /**
+   * Show AG Grid's floating-filter row (read-only filter summary chips).
+   * Default false — the filter opens from the header cell's filter button.
+   */
+  floatingFilters?: boolean;
   /**
    * Escape hatch, merged last. It can NEVER override `readOnlyEdit`,
    * `onCellEditRequest`, `rowModelType`, `modules`, `context`, `getRowId`,
@@ -294,6 +335,8 @@ const EVENT_KEYS_WE_CHAIN = [
   "onColumnVisible",
   "onColumnPinned",
   "onCellEditingStopped",
+  "onCellClicked",
+  "onCellDoubleClicked",
   "onCellMouseDown",
   "onCellMouseOver",
   "onCellFocused",
@@ -445,6 +488,13 @@ function preservePending<Row extends GridRow>(
   });
 }
 
+/** `undefined` → `document.body` (when there is a document); `null` → AG Grid's default. */
+export function resolvePopupParent(popupParent: HTMLElement | null | undefined): HTMLElement | undefined {
+  if (popupParent === null) return undefined;
+  if (popupParent) return popupParent;
+  return typeof document === "undefined" ? undefined : document.body;
+}
+
 export function useSchemaGrid<Row extends GridRow = GridRow>(
   props: SchemaGridProps<Row>,
   seams: UseSchemaGridSeams<Row> = {},
@@ -459,6 +509,12 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const pageSize = props.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageMode: PageMode = props.pageMode ?? "offset";
   const tz = props.tz ?? DEFAULT_TZ;
+  const floatingFilters = props.floatingFilters === true;
+  const popupParent = resolvePopupParent(props.popupParent);
+  const draftKey = json(props.draftColumn ?? null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft compared by value (draftKey), so identical drafts don't recompile.
+  const draft = useMemo(() => props.draftColumn ?? null, [draftKey]);
+  const hasAddColumn = typeof props.onAddColumn === "function";
 
   // ---- Derived configuration -----------------------------------------------------
   const resolver = useMemo(() => props.resolver ?? createRolePermissionResolver(), [props.resolver]);
@@ -564,7 +620,30 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     toggle: (id: string) => (serverGroupsRef.current?.active ? serverGroupsRef.current.toggle(id) : stores.expansion.toggle(id)),
     loadMore: (id: string) => serverGroupsRef.current?.loadMore(id),
   }));
+  const [addColumnSeam] = useState(
+    () => (position: AddColumnPosition) => latest.current.onAddColumn?.(position),
+  );
+  const [announceSeam] = useState(
+    () => (message: string, politeness?: "polite" | "assertive") => latestSeams.current.announce?.(message, politeness),
+  );
+  // Stable wrappers (read the latest props at call time): an open column menu
+  // must not see its callbacks change identity on every host render.
+  const [menuSeams] = useState(() => ({
+    onGroupByColumn: (colId: string) => latest.current.onGroupByColumn?.(colId),
+    onEditColumn: (colId: string) => latest.current.onEditColumn?.(colId),
+    onInsertColumn: (colId: string, side: "left" | "right") => latest.current.onInsertColumn?.(colId, side),
+  }));
+  const headerMenu: HeaderMenuContext = {
+    ...(props.headerMenu ? { component: props.headerMenu } : {}),
+    ...(props.onGroupByColumn ? { onGroupByColumn: menuSeams.onGroupByColumn } : {}),
+    ...(props.onEditColumn ? { onEditColumn: menuSeams.onEditColumn } : {}),
+    ...(props.onInsertColumn ? { onInsertColumn: menuSeams.onInsertColumn } : {}),
+  };
   const contextFields = {
+    headerMenu,
+    onAddColumn: addColumnSeam,
+    uiRegistry,
+    announce: announceSeam,
     grouping,
     dataSource,
     events: getEvents,
@@ -749,6 +828,29 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       offExpansion();
     };
   }, [stores, scheduleRowSync]);
+
+  // Data rows are reused across grouping changes, and AG Grid only re-runs
+  // `rowClassRules` for re-rendered rows: when the grouping depth changes,
+  // redraw so every data row picks up its `sg-row-grouped-l{n}` class.
+  useEffect(() => {
+    let depth = stores.query.getState().groupBy.length;
+    let frame: ReturnType<typeof setTimeout> | undefined;
+    const off = stores.query.subscribe(() => {
+      const next = stores.query.getState().groupBy.length;
+      if (next === depth) return;
+      depth = next;
+      if (frame !== undefined) clearTimeout(frame);
+      frame = setTimeout(() => {
+        frame = undefined;
+        const api = apiRef.current;
+        if (api && !api.isDestroyed()) api.redrawRows();
+      }, 0);
+    });
+    return () => {
+      off();
+      if (frame !== undefined) clearTimeout(frame);
+    };
+  }, [stores]);
 
   // ---- Incoming rows (both modes) -----------------------------------------------------
   const upsertIncoming = useCallback(
@@ -1082,6 +1184,24 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
   });
 
+  // ---- In-place interactions: boolean toggle + read-only feedback (editing/inPlace.ts).
+  const [inPlace] = useState(() =>
+    createInPlaceHandlers<Row>({
+      getContext: () => context,
+      submit: (change) => {
+        void controllerRef.current.submit([change], "edit");
+      },
+      getValue: (row, column) => {
+        const known = stores.rows.getRow(row.id);
+        return (known ?? row).cells[column.key];
+      },
+      announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
+    }),
+  );
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(() => keyboard.register(inPlace.keyHandler), [keyboard, inPlace]);
+
   // ---- Clipboard (T24): Ctrl/Cmd+C/V on the root keyboard registry + root copy/paste listeners.
   const clipboard = useClipboard<Row>({
     apiRef,
@@ -1185,6 +1305,15 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     [stores, pushQueryToGrid, scheduleRowSync, syncServerQuery, emitView, setFilterErrors, computeFilterErrors],
   );
 
+  // Collapsing/expanding client groups is part of the view (`collapsedGroups`).
+  useEffect(
+    () =>
+      stores.expansion.subscribe(() => {
+        if ((latest.current.mode ?? "client") === "client") emitView();
+      }),
+    [stores, emitView],
+  );
+
   const applyView = useCallback(
     (api: GridApi<Row>, view: ViewDef) => {
       applyingView.current = true;
@@ -1271,11 +1400,15 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
 
   // ---- Column defs ----------------------------------------------------------------------
   const cellClassRules = useMemo<CellClassRules<Row>>(
-    () => ({ ...createStatusCellClassRules<Row>(), ...(seams.cellClassRules ?? {}) }),
+    () => ({
+      ...createStatusCellClassRules<Row>(),
+      ...createReadOnlyCellClassRules<Row>(),
+      ...(seams.cellClassRules ?? {}),
+    }),
     [seams.cellClassRules],
   );
   const rowClassRules = useMemo<RowClassRules<Row>>(
-    () => ({ ...createStatusRowClassRules<Row>(), ...(seams.rowClassRules ?? {}) }),
+    () => ({ ...createStatusRowClassRules<Row>(), ...createGroupingRowClassRules<Row>(), ...(seams.rowClassRules ?? {}) }),
     [seams.rowClassRules],
   );
   // The view only seeds initial* values for first paint; later view column
@@ -1288,12 +1421,51 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
           cellClassRules,
           canEditCell,
           formulas,
+          floatingFilters,
+          draft,
+          addColumn: hasAddColumn,
           ...(seams.wrapRenderer ? { wrapRenderer: seams.wrapRenderer } : {}),
         }),
         keyboard.suppressKeyboardEvent,
       ),
-    [schema, access, registry, uiRegistry, cellClassRules, canEditCell, formulas, seams.wrapRenderer, keyboard],
+    [
+      schema,
+      access,
+      registry,
+      uiRegistry,
+      cellClassRules,
+      canEditCell,
+      formulas,
+      floatingFilters,
+      draft,
+      hasAddColumn,
+      seams.wrapRenderer,
+      keyboard,
+    ],
   );
+
+  // `maintainColumnOrder` makes AG Grid append the ghost column at the end:
+  // move it to `insertAt` once AG Grid has applied the new column defs.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: columnDefs is a trigger — re-place the ghost after every recompile.
+  useEffect(() => {
+    if (draft?.mode !== "create") return;
+    const insertAt = draft.insertAt;
+    const timer = setTimeout(() => {
+      const api = apiRef.current;
+      if (!api || api.isDestroyed()) return;
+      const all = api.getAllGridColumns().map((c) => c.getColId());
+      const current = all.indexOf(DRAFT_COLUMN_ID);
+      if (current < 0) return;
+      const without = all.filter((id) => id !== DRAFT_COLUMN_ID);
+      const displayed = api
+        .getAllDisplayedColumns()
+        .map((c) => c.getColId())
+        .filter((id) => !isSyntheticColumnId(id));
+      const target = ghostTargetIndex(without, displayed, insertAt);
+      if (target !== current) api.moveColumns([DRAFT_COLUMN_ID], target);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [draft, columnDefs]);
 
   const postSortRows = useMemo(() => makePostSortRows<Row>(() => orderIndexRef.current), []);
   const getRowId = useCallback((p: { data: Row }) => p.data.id, []);
@@ -1313,7 +1485,10 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     const byId = new Map(schema.columns.map((c) => [c.id, c]));
     const api = apiRef.current;
     const ids = api
-      ? api.getAllDisplayedColumns().map((c) => c.getColId())
+      ? api
+          .getAllDisplayedColumns()
+          .map((c) => c.getColId())
+          .filter((id) => !isSyntheticColumnId(id))
       : schema.columns.filter((c) => !c.hidden).map((c) => c.id);
     return ids
       .map((id) => byId.get(id))
@@ -1379,6 +1554,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       onColumnVisible,
       onColumnPinned,
       onCellEditingStopped,
+      onCellClicked: inPlace.onCellClicked,
+      onCellDoubleClicked: inPlace.onCellDoubleClicked,
       onCellMouseDown: onCellMouseDownWithFill,
       onCellMouseOver: onCellMouseOverWithFill,
       onCellFocused: rangeSelection.onCellFocused,
@@ -1389,6 +1566,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       // turn the first Enter into a plain move down, so it stays off.
       enterNavigatesVerticallyAfterEdit: true,
       stopEditingWhenCellsLoseFocus: true,
+      ...(popupParent ? { popupParent } : {}),
+      ...(rowModelKey === "clientSide" ? { getRowHeight: groupingRowHeight } : {}),
       ...(fullWidthCellRenderer ? { isFullWidthRow, fullWidthCellRenderer } : {}),
       ...(rowModelKey === "infinite" ? INFINITE_DEFAULTS(pageMode, pageSize) : {}),
     };
@@ -1434,6 +1613,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [
     theme,
     columnDefs,
+    popupParent,
     getRowId,
     rowClassRules,
     onGridReady,
@@ -1445,6 +1625,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     onColumnVisible,
     onColumnPinned,
     onCellEditingStopped,
+    inPlace,
     rangeSelection,
     onCellMouseDownWithFill,
     onCellMouseOverWithFill,

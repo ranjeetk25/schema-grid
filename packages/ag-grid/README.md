@@ -99,9 +99,40 @@ interface SchemaGridProps<Row extends GridRow = GridRow> {
   onClipboardReport?(report: ClipboardReport): void;
   poll?: { intervalMs?: number; enabled?: boolean };
   theme?: Theme;                             // default createSchemaGridTheme()
+  popupParent?: HTMLElement | null;          // default document.body (null = AG Grid's default)
+  floatingFilters?: boolean;                 // default false: the filter lives in the header cell
+  headerMenu?: ComponentType<HeaderMenuProps>; // column menu UI; default DefaultHeaderMenu
+  onGroupByColumn?(colId: string): void;     // "Group by" in the column menu
+  onEditColumn?(colId: string): void;        // "Edit column…" in the column menu
+  onInsertColumn?(colId: string, side: "left" | "right"): void;
+  draftColumn?: DraftColumn | null;          // column-builder live preview (ghost / edit)
+  onAddColumn?(position: AddColumnPosition): void; // renders the trailing "+" column
   gridOptions?: Partial<GridOptions<Row>>;   // escape hatch, see below
 }
 ```
+
+### Header, filters and the column menu
+
+Every column uses `SchemaHeader`: the label (`.ag-header-cell-text`, label text only), a sort arrow, and
+hover/focus-revealed controls — a filter button (`.sg-header-filter`, "Filter <label>", or
+"Filter <label> (active)" while filtered, when it stays visible and accent-tinted) and a `⋯` column-menu
+button (`.sg-header-menu`, "Column menu: <label>"). The floating-filter row is off by default
+(`floatingFilters` opts back in to `FloatingFilter`). Keyboard on a focused header: Enter sorts (AG Grid);
+Ctrl/Cmd+Enter, Shift+Enter or Alt+ArrowDown open the filter; Shift+F10 / ContextMenu open the column menu;
+right-click opens it too. The menu is a slot (`headerMenu`, `HeaderMenuProps`/`HeaderMenuActions`); its
+actions go through `applyColumnState`/`autoSizeColumns`, so they land in `onViewChange`.
+
+### Booleans, read-only cells, grouping, drafts
+
+- Boolean cells toggle in place (click the checkbox, Space or Enter) through the normal edit pipeline — no
+  editor opens.
+- Formula cells get `sg-cell-formula`, permission read-only cells `sg-cell-readonly`; trying to edit one
+  announces why and briefly flashes `sg-cell-readonly-hint`.
+- Group rows are 32px, render the group value with the column's own renderer, and support ←/→ to
+  collapse/expand. Collapsed groups are captured into `ViewDef.collapsedGroups`.
+- `draftColumn` "create" inserts a read-only ghost column (`__sg_draft__`); "edit" renders the real column
+  with the draft's label/config. `onAddColumn` adds a trailing "+" column (`__sg_add__`, "Add column at
+  end"). Neither synthetic column is ever captured into views, exported, copied or part of a range.
 
 `useSchemaGrid(props, seams?)` returns:
 
@@ -348,16 +379,21 @@ value reads from a `--sg-*` CSS custom property, falling back to a sensible defa
 
 ```ts
 createSchemaGridTheme({
-  accentColor: "#5b5bd6",        // var(--sg-accent-color)
-  backgroundColor: "#ffffff",     // var(--sg-background-color)
-  foregroundColor: "#182230",     // var(--sg-foreground-color)
-  borderColor: "#dee2e6",         // var(--sg-border-color)
-  headerBackgroundColor: "#f8f9fa", // var(--sg-header-background-color)
-  fontFamily: "inherit",          // var(--sg-font-family)
-  fontSize: 13,                   // var(--sg-font-size)
-  rowHeight: 32,
+  accentColor: "#5e6ad2",         // var(--sg-accent-color)
+  backgroundColor: "#ffffff",      // var(--sg-background-color)
+  foregroundColor: "#09090b",      // var(--sg-foreground-color)
+  borderColor: "#e4e4e7",          // var(--sg-border-color)
+  headerBackgroundColor: "#fafafa", // var(--sg-header-background-color)
+  rowHoverColor: "rgba(9, 9, 11, .025)", // var(--sg-row-hover-color)
+  fontSize: 13,                    // var(--sg-font-size)
+  rowHeight: 36,
+  headerHeight: 36,
 });
 ```
+
+The defaults follow `docs/design/README.md` (Linear density, Vercel restraint): 36px rows and header, 12px
+cell padding, horizontal hairlines only, 8px wrapper radius, no striping, accent-only selection/focus and a
+soft shadow on popups only. `SCHEMA_GRID_THEME_PARAMS` exports the full default param set.
 
 Rather than pass overrides, most consumers can just set the corresponding `--sg-*` CSS variables on an
 ancestor element — no rebuild required. The grid also injects its own scoped decoration CSS (range

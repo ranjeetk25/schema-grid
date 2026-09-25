@@ -59,6 +59,11 @@ export interface ViewDef {
   search?: string;
   columnState: ColumnState[];
   groupBy: GroupSpec[];
+  /**
+   * Ids of collapsed group rows (grid-generated, stable for a given grouping
+   * and group value). Omitted when every group is expanded.
+   */
+  collapsedGroups?: string[];
   pageSize: number;
 }
 

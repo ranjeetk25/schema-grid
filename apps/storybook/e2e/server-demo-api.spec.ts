@@ -192,7 +192,7 @@ test("§12 server-mode grouping: collapsed group rows, expanding fetches that gr
   ).toHaveCount(0);
   await expect(
     groups.filter({ hasText: "Paid" }).locator(".sg-group-count"),
-  ).toHaveText(" (2)");
+  ).toHaveText("2");
 
   const before = (await calls(page, "fetch")).length;
   await groups

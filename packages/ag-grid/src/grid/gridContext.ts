@@ -8,6 +8,8 @@ import type {
   SchemaGridEvents,
 } from "../internal/core";
 import type { CellPos } from "../range/geometry";
+import type { HeaderMenuContext } from "./headerMenu";
+import type { UiFieldTypeRegistry } from "../compile/uiRegistry";
 import type { CellStatusStore } from "../state/cellStatusStore";
 import type { ExpansionStore } from "../state/expansionStore";
 import type { QueryStore } from "../state/queryStore";
@@ -52,6 +54,12 @@ export interface SchemaGridContext<Row extends GridRow = GridRow> {
   canEditCell?(row: Row, columnId: string): boolean;
   user?: GridUser;
   mode?: "client" | "server";
+  /** The UI registry (group rows render group values with the column's own renderer). */
+  uiRegistry?: UiFieldTypeRegistry<Row>;
+  /** Live-region announcer (no-op when the host supplies none). */
+  announce?(message: string, politeness?: "polite" | "assertive"): void;
+  /** Column menu slot + host callbacks, read by `SchemaHeader`. */
+  headerMenu?: HeaderMenuContext;
   /** Fill handle (T25): `CellShell` calls it from the handle's native pointerdown. */
   onFillHandlePointerDown?(event: FillHandlePointerEvent, pos: CellPos): void;
   [key: string]: unknown;

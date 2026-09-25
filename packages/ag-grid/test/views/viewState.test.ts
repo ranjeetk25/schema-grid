@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Access, ViewDef } from "../../src/internal/core";
+import { createExpansionStore } from "../../src/state/expansionStore";
 import { createQueryStore } from "../../src/state/queryStore";
 import { applyViewState, captureViewState } from "../../src/views/viewState";
 import { createFakeGridApi } from "../fixtures/fakeGridApi";
@@ -197,5 +198,35 @@ describe("applyViewState", () => {
     const view = baseView({ groupBy: [{ columnId: "name" }] });
     applyViewState(api, view, { query });
     expect(query.getState().groupBy).toEqual([{ columnId: "name" }]);
+  });
+});
+
+describe("collapsedGroups", () => {
+  it("captures collapsed group ids only while grouped and only when non-empty", () => {
+    const { api } = createFakeGridApi({ columns: [{ colId: "payment" }] });
+    const expansion = createExpansionStore();
+    const ungrouped = createQueryStore();
+    expansion.setExpanded("g:b", false);
+    expect("collapsedGroups" in captureViewState(api, { query: ungrouped, expansion }, baseView())).toBe(false);
+
+    const grouped = createQueryStore({ groupBy: [{ columnId: "payment" }] });
+    const fresh = createExpansionStore();
+    expect("collapsedGroups" in captureViewState(api, { query: grouped, expansion: fresh }, baseView())).toBe(false);
+    fresh.setExpanded("g:b", false);
+    fresh.setExpanded("g:a", false);
+    fresh.setExpanded("g:c", true);
+    expect(captureViewState(api, { query: grouped, expansion: fresh }, baseView()).collapsedGroups).toEqual(["g:a", "g:b"]);
+  });
+
+  it("applies collapsed ids over a fully expanded default", () => {
+    const { api } = createFakeGridApi({ columns: [{ colId: "payment" }] });
+    const query = createQueryStore();
+    const expansion = createExpansionStore();
+    expansion.setExpanded("stale", false);
+    applyViewState(api, baseView({ groupBy: [{ columnId: "payment" }], collapsedGroups: ["g:x"] }), { query, expansion });
+    expect(expansion.isExpanded("g:x")).toBe(false);
+    expect(expansion.isExpanded("stale")).toBe(true);
+    applyViewState(api, baseView({ groupBy: [{ columnId: "payment" }] }), { query, expansion });
+    expect(expansion.isExpanded("g:x")).toBe(true);
   });
 });

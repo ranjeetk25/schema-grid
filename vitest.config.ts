@@ -10,6 +10,14 @@ export default defineConfig({
       "packages/ui-shadcn",
       "packages/import-export",
       "apps/demo-api",
+      // Release tooling: publish-manifest transform + packed-tarball checks.
+      {
+        test: {
+          name: "scripts",
+          include: ["scripts/**/*.test.ts"],
+          environment: "node",
+        },
+      },
     ],
   },
 });
