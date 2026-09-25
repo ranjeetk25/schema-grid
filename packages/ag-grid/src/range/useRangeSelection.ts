@@ -2,23 +2,31 @@
  * In-house range selection wiring (AG Grid Community has no range module).
  *
  * - Mouse: `onCellMouseDown` (primary button) sets the anchor, or with Shift
- *   extends the focus; it starts a drag that `onCellMouseOver` extends while the
- *   button is held; a document `mouseup` listener ends the drag (removed on
- *   unmount).
+ *   extends the focus, and starts a drag that `onCellMouseOver` extends while
+ *   the button is held. A permanent document capture listener
+ *   (pointerup/mouseup/touchend) ends drags and records the release time; a
+ *   (queued, async) `cellMouseDown` whose button was already released, or one
+ *   on an interactive element inside the cell, sets the anchor without a drag.
+ *   A right-click inside the range keeps it; outside, it moves the anchor.
  * - Focus: `onCellFocused` from the keyboard (plain arrows, Tab, Enter...)
  *   collapses the range to the focused cell. Mouse-initiated focus
- *   (`sourceEvent` is a mouse/pointer event) is left to `onCellMouseDown`, and
- *   focus landing on the range's own focus cell (our Shift+Arrow
- *   `setFocusedCell`) is a no-op.
+ *   (`sourceEvent` is a mouse/pointer/touch event) is left to
+ *   `onCellMouseDown`; focus we moved ourselves (Shift+Arrow) is consumed, even
+ *   when several arrive late after rapid key presses.
  * - Keyboard: Shift+Arrow is a `GridKeyHandler` (registered on the grid's
- *   `KeyboardRegistry` when given): extends the range, moves grid focus to the
- *   new focus cell and suppresses AG Grid's default.
+ *   `KeyboardRegistry` when given): extends the range (stepping over group /
+ *   load-more / loading rows), moves grid focus to the new focus cell and
+ *   suppresses AG Grid's default.
+ * - Row / column changes: `reset()` (sort, filter, grid destroy) clears the
+ *   range and refreshes every rendered cell of its columns; `onModelUpdated`
+ *   resets when the rows under the anchor/focus changed (an edit that keeps
+ *   the order keeps the range); `onDisplayedColumnsChanged` re-normalises, or
+ *   resets when the anchor/focus column is gone.
  * - Rendering: `createRangeCellClassRules()` are pure rules reading
  *   `params.context.stores.range`; on every range change exactly one
- *   `refreshCells({ rowNodes, columns, force: true })` covers the cells whose
- *   membership changed (`rangeDiff`) plus the boundary cells whose edge classes
- *   changed. Range size (> 1 cell) is announced when not dragging and when a
- *   drag ends.
+ *   `refreshCells({ rowNodes, columns })` covers the cells whose membership
+ *   changed (`rangeDiff`) plus the boundary cells whose edge classes changed.
+ *   Range size (> 1 cell) is announced when not dragging and when a drag ends.
  * - Full-width (group / load-more), pinned and not-yet-loaded rows are ignored.
  *   Column order comes from `api.getAllDisplayedColumns()`, so hidden columns
  *   are never part of a range.
@@ -34,7 +42,7 @@ import type {
 } from "ag-grid-community";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
 import { getSchemaGridStores } from "../grid/gridContext";
-import { arrowDirection, type GridKeyHandler, isEditableTarget, type KeyboardRegistry } from "../grid/keyboard";
+import { arrowDirection, type GridKeyHandler, type KeyboardRegistry } from "../grid/keyboard";
 import { isGroupRow, isLoadMoreRow } from "../grouping/clientGroups";
 import type { GridRow } from "../internal/core";
 import type { RangeStore } from "../state/rangeStore";
@@ -68,9 +76,15 @@ export interface RangeSelectionHandlers<Row extends GridRow = GridRow> {
   onCellFocused(event: CellFocusedEvent<Row>): void;
   /** Shift+Arrow handler (already registered when `options.keyboard` is given). */
   onShiftArrow: GridKeyHandler<Row>;
+  /** Grid option: clears the range when the rows under its corners changed. */
+  onModelUpdated(): void;
+  /** Grid option: re-normalises (or clears, when the anchor/focus column is gone) on column changes. */
+  onDisplayedColumnsChanged(): void;
+  /** Clears the range and drag state, refreshing every rendered cell of its columns (sort/filter/destroy). */
+  reset(): void;
 }
 
-type ApiLike = Pick<GridApi, "getAllDisplayedColumns">;
+type ApiLike = Pick<GridApi, "getAllDisplayedColumns"> & Partial<Pick<GridApi, "isDestroyed">>;
 
 /** Displayed (visible, ordered) column ids. */
 export function displayedColIds(api: ApiLike): string[] {
@@ -90,7 +104,7 @@ const normalizedCache = new WeakMap<object, NormalizedCacheEntry>();
  * range object and displayed column set (class rules call this per cell).
  */
 export function normalizedRangeFor(api: ApiLike, range: CellRange | null): NormalizedRange | null {
-  if (!range) return null;
+  if (!range || api.isDestroyed?.()) return null;
   const cols = api.getAllDisplayedColumns();
   const cached = normalizedCache.get(api);
   if (cached && cached.range === range && cached.cols === cols) return cached.n;
@@ -194,6 +208,12 @@ export function createRangeCellClassRules<Row extends GridRow = GridRow>(): Cell
     [SG_CLASSES.rangeRight]: edgeRule<Row>("right"),
     [SG_CLASSES.rangeBottom]: edgeRule<Row>("bottom"),
     [SG_CLASSES.rangeLeft]: edgeRule<Row>("left"),
+    // Fill-drag preview (T25): the extension cells in `rangeStore.fillPreview`.
+    [SG_CLASSES.fillPreview]: (p: CellClassParams<Row>) => {
+      const pos = cellPosOf(p);
+      const preview = pos ? getSchemaGridStores(p.context)?.range.getState().fillPreview : null;
+      return !!pos && !!preview && rangeContains(preview, pos);
+    },
   };
 }
 
@@ -217,7 +237,8 @@ export function refreshRangeCells(
     const node = api.getDisplayedRowAtIndex(i);
     if (node) rowNodes.push(node);
   }
-  if (rowNodes.length > 0) api.refreshCells({ rowNodes, columns, force: true });
+  // No `force`: cellClassRules are re-applied on every refresh.
+  if (rowNodes.length > 0) api.refreshCells({ rowNodes, columns });
 }
 
 function isPointerEvent(event: Event | null | undefined): boolean {
@@ -232,6 +253,15 @@ function columnIdOf(column: CellFocusedEvent["column"]): string | null {
 
 const samePos = (a: CellPos, b: CellPos): boolean => a.rowIndex === b.rowIndex && a.colId === b.colId;
 
+/** Elements inside a cell that own their own mouse interaction (no range drag from them). */
+const INTERACTIVE =
+  "button, a[href], input, textarea, select, label, [contenteditable=''], [contenteditable='true'], [role='button'], [role='checkbox'], [role='link']";
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  if (!target || typeof (target as Element).closest !== "function") return false;
+  return (target as Element).closest(INTERACTIVE) !== null;
+}
+
 export function useRangeSelection<Row extends GridRow = GridRow>(
   apiRef: RefObject<GridApi<Row> | null>,
   rangeStore: RangeStore,
@@ -239,24 +269,45 @@ export function useRangeSelection<Row extends GridRow = GridRow>(
 ): RangeSelectionHandlers<Row> {
   const announceRef = useRef(options.announce);
   announceRef.current = options.announce;
-  const docListener = useRef<(() => void) | null>(null);
+  /** `timeStamp` of the last document pointerup/mouseup/touchend (see `onCellMouseDown`). */
+  const lastRelease = useRef(Number.NEGATIVE_INFINITY);
+  /** Cells we moved grid focus to ourselves (Shift+Arrow); their `cellFocused` is consumed. */
+  const selfFocused = useRef<string[]>([]);
+  /** Row ids under the anchor and focus when the range was last set (`onModelUpdated`). */
+  const cornerIds = useRef<{ anchor: string | undefined; focus: string | undefined } | null>(null);
+
+  const liveApi = useCallback((): GridApi<Row> | null => {
+    const api = apiRef.current;
+    return api && !api.isDestroyed() ? api : null;
+  }, [apiRef]);
 
   const endDrag = useCallback(() => {
-    if (docListener.current && typeof document !== "undefined") {
-      document.removeEventListener("mouseup", docListener.current);
-    }
-    docListener.current = null;
     if (rangeStore.getState().dragging) rangeStore.setDragging(false);
   }, [rangeStore]);
 
-  useEffect(() => endDrag, [endDrag]);
+  // Permanent release listener: ends a drag, and records when the button went
+  // up so a mousedown whose (async) cellMouseDown arrives after its own
+  // release doesn't start a drag that nothing would end.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onRelease = (event: Event) => {
+      lastRelease.current = event.timeStamp;
+      endDrag();
+    };
+    const types = ["pointerup", "mouseup", "touchend"] as const;
+    for (const t of types) document.addEventListener(t, onRelease, true);
+    return () => {
+      for (const t of types) document.removeEventListener(t, onRelease, true);
+      endDrag();
+    };
+  }, [endDrag]);
 
-  // Refresh only the changed cells; announce the size.
+  // Refresh only the changed cells; announce the size; remember the corner rows.
   useEffect(() => {
     let prevRange = rangeStore.get();
     let prevNormalized: NormalizedRange | null = null;
     let prevDragging = rangeStore.getState().dragging;
-    const api0 = apiRef.current;
+    const api0 = liveApi();
     if (api0) prevNormalized = normalizedRangeFor(api0, prevRange);
 
     const announceSize = (n: NormalizedRange | null) => {
@@ -266,7 +317,7 @@ export function useRangeSelection<Row extends GridRow = GridRow>(
 
     return rangeStore.subscribe(() => {
       const state = rangeStore.getState();
-      const api = apiRef.current;
+      const api = liveApi();
       const dragEnded = prevDragging && !state.dragging;
       prevDragging = state.dragging;
       if (state.range === prevRange) {
@@ -274,28 +325,79 @@ export function useRangeSelection<Row extends GridRow = GridRow>(
         return;
       }
       prevRange = state.range;
-      const next = api ? normalizedRangeFor(api, state.range) : null;
+      const range = state.range;
+      cornerIds.current =
+        range && api
+          ? {
+              anchor: api.getDisplayedRowAtIndex(range.anchor.rowIndex)?.id,
+              focus: api.getDisplayedRowAtIndex(range.focus.rowIndex)?.id,
+            }
+          : null;
+      const next = api ? normalizedRangeFor(api, range) : null;
       if (api) refreshRangeCells(api, rangeRefreshTargets(prevNormalized, next));
       prevNormalized = next;
       if (!state.dragging) announceSize(next);
     });
-  }, [rangeStore, apiRef]);
+  }, [rangeStore, liveApi]);
+
+  const reset = useCallback(() => {
+    selfFocused.current = [];
+    endDrag();
+    const range = rangeStore.get();
+    if (!range) return;
+    const api = liveApi();
+    const prev = api ? normalizedRangeFor(api, range) : null;
+    rangeStore.clear();
+    // Rows may have moved (sort/filter): refresh every rendered row of the old
+    // range's columns, not just the old indexes.
+    if (api && prev) api.refreshCells({ columns: prev.colIds });
+  }, [rangeStore, liveApi, endDrag]);
+
+  const onModelUpdated = useCallback(() => {
+    const range = rangeStore.get();
+    const api = liveApi();
+    const corners = cornerIds.current;
+    if (!range || !api || !corners) return;
+    const anchorId = api.getDisplayedRowAtIndex(range.anchor.rowIndex)?.id;
+    const focusId = api.getDisplayedRowAtIndex(range.focus.rowIndex)?.id;
+    if (anchorId !== corners.anchor || focusId !== corners.focus) reset();
+  }, [rangeStore, liveApi, reset]);
+
+  const onDisplayedColumnsChanged = useCallback(() => {
+    const range = rangeStore.get();
+    const api = liveApi();
+    if (!range || !api) return;
+    const cols = displayedColIds(api);
+    if (!cols.includes(range.anchor.colId) || !cols.includes(range.focus.colId)) {
+      reset();
+      return;
+    }
+    // Same corners, new column set: a fresh range object makes every
+    // subscriber (refresh diff, CellShell) re-normalise.
+    rangeStore.setState({ range: { anchor: range.anchor, focus: range.focus } });
+  }, [rangeStore, liveApi, reset]);
 
   const onCellMouseDown = useCallback(
     (e: CellMouseDownEvent<Row>) => {
       const mouse = e.event as MouseEvent | null | undefined;
-      if (!mouse || (mouse.button !== undefined && mouse.button !== 0)) return;
-      if (!isRangeableNode(e.node as IRowNode) || isEditableTarget(mouse.target)) return;
+      if (!mouse || !isRangeableNode(e.node as IRowNode)) return;
       const pos: CellPos = { rowIndex: e.node.rowIndex as number, colId: e.column.getColId() };
-      if (mouse.shiftKey && rangeStore.get()) rangeStore.setFocus(pos);
-      else rangeStore.setAnchor(pos);
-      if (typeof document !== "undefined" && !docListener.current) {
-        docListener.current = endDrag;
-        document.addEventListener("mouseup", endDrag);
+      const primary = mouse.button === undefined || mouse.button === 0;
+      if (!primary) {
+        // Right-click inside the range keeps it (context menu over a selection).
+        const api = liveApi() ?? e.api;
+        const n = normalizedRangeFor(api, rangeStore.get());
+        if (!n || !rangeContains(n, pos)) rangeStore.setAnchor(pos);
+        return;
       }
-      rangeStore.setDragging(true);
+      const released = typeof mouse.timeStamp === "number" && lastRelease.current >= mouse.timeStamp;
+      const interactive = isInteractiveTarget(mouse.target);
+      // Dragging is set BEFORE the range changes, so the size is announced once, on release.
+      if (!released && !interactive) rangeStore.setDragging(true);
+      if (mouse.shiftKey && !interactive && rangeStore.get()) rangeStore.setFocus(pos);
+      else rangeStore.setAnchor(pos);
     },
-    [rangeStore, endDrag],
+    [rangeStore, liveApi],
   );
 
   const onCellMouseOver = useCallback(
@@ -321,14 +423,21 @@ export function useRangeSelection<Row extends GridRow = GridRow>(
       if (e.rowIndex === null || e.rowPinned || e.isFullWidthCell) return;
       const colId = columnIdOf(e.column);
       if (colId === null) return;
-      const api = apiRef.current ?? e.api;
-      if (!isRangeableNode(api.getDisplayedRowAtIndex(e.rowIndex) as IRowNode | undefined)) return;
       const pos: CellPos = { rowIndex: e.rowIndex, colId };
+      if (!e.sourceEvent) {
+        const i = selfFocused.current.indexOf(cellKey(pos));
+        if (i !== -1) {
+          selfFocused.current = selfFocused.current.slice(i + 1);
+          return;
+        }
+      }
+      const api = liveApi() ?? e.api;
+      if (!isRangeableNode(api.getDisplayedRowAtIndex(e.rowIndex) as IRowNode | undefined)) return;
       const current = rangeStore.get();
       if (current && samePos(current.focus, pos)) return;
       rangeStore.setAnchor(pos);
     },
-    [rangeStore, apiRef],
+    [rangeStore, liveApi],
   );
 
   const onShiftArrow = useCallback<GridKeyHandler<Row>>(
@@ -338,28 +447,42 @@ export function useRangeSelection<Row extends GridRow = GridRow>(
       if (!ev.shiftKey || ev.altKey || ev.ctrlKey || ev.metaKey) return false;
       const direction = arrowDirection(ev.key);
       if (!direction || !isRangeableNode(params.node as IRowNode)) return false;
-      const api = apiRef.current ?? params.api;
+      const api = liveApi() ?? params.api;
       const here: CellPos = { rowIndex: params.node.rowIndex as number, colId: params.column.getColId() };
       const existing = rangeStore.get();
       const current: CellRange =
         existing && samePos(existing.focus, here) ? existing : { anchor: here, focus: here };
-      const next = extendRange(current, direction, displayedColIds(api), api.getDisplayedRowCount());
+      const rowCount = api.getDisplayedRowCount();
+      let next = extendRange(current, direction, displayedColIds(api), rowCount);
+      // Step over group / load-more / loading rows; stay put when none is left.
+      if (direction === "up" || direction === "down") {
+        const step = direction === "down" ? 1 : -1;
+        let i = next.focus.rowIndex;
+        while (i >= 0 && i < rowCount && i !== current.focus.rowIndex && !isRangeableNode(api.getDisplayedRowAtIndex(i))) {
+          i += step;
+        }
+        const target = i >= 0 && i < rowCount ? i : current.focus.rowIndex;
+        next = { anchor: current.anchor, focus: { rowIndex: target, colId: next.focus.colId } };
+      }
       if (current !== existing) rangeStore.setAnchor(current.anchor);
-      if (!samePos(next.focus, current.focus)) rangeStore.setFocus(next.focus);
-      api.ensureIndexVisible(next.focus.rowIndex);
-      if (typeof api.ensureColumnVisible === "function") api.ensureColumnVisible(next.focus.colId);
-      api.setFocusedCell(next.focus.rowIndex, next.focus.colId);
+      if (!samePos(next.focus, current.focus)) {
+        rangeStore.setFocus(next.focus);
+        api.ensureIndexVisible(next.focus.rowIndex);
+        if (typeof api.ensureColumnVisible === "function") api.ensureColumnVisible(next.focus.colId);
+        selfFocused.current = [...selfFocused.current, cellKey(next.focus)].slice(-32);
+        api.setFocusedCell(next.focus.rowIndex, next.focus.colId);
+      }
       ev.preventDefault();
       return true;
     },
-    [rangeStore, apiRef],
+    [rangeStore, liveApi],
   );
 
   const keyboard = options.keyboard;
   useEffect(() => keyboard?.register(onShiftArrow), [keyboard, onShiftArrow]);
 
   return useMemo(
-    () => ({ onCellMouseDown, onCellMouseOver, onCellFocused, onShiftArrow }),
-    [onCellMouseDown, onCellMouseOver, onCellFocused, onShiftArrow],
+    () => ({ onCellMouseDown, onCellMouseOver, onCellFocused, onShiftArrow, onModelUpdated, onDisplayedColumnsChanged, reset }),
+    [onCellMouseDown, onCellMouseOver, onCellFocused, onShiftArrow, onModelUpdated, onDisplayedColumnsChanged, reset],
   );
 }

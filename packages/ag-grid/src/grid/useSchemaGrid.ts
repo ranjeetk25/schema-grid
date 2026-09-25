@@ -58,6 +58,9 @@
  *   and registers Shift+Arrow on the `keyboard` registry, whose
  *   `suppressKeyboardEvent` is composed onto every column (`grid/keyboard.ts`).
  *   Highlight rules and the `CellShell` fill handle come in via the seams.
+ * - Fill handle (T25): `useFillHandle` installs `context.onFillHandlePointerDown`,
+ *   chains onto `onCellMouseOver` (range mousedown is skipped while filling)
+ *   and submits ONE "fill" batch through the controller.
  *
  * `schema`, `dataSource`, `resolver`, `registry`, `uiRegistry` and `theme` are
  * compared by reference: pass stable instances. `user` and `externalFilter`
@@ -66,6 +69,8 @@
 import type {
   CellClassParams,
   CellClassRules,
+  CellMouseDownEvent,
+  CellMouseOverEvent,
   ColumnMovedEvent,
   ColumnPinnedEvent,
   ColumnResizedEvent,
@@ -90,6 +95,7 @@ import { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "../agM
 import { combineFilters } from "../client/combineFilters";
 import { deriveClientRows, makePostSortRows } from "../client/deriveClientRows";
 import type { ClipboardReport } from "../clipboard/types";
+import { type ClipboardHandlers, useClipboard } from "../clipboard/useClipboard";
 import { createCellAccess } from "../compile/cellAccess";
 import { compileColumns } from "../compile/compileColumns";
 import { compileFormulaColumns } from "../compile/formulaColumns";
@@ -132,11 +138,13 @@ import { createExpansionStore } from "../state/expansionStore";
 import { createQueryStore, type QueryState } from "../state/queryStore";
 import { createRangeStore } from "../state/rangeStore";
 import { useRangeSelection } from "../range/useRangeSelection";
+import { useFillHandle } from "../fill/useFillHandle";
 import { createRowStore, type RowStore } from "../state/rowStore";
 import { rowMatchesView, useRemoteSync } from "../sync/applyRemotePatch";
 import { SG_CLASSES } from "../theme/classNames";
 import { createSchemaGridTheme } from "../theme/theme";
 import { createUndoStack } from "../undo/undoStack";
+import { useUndoKeybindings } from "../undo/useUndoKeybindings";
 import { applyViewState, captureViewState } from "../views/viewState";
 import type { SchemaGridHookContext, SchemaGridStores } from "./gridContext";
 import { createKeyboardRegistry, type KeyboardRegistry, withSuppressKeyboardEvent } from "./keyboard";
@@ -262,6 +270,8 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   poll: SchemaGridPollOptions | undefined;
   /** Cell/root key handler registry (see `grid/keyboard.ts`); `<SchemaGrid>` wires `handleRootKeyDown` on `.sg-root`. */
   keyboard: KeyboardRegistry<Row>;
+  /** Clipboard (T24); `<SchemaGrid>` wires `onCopy`/`onPaste` on `.sg-root`. */
+  clipboard: ClipboardHandlers;
 }
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -279,6 +289,8 @@ const EVENT_KEYS_WE_CHAIN = [
   "onCellMouseDown",
   "onCellMouseOver",
   "onCellFocused",
+  "onModelUpdated",
+  "onDisplayedColumnsChanged",
 ] as const;
 
 const LOCKED_KEYS = [
@@ -488,7 +500,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const [undoStack] = useState(() => createUndoStack());
   const apiRef = useRef<GridApi<Row> | null>(null);
   // Keyboard registry (grid/keyboard.ts) + range selection (T23).
-  const [keyboard] = useState(() => createKeyboardRegistry<Row>());
+  const [keyboard] = useState(() => createKeyboardRegistry<Row>({ getApi: () => apiRef.current }));
   const rangeSelection = useRangeSelection<Row>(apiRef, stores.range, {
     keyboard,
     announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
@@ -1005,6 +1017,32 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       }),
     [controller, schema, registry, stores],
   );
+  // T25: fill handle.
+  const fill = useFillHandle<Row>({
+    apiRef,
+    rangeStore: stores.range,
+    controller,
+    schema,
+    registry,
+    canEditCell,
+    getCellValue,
+    keyboard,
+    announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
+  });
+  context.onFillHandlePointerDown = fill.onFillHandlePointerDown;
+  const onCellMouseDownWithFill = useCallback(
+    (e: CellMouseDownEvent<Row>) => {
+      if (!fill.isFilling()) rangeSelection.onCellMouseDown(e);
+    },
+    [fill, rangeSelection],
+  );
+  const onCellMouseOverWithFill = useCallback(
+    (e: CellMouseOverEvent<Row>) => {
+      rangeSelection.onCellMouseOver(e);
+      fill.onCellMouseOver(e);
+    },
+    [fill, rangeSelection],
+  );
   const undo = useMemo<SchemaGridUndo>(
     () => ({
       undo: async () => {
@@ -1020,6 +1058,32 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     }),
     [undoStack, controller],
   );
+
+  // ---- Undo/redo keybindings (T26): Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z / Ctrl+Y on the root keyboard registry.
+  useUndoKeybindings<Row>({
+    apiRef,
+    keyboard,
+    undo,
+    announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
+  });
+
+  // ---- Clipboard (T24): Ctrl/Cmd+C/V on the root keyboard registry + root copy/paste listeners.
+  const clipboard = useClipboard<Row>({
+    apiRef,
+    rangeStore: stores.range,
+    controller,
+    keyboard,
+    cellStatus: stores.cellStatus,
+    schema,
+    registry,
+    access,
+    canEditCell,
+    getCellValue,
+    dataSource,
+    events: getEvents,
+    onClipboardReport: (report) => latest.current.onClipboardReport?.(report),
+    announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
+  });
 
   // ---- Cell status → one targeted refresh per notification ---------------------------
   useEffect(
@@ -1153,13 +1217,15 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     [applyView, pushQueryToGrid, seedView],
   );
   const onGridPreDestroyed = useCallback(() => {
+    rangeSelection.reset();
     const api = apiRef.current;
     carriedColumnState.current = api && !api.isDestroyed() ? api.getColumnState() : null;
     apiRef.current = null;
-  }, []);
+  }, [rangeSelection]);
 
   const onSortChanged = useCallback(
     (event: SortChangedEvent<Row>) => {
+      rangeSelection.reset();
       syncingFromGrid.current += 1;
       try {
         syncSortFromGrid(event.api);
@@ -1167,10 +1233,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         syncingFromGrid.current -= 1;
       }
     },
-    [syncSortFromGrid],
+    [syncSortFromGrid, rangeSelection],
   );
   const onFilterChanged = useCallback(
     (event: FilterChangedEvent<Row>) => {
+      rangeSelection.reset();
       syncingFromGrid.current += 1;
       try {
         syncFilterFromGrid(event.api);
@@ -1178,7 +1245,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         syncingFromGrid.current -= 1;
       }
     },
-    [syncFilterFromGrid],
+    [syncFilterFromGrid, rangeSelection],
   );
 
   const onColumnMoved = useCallback((e: ColumnMovedEvent<Row>) => e.finished && emitView(), [emitView]);
@@ -1294,9 +1361,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       onColumnVisible,
       onColumnPinned,
       onCellEditingStopped,
-      onCellMouseDown: rangeSelection.onCellMouseDown,
-      onCellMouseOver: rangeSelection.onCellMouseOver,
+      onCellMouseDown: onCellMouseDownWithFill,
+      onCellMouseOver: onCellMouseOverWithFill,
       onCellFocused: rangeSelection.onCellFocused,
+      onModelUpdated: rangeSelection.onModelUpdated,
+      onDisplayedColumnsChanged: rangeSelection.onDisplayedColumnsChanged,
       enterNavigatesVertically: true,
       enterNavigatesVerticallyAfterEdit: true,
       stopEditingWhenCellsLoseFocus: true,
@@ -1357,6 +1426,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     onColumnPinned,
     onCellEditingStopped,
     rangeSelection,
+    onCellMouseDownWithFill,
+    onCellMouseOverWithFill,
     fullWidthCellRenderer,
     isFullWidthRow,
     mode,
@@ -1394,5 +1465,6 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     ...(seams.announce ? { announce: seams.announce } : {}),
     poll: props.poll,
     keyboard,
+    clipboard,
   };
 }

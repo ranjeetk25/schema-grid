@@ -7,6 +7,7 @@ import type {
   GridUser,
   SchemaGridEvents,
 } from "../internal/core";
+import type { CellPos } from "../range/geometry";
 import type { CellStatusStore } from "../state/cellStatusStore";
 import type { ExpansionStore } from "../state/expansionStore";
 import type { QueryStore } from "../state/queryStore";
@@ -21,6 +22,9 @@ export interface SchemaGridStores<Row extends GridRow = GridRow> {
   query: QueryStore;
   expansion: ExpansionStore;
 }
+
+/** The parts of the handle's native pointerdown the fill hook uses (T25). */
+export type FillHandlePointerEvent = Pick<PointerEvent, "button" | "stopPropagation" | "preventDefault">;
 
 /**
  * What the grid puts in AG Grid's `context` grid option, so cell editors,
@@ -48,6 +52,8 @@ export interface SchemaGridContext<Row extends GridRow = GridRow> {
   canEditCell?(row: Row, columnId: string): boolean;
   user?: GridUser;
   mode?: "client" | "server";
+  /** Fill handle (T25): `CellShell` calls it from the handle's native pointerdown. */
+  onFillHandlePointerDown?(event: FillHandlePointerEvent, pos: CellPos): void;
   [key: string]: unknown;
 }
 

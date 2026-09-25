@@ -77,8 +77,10 @@ export const SG_CSS = `
   position: absolute;
   width: var(--sg-fill-handle-size, 6px);
   height: var(--sg-fill-handle-size, 6px);
-  right: -3px;
-  bottom: -3px;
+  /* Inside the cell: AG Grid cells clip overflow, so a negative offset would be cut off. */
+  right: 0;
+  bottom: 0;
+  z-index: 1;
   background-color: var(--sg-range-border, #2185d0);
   border: 1px solid var(--sg-fill-handle-border, #ffffff);
   cursor: crosshair;

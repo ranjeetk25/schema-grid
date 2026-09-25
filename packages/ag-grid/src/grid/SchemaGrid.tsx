@@ -141,7 +141,14 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
   const rootStyle = useMemo<CSSProperties>(() => ({ ...ROOT_LAYOUT, height, ...style }), [height, style]);
 
   return (
-    <div className={rootClass} style={rootStyle} onKeyDown={grid.keyboard.handleRootKeyDown}>
+    <div
+      ref={grid.clipboard.rootRef}
+      className={rootClass}
+      style={rootStyle}
+      onKeyDown={grid.keyboard.handleRootKeyDown}
+      onCopy={grid.clipboard.onCopy}
+      onPaste={grid.clipboard.onPaste}
+    >
       {grid.loadState === "error" ? (
         <div role="alert" className="sg-load-error">
           {errorText(grid.lastError, grid.filterErrors.external.length > 0)}

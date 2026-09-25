@@ -8,25 +8,29 @@
  *
  * Fill seam (T25): pointerdown on the handle calls
  * `context.onFillHandlePointerDown(event, pos)` when the grid context carries
- * one (read at event time, so it can be installed after mount).
+ * one (read at event time, so it can be installed after mount). The listener
+ * is NATIVE, on the handle element itself: AG Grid listens for pointerdown
+ * natively on an ancestor, and a React handler (delegated to the React root,
+ * above the grid) would run too late for the seam's `stopPropagation()` to
+ * keep AG Grid from treating it as a cell mousedown.
  *
  * `wrapWithCellShell` returns a STABLE component per input renderer (WeakMap
  * cache), as `compileColumns` requires.
  */
 import type { IRowNode } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
-import type { ComponentType, PointerEvent as ReactPointerEvent, ReactElement } from "react";
-import { getSchemaGridStores } from "../grid/gridContext";
+import { type ComponentType, type ReactElement, useEffect, useRef } from "react";
+import { type FillHandlePointerEvent, getSchemaGridStores } from "../grid/gridContext";
 import type { GridRow } from "../internal/core";
 import { useStoreSelector } from "../state/createStore";
 import { createRangeStore } from "../state/rangeStore";
 import { SG_CLASSES } from "../theme/classNames";
-import { type CellPos, isBottomRight } from "./geometry";
+import { type CellPos, type CellRange, isBottomRight } from "./geometry";
 import { isRangeableNode, normalizedRangeFor } from "./useRangeSelection";
 
 /** Optional grid-context field T25 installs to start a fill drag. */
 export interface FillHandleSeam {
-  onFillHandlePointerDown?(event: ReactPointerEvent<HTMLElement>, pos: CellPos): void;
+  onFillHandlePointerDown?(event: FillHandlePointerEvent, pos: CellPos): void;
 }
 
 /** Used when the renderer runs outside a `useSchemaGrid` grid (hooks stay unconditional). */
@@ -45,25 +49,37 @@ export function createCellShell<Row extends GridRow = GridRow>(
     const store = getSchemaGridStores(props.context)?.range ?? DETACHED_RANGE_STORE;
     const node = props.node as IRowNode | undefined;
     const colId = props.column?.getColId();
-    const rangeable = isRangeableNode(node) && colId !== undefined;
-    const rowIndex = rangeable ? (node.rowIndex as number) : -1;
+    // Row indexes change under a mounted renderer (sort, filter, inserts):
+    // always read `node.rowIndex` live, never a render-time capture.
+    const memo = useRef<{ range: CellRange; rowIndex: number; result: boolean } | null>(null);
     const isHandleCell = useStoreSelector(store, (s) => {
-      if (!rangeable || !props.api) return false;
+      if (!s.range || colId === undefined || !props.api || !isRangeableNode(node)) return false;
+      const rowIndex = node.rowIndex;
+      const m = memo.current;
+      if (m && m.range === s.range && m.rowIndex === rowIndex) return m.result;
       const n = normalizedRangeFor(props.api, s.range);
-      return !!n && isBottomRight({ rowIndex, colId: colId as string }, n);
+      const result = !!n && isBottomRight({ rowIndex, colId }, n);
+      memo.current = { range: s.range, rowIndex, result };
+      return result;
     });
+    const latest = useRef({ context: props.context as unknown, node, colId });
+    latest.current = { context: props.context, node, colId };
+    const handleRef = useRef<HTMLSpanElement>(null);
+    useEffect(() => {
+      const el = handleRef.current;
+      if (!isHandleCell || !el) return;
+      const onPointerDown = (event: PointerEvent) => {
+        const { context, node: n, colId: c } = latest.current;
+        if (c !== undefined && isRangeableNode(n)) fillSeamOf(context)?.(event, { rowIndex: n.rowIndex, colId: c });
+      };
+      el.addEventListener("pointerdown", onPointerDown);
+      return () => el.removeEventListener("pointerdown", onPointerDown);
+    }, [isHandleCell]);
     return (
       <>
         <Inner {...props} />
         {isHandleCell ? (
-          <span
-            className={SG_CLASSES.fillHandle}
-            data-sg-fill-handle=""
-            aria-hidden="true"
-            onPointerDown={(event) => {
-              fillSeamOf(props.context)?.(event, { rowIndex, colId: colId as string });
-            }}
-          />
+          <span ref={handleRef} className={SG_CLASSES.fillHandle} data-sg-fill-handle="" aria-hidden="true" />
         ) : null}
       </>
     );

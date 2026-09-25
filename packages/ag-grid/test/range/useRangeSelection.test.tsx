@@ -10,9 +10,10 @@ import type {
 } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
+import { afterAll, beforeAll } from "vitest";
 import { type MutableRefObject, useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { createKeyboardRegistry, withSuppressKeyboardEvent } from "../../src/grid/keyboard";
+import { createKeyboardRegistry, matchesShortcut, withSuppressKeyboardEvent } from "../../src/grid/keyboard";
 import type { GridRow } from "../../src/internal/core";
 import { createCellShell, wrapWithCellShell } from "../../src/range/CellShell";
 import {
@@ -115,8 +116,6 @@ describe("useRangeSelection — mouse", () => {
     const { fake, store, h } = setup(COLS, [group as unknown as GridRow, ...ROWS]);
     act(() => h().onCellMouseDown(mouseDown(fake.api, 0, "a")));
     expect(store.get()).toBeNull();
-    act(() => h().onCellMouseDown(mouseDown(fake.api, 1, "a", { button: 2 })));
-    expect(store.get()).toBeNull();
     act(() => h().onCellMouseDown(mouseDown(fake.api, 1, "a")));
     act(() => h().onCellMouseOver(mouseOver(fake.api, 0, "b")));
     expect(store.get()?.focus).toEqual({ rowIndex: 1, colId: "a" });
@@ -127,7 +126,8 @@ describe("useRangeSelection — mouse", () => {
     const remove = vi.spyOn(document, "removeEventListener");
     act(() => h().onCellMouseDown(mouseDown(fake.api, 0, "a")));
     hook.unmount();
-    expect(remove).toHaveBeenCalledWith("mouseup", expect.any(Function));
+    expect(remove).toHaveBeenCalledWith("mouseup", expect.any(Function), true);
+    expect(remove).toHaveBeenCalledWith("pointerup", expect.any(Function), true);
     expect(store.getState().dragging).toBe(false);
     remove.mockRestore();
   });
@@ -201,7 +201,7 @@ describe("useRangeSelection — refresh and announce", () => {
     expect(fake.spies.refreshCells).toHaveBeenCalledTimes(1);
     expect(refreshedColumns(fake.spies.refreshCells as ReturnType<typeof vi.fn>)).toEqual(["b", "c"]);
     expect(refreshedRows(fake.spies.refreshCells as ReturnType<typeof vi.fn>)).toEqual([0]);
-    expect((fake.spies.refreshCells?.mock.calls[0]?.[0] as { force: boolean }).force).toBe(true);
+    expect((fake.spies.refreshCells?.mock.calls[0]?.[0] as { force?: boolean }).force).toBeUndefined();
 
     fake.spies.refreshCells?.mockClear();
     act(() => store.setDragging(true));
@@ -341,26 +341,232 @@ describe("CellShell", () => {
   });
 });
 
+describe("useRangeSelection — review fixes", () => {
+  function withTarget(ev: MouseEvent, target: HTMLElement): MouseEvent {
+    target.addEventListener(ev.type, () => {}, { once: true });
+    document.body.appendChild(target);
+    target.dispatchEvent(ev);
+    target.remove();
+    return ev;
+  }
+
+  it("a cellMouseDown arriving after its own release sets the anchor without a drag (I3)", () => {
+    const { fake, store, h } = setup();
+    const e = mouseDown(fake.api, 1, "b");
+    act(() => document.dispatchEvent(new MouseEvent("pointerup")));
+    act(() => h().onCellMouseDown(e));
+    expect(store.get()?.anchor).toEqual({ rowIndex: 1, colId: "b" });
+    expect(store.getState().dragging).toBe(false);
+  });
+
+  it("interactive targets anchor without a drag; right-click keeps a range it lands in (M5)", () => {
+    const { fake, store, h } = setup();
+    const e = mouseDown(fake.api, 0, "a");
+    withTarget(e.event as MouseEvent, document.createElement("button"));
+    act(() => h().onCellMouseDown(e));
+    expect(store.get()?.anchor).toEqual({ rowIndex: 0, colId: "a" });
+    expect(store.getState().dragging).toBe(false);
+    act(() => store.setFocus({ rowIndex: 2, colId: "c" }));
+    act(() => h().onCellMouseDown(mouseDown(fake.api, 1, "b", { button: 2 })));
+    expect(store.get()).toEqual({ anchor: { rowIndex: 0, colId: "a" }, focus: { rowIndex: 2, colId: "c" } });
+    act(() => h().onCellMouseDown(mouseDown(fake.api, 3, "d", { button: 2 })));
+    expect(store.get()).toEqual({ anchor: { rowIndex: 3, colId: "d" }, focus: { rowIndex: 3, colId: "d" } });
+    expect(store.getState().dragging).toBe(false);
+  });
+
+  it("sets dragging before the range so a drag announces once, on release (M3)", () => {
+    const { fake, store, announce, h } = setup();
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    announce.mockClear();
+    act(() => h().onCellMouseDown(mouseDown(fake.api, 2, "b", { shiftKey: true })));
+    expect(announce).not.toHaveBeenCalled();
+    act(() => document.dispatchEvent(new MouseEvent("mouseup")));
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
+
+  it("Shift+Arrow steps over full-width rows and stops at the last rangeable row (I4)", () => {
+    const group = { __sg: "group", id: "g1", level: 0, columnId: "a", key: "x", label: "x", count: 1, aggregates: {}, expanded: true, groupPath: [] };
+    const rows = [ROWS[0], group, ROWS[1], group] as unknown as GridRow[];
+    const { fake, store, keyboard } = setup(COLS, rows);
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    act(() => {
+      keyboard.suppressKeyboardEvent(key(fake.api, 0, "a", "ArrowDown"));
+    });
+    expect(store.get()?.focus).toEqual({ rowIndex: 2, colId: "a" });
+    fake.spies.setFocusedCell?.mockClear();
+    let handled = false;
+    act(() => {
+      handled = keyboard.suppressKeyboardEvent(key(fake.api, 2, "a", "ArrowDown"));
+    });
+    expect(handled).toBe(true);
+    expect(store.get()?.focus).toEqual({ rowIndex: 2, colId: "a" });
+    expect(fake.spies.setFocusedCell).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Arrow at the grid edge stays put; on a pinned row it is not handled", () => {
+    const { fake, store, keyboard } = setup();
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    let handled = false;
+    act(() => {
+      handled = keyboard.suppressKeyboardEvent(key(fake.api, 0, "a", "ArrowUp"));
+    });
+    expect(handled).toBe(true);
+    act(() => {
+      keyboard.suppressKeyboardEvent(key(fake.api, 0, "a", "ArrowLeft"));
+    });
+    expect(store.get()).toEqual({ anchor: { rowIndex: 0, colId: "a" }, focus: { rowIndex: 0, colId: "a" } });
+    const pinned = key(fake.api, 0, "a", "ArrowDown");
+    (pinned as { node: unknown }).node = { ...node(fake.api, 0), rowPinned: "top" };
+    expect(keyboard.suppressKeyboardEvent(pinned)).toBe(false);
+  });
+
+  it("late cellFocused events for cells we focused ourselves are consumed (I5)", () => {
+    const { fake, store, keyboard, h } = setup();
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    act(() => {
+      keyboard.suppressKeyboardEvent(key(fake.api, 0, "a", "ArrowDown"));
+      keyboard.suppressKeyboardEvent(key(fake.api, 1, "a", "ArrowDown"));
+    });
+    act(() => h().onCellFocused(focused(fake.api, 1, "a")));
+    act(() => h().onCellFocused(focused(fake.api, 2, "a")));
+    expect(store.get()).toEqual({ anchor: { rowIndex: 0, colId: "a" }, focus: { rowIndex: 2, colId: "a" } });
+    act(() => h().onCellFocused(focused(fake.api, 3, "a")));
+    expect(store.get()?.anchor).toEqual({ rowIndex: 3, colId: "a" });
+  });
+
+  it("onModelUpdated clears the range only when the rows under its corners changed (C1)", () => {
+    const { fake, store, h } = setup();
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    act(() => store.setFocus({ rowIndex: 1, colId: "b" }));
+    act(() => h().onModelUpdated());
+    expect(store.get()).not.toBeNull();
+    const first = fake.rows()[0] as GridRow;
+    fake.api.applyTransaction({ remove: [first], add: [first] }); // r1 moves to the end
+    fake.spies.refreshCells?.mockClear();
+    act(() => h().onModelUpdated());
+    expect(store.get()).toBeNull();
+    expect(fake.spies.refreshCells).toHaveBeenCalledWith({ columns: ["a", "b"] });
+  });
+
+  it("reset clears the range and drag state (sort/filter/destroy)", () => {
+    const { fake, store, h } = setup();
+    act(() => h().onCellMouseDown(mouseDown(fake.api, 0, "a")));
+    act(() => h().reset());
+    expect(store.get()).toBeNull();
+    expect(store.getState().dragging).toBe(false);
+  });
+
+  it("onDisplayedColumnsChanged re-normalises, and clears when a corner column is gone (I2)", () => {
+    const { fake, store, h } = setup();
+    act(() => store.setAnchor({ rowIndex: 0, colId: "a" }));
+    act(() => store.setFocus({ rowIndex: 0, colId: "c" }));
+    fake.api.applyColumnState({ state: [{ colId: "b", hide: true }] });
+    fake.spies.refreshCells?.mockClear();
+    act(() => h().onDisplayedColumnsChanged());
+    expect(normalizedRangeFor(fake.api, store.get())?.colIds).toEqual(["a", "c"]);
+    expect(fake.spies.refreshCells).toHaveBeenCalledTimes(1);
+    fake.api.applyColumnState({ state: [{ colId: "c", hide: true }] });
+    act(() => h().onDisplayedColumnsChanged());
+    expect(store.get()).toBeNull();
+  });
+
+  it("normalizedRangeFor returns null on a destroyed api (M1)", () => {
+    const { fake } = setup();
+    fake.spies.isDestroyed?.mockReturnValue(true);
+    expect(normalizedRangeFor(fake.api, { anchor: { rowIndex: 0, colId: "a" }, focus: { rowIndex: 0, colId: "a" } })).toBeNull();
+  });
+});
+
+describe("keyboard registry — root handlers (I6/I7/M6)", () => {
+  it("skips root handlers while editing / in editable targets / on prevented events unless opted in", () => {
+    let editing = true;
+    const reg = createKeyboardRegistry<GridRow>({
+      getApi: () => ({ getEditingCells: () => (editing ? [{} as never] : []) }),
+    });
+    const plain = vi.fn(() => "handled" as const);
+    const opted = vi.fn(() => false);
+    reg.registerRoot(opted, { whileEditing: true });
+    reg.registerRoot(plain);
+    reg.handleRootKeyDown(new KeyboardEvent("keydown", { key: "z", cancelable: true }));
+    expect(opted).toHaveBeenCalledTimes(1);
+    expect(plain).not.toHaveBeenCalled();
+    editing = false;
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const inInput = new KeyboardEvent("keydown", { key: "z", cancelable: true, bubbles: true });
+    input.addEventListener("keydown", (e) => reg.handleRootKeyDown(e), { once: true });
+    input.dispatchEvent(inInput);
+    input.remove();
+    expect(plain).not.toHaveBeenCalled();
+    const prevented = new KeyboardEvent("keydown", { key: "z", cancelable: true });
+    prevented.preventDefault();
+    reg.handleRootKeyDown(prevented);
+    expect(plain).not.toHaveBeenCalled();
+    const ok = new KeyboardEvent("keydown", { key: "z", cancelable: true });
+    reg.handleRootKeyDown(ok);
+    expect(plain).toHaveBeenCalledTimes(1);
+    expect(ok.defaultPrevented).toBe(true);
+  });
+
+  it('"handled-no-prevent" claims the key without preventDefault; true is an alias of "handled"', () => {
+    const reg = createKeyboardRegistry<GridRow>();
+    const later = vi.fn(() => true);
+    reg.registerRoot(() => "handled-no-prevent");
+    reg.registerRoot(later);
+    const ev = new KeyboardEvent("keydown", { key: "v", cancelable: true });
+    reg.handleRootKeyDown(ev);
+    expect(ev.defaultPrevented).toBe(false);
+    expect(later).not.toHaveBeenCalled();
+    const reg2 = createKeyboardRegistry<GridRow>();
+    reg2.registerRoot(() => true);
+    const ev2 = new KeyboardEvent("keydown", { key: "v", cancelable: true });
+    reg2.handleRootKeyDown(ev2);
+    expect(ev2.defaultPrevented).toBe(true);
+  });
+
+  it("matchesShortcut falls back to event.code for letter keys", () => {
+    const ev = new KeyboardEvent("keydown", { key: "с", code: "KeyC", ctrlKey: true, metaKey: true });
+    expect(matchesShortcut(ev, { key: "c", mod: true })).toBe(true);
+    expect(matchesShortcut(new KeyboardEvent("keydown", { key: "x", code: "KeyX", ctrlKey: true, metaKey: true }), { key: "c", mod: true })).toBe(false);
+  });
+});
+
 describe("<SchemaGrid> range selection (integration)", () => {
+  // jsdom has no `onpointerdown`, so AG Grid would listen for touchstart; make
+  // it use pointer events (dispatched as MouseEvents, jsdom has no PointerEvent).
+  let addedPointerDown = false;
+  beforeAll(() => {
+    if (!("onpointerdown" in HTMLElement.prototype)) {
+      Object.defineProperty(HTMLElement.prototype, "onpointerdown", { value: null, writable: true, configurable: true });
+      addedPointerDown = true;
+    }
+  });
+  afterAll(() => {
+    if (addedPointerDown) delete (HTMLElement.prototype as { onpointerdown?: unknown }).onpointerdown;
+  });
+  /** Press, let AG Grid's queued callbacks run, then release. */
+  const click = async (el: HTMLElement, init: MouseEventInit = {}) => {
+    act(() => {
+      el.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, buttons: 1, ...init }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+  };
   const cellEl = (container: HTMLElement, rowId: string, colId: string) =>
     container.querySelector(`.ag-row[row-id="${rowId}"] .ag-cell[col-id="${colId}"]`) as HTMLElement;
 
   it("click + Shift+click highlight the range with edge classes and show the handle at bottom-right", async () => {
     const { container, waitForRows, handle } = renderGrid();
     await waitForRows();
-    // AG Grid listens for whichever of pointerdown/touchstart/mousedown the
-    // environment supports (touchstart in jsdom); dispatch a MouseEvent of each.
-    const down = (el: HTMLElement, init: MouseEventInit = {}) => {
-      act(() => {
-        for (const type of ["pointerdown", "touchstart", "mousedown"]) {
-          el.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, buttons: 1, ...init }));
-        }
-        document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      });
-    };
-    down(cellEl(container, "r1", "name"));
+    await click(cellEl(container, "r1", "name"));
     await waitFor(() => expect(handle.current?.stores.range.get()?.anchor).toEqual({ rowIndex: 0, colId: "name" }));
-    down(cellEl(container, "r2", "notes"), { shiftKey: true });
+    expect(handle.current?.stores.range.getState().dragging).toBe(false);
+    await click(cellEl(container, "r2", "notes"), { shiftKey: true });
     await waitFor(() => expect(handle.current?.stores.range.get()?.focus).toEqual({ rowIndex: 1, colId: "notes" }));
     await waitFor(() => {
       const tl = cellEl(container, "r1", "name");
@@ -396,6 +602,20 @@ describe("<SchemaGrid> range selection (integration)", () => {
     await waitFor(() => expect(cellEl(container, "r2", "score").classList.contains(SG_CLASSES.range)).toBe(true));
     // Focus landing on the range focus doesn't collapse it.
     expect(handle.current?.stores.range.get()?.anchor).toEqual({ rowIndex: 0, colId: "score" });
+  });
+
+  it("sorting after selecting clears the range and leaves no stale range classes (C1)", async () => {
+    const { container, waitForRows, handle } = renderGrid();
+    await waitForRows();
+    await click(cellEl(container, "r1", "name"));
+    await click(cellEl(container, "r2", "score"), { shiftKey: true });
+    await waitFor(() => expect(cellEl(container, "r2", "score").classList.contains(SG_CLASSES.range)).toBe(true));
+    act(() => {
+      handle.current?.api()?.applyColumnState({ state: [{ colId: "score", sort: "desc" }], defaultState: { sort: null } });
+    });
+    await waitFor(() => expect(handle.current?.stores.range.get()).toBeNull());
+    await waitFor(() => expect(container.querySelectorAll(`.${SG_CLASSES.range}`).length).toBe(0));
+    expect(container.querySelector("[data-sg-fill-handle]")).toBeNull();
   });
 
   it.todo("real mouse drag across cells and edge autoscroll (Playwright: see playwright-scenarios.md)");
