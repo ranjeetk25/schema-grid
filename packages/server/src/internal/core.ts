@@ -103,8 +103,16 @@ export type {
   DataSourceHandler,
   DataSourceHandlerOptions,
   GridOperation,
+  GridSchemaOperation,
   WireError,
   WireOutputOf,
   WireResult,
 } from "@ranjeetk25/schema-grid-core/wire";
-export { createDataSourceHandler, httpStatusFor, toWireError } from "@ranjeetk25/schema-grid-core/wire";
+export {
+  createDataSourceHandler,
+  httpStatusFor,
+  isGridOperation,
+  isGridSchemaOperation,
+  toWireError,
+  wireSchemas,
+} from "@ranjeetk25/schema-grid-core/wire";

@@ -85,11 +85,18 @@ describe("public entry points", () => {
     const mod = await import("../../src/http/index");
     expect(Object.keys(mod).sort()).toMatchInlineSnapshot(`
       [
+        "createGridRegistry",
         "createGridRouterAdapter",
+        "createMemorySchemaStore",
+        "defineGrid",
+        "isGridRegistry",
         "parseJsonBody",
         "toExpressHandler",
+        "toExpressRouter",
+        "toFetchHandler",
         "toHttpResponse",
         "toLambdaHandler",
+        "toWireFailure",
       ]
     `);
   });
