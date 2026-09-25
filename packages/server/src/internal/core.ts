@@ -97,3 +97,14 @@ export {
   isFormulaError,
   parseFormula,
 } from "@masai/schema-grid-core/formula";
+
+// ---- wire (transport-neutral op contract) -----------------------------------
+export type {
+  DataSourceHandler,
+  DataSourceHandlerOptions,
+  GridOperation,
+  WireError,
+  WireOutputOf,
+  WireResult,
+} from "@masai/schema-grid-core/wire";
+export { createDataSourceHandler, httpStatusFor, toWireError } from "@masai/schema-grid-core/wire";

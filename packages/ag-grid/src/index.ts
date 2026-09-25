@@ -105,6 +105,18 @@ export { groupKeyToCondition } from "./grouping/groupCondition";
 export { createInfiniteDatasource, type PageMode } from "./server/infiniteDatasource";
 export { createServerGroupsController, type ServerGroupsController } from "./server/serverGroups";
 
+// Remote data sources (transport-neutral wire contract from core)
+export { createHttpDataSource, type HttpDataSourceOptions } from "./remote/httpDataSource";
+export {
+  createRemoteDataSource,
+  RemoteDataSourceError,
+  unwrapWireResult,
+  type GridTransport,
+  type RemoteDataSourceOptions,
+  type WireError,
+  type WireResult,
+} from "@masai/schema-grid-core/wire";
+
 // A11y
 export { createAnnouncer, savedMessage, type Announcer, type Politeness } from "./a11y/announcer";
 export { LiveAnnouncer, type LiveAnnouncerProps } from "./a11y/LiveAnnouncer";

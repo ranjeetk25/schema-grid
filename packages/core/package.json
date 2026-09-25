@@ -43,6 +43,12 @@
       "import": "./dist/testing/index.js",
       "require": "./dist/testing/index.cjs"
     },
+    "./wire": {
+      "development": "./src/wire/index.ts",
+      "types": "./dist/wire/index.d.ts",
+      "import": "./dist/wire/index.js",
+      "require": "./dist/wire/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

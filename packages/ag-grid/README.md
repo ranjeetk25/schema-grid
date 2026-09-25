@@ -156,6 +156,34 @@ Server mode supports two paging strategies via `pageMode`:
   known yet walks forward from the nearest known one. Use this when your backend paginates by opaque cursor
   rather than numeric offset.
 
+## Talking to a server: `createHttpDataSource` / `createRemoteDataSource`
+
+The grid only needs a `DataSource`; it does not care how that data source reaches your backend. Two helpers
+build one over the transport-neutral wire contract (`@masai/schema-grid-core/wire`,
+[`docs/wire-contract.md`](../../docs/wire-contract.md)):
+
+```ts
+import { createHttpDataSource, createRemoteDataSource, unwrapWireResult } from "@masai/schema-grid-ag-grid";
+
+// REST / Express / Hono / API Gateway — anything mounted with @masai/schema-grid-server/http
+const dataSource = createHttpDataSource({
+  baseUrl: "/api/grid",                       // POST /api/grid/fetch, /api/grid/applyChanges, ...
+  headers: async () => ({ authorization: `Bearer ${await getToken()}` }),
+  credentials: "include",                      // optional, for cookie sessions
+  // opPath: (op) => `?op=${op}`, fetch: customFetch, supports: { lookup: false }
+});
+
+// any other transport, e.g. a tRPC client returning the server's WireResult envelope
+const viaTrpc = createRemoteDataSource(async (op, input) => unwrapWireResult(await trpc.grid.call.mutate({ op, input })));
+```
+
+Both validate responses against the wire schemas and throw `RemoteDataSourceError` (`code`, `status`,
+`details`) for server-side failures — e.g. `PERMISSION_DENIED` (403), `FILTER_INVALID` (400),
+`FORMULA_ROW_CAP` (413). `createHttpDataSource` expects `{ data }` on 2xx and `{ error }` otherwise; a non-2xx
+without a wire body becomes `UNAUTHENTICATED` (401), `PERMISSION_DENIED` (403) or `HTTP_ERROR`. Network
+failures propagate unchanged. Pass `supports: { getChanges: false, ... }` for optional operations your server
+does not implement so the grid never calls them.
+
 ## `externalFilter` — a security note
 
 `externalFilter` is meant for a **trusted, host-supplied** restriction (e.g. "only rows in this tenant"),
@@ -301,7 +329,9 @@ overlays that aren't Mantine.
                                        UiFieldTypeRegistry types, captureViewState/applyViewState,
                                        exportCsv/exportCurrentView, createSchemaGridTheme, SG_CLASSES,
                                        SCHEMA_GRID_CLIENT_MODULES / SCHEMA_GRID_INFINITE_MODULES,
-                                       store factories, planPaste/planFill, parseTsv/serializeTsv, createUndoStack
+                                       store factories, planPaste/planFill, parseTsv/serializeTsv, createUndoStack,
+                                       createHttpDataSource, createRemoteDataSource, RemoteDataSourceError,
+                                       unwrapWireResult
 @masai/schema-grid-ag-grid/editors  – the built-in editors, createPopupEditor, ComboboxEditor
 @masai/schema-grid-ag-grid/filters  – the built-in filter components, filterModelToAst / astToFilterModel
 @masai/schema-grid-ag-grid/sync     – usePollingSync, planRemotePatch, useDocumentVisible

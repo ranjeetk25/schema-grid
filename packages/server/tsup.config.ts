@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     "drizzle/index": "src/drizzle/index.ts",
     "ddl/index": "src/ddl/index.ts",
+    "http/index": "src/http/index.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
