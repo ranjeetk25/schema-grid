@@ -105,21 +105,15 @@ function currencySymbol(code: string): string {
  * Excel number format for a number, currency or formula column
  * (undefined for other types, or a formula without a configured precision).
  */
-export function excelNumFmtFor(
-  column: ColumnDef,
-  value?: number,
-): string | undefined {
+export function excelNumFmtFor(column: ColumnDef): string | undefined {
   const { precision, currencyCode } = getNumericConfig(column);
   switch (column.type) {
     case "number":
-      if (precision !== undefined) return decimalsFmt(precision);
-      // Without a precision, pick per value: `#,##0.##` would show "1,234." for
-      // whole numbers and hide digits past the second decimal.
-      return value === undefined || Number.isInteger(value)
-        ? "#,##0"
-        : "#,##0.##########";
+      // Core's number type defaults to precision 0; match the grid's display
+      // (the cell value itself stays exact).
+      return decimalsFmt(precision ?? 0);
     case "currency": {
-      // TODO(core): config shape from core plan: { currencyCode, precision }.
+      // Core CurrencyConfig defaults: currencyCode "INR", precision 2.
       const symbol = `"${currencySymbol(currencyCode ?? "INR").replace(/"/g, '""')}"`;
       const body = decimalsFmt(precision ?? 2);
       return `${symbol}${body};-${symbol}${body}`;
@@ -205,7 +199,7 @@ export function toExcelCell(
     case "currency": {
       const n = toFiniteNumber(value);
       if (n === null) return { value: formatValue(value, column, registry) };
-      const numFmt = excelNumFmtFor(column, n);
+      const numFmt = excelNumFmtFor(column);
       return numFmt ? { value: n, numFmt } : { value: n };
     }
     case "date": {
@@ -253,7 +247,7 @@ function formulaExcelCell(
 ): ExcelCell {
   if (typeof value === "number") {
     if (!Number.isFinite(value)) return { value: null };
-    const numFmt = excelNumFmtFor(column, value);
+    const numFmt = excelNumFmtFor(column);
     return numFmt ? { value, numFmt } : { value };
   }
   if (typeof value === "boolean") return { value };

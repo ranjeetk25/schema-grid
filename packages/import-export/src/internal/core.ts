@@ -120,10 +120,11 @@ export interface NumericFormatConfig {
 }
 
 /**
- * Reads number/currency formatting config defensively
- * (core plan: number `{ precision }`, currency `{ currencyCode, precision }`).
+ * Reads number/currency formatting config defensively. Core's NumberConfig /
+ * CurrencyConfig (`{ precision, currencyCode, ... }`) may be partial in stored
+ * JSON, so missing keys are left undefined for the caller to default the way
+ * core does (number precision 0; currency "INR" with precision 2).
  */
-// TODO(core): replace once core's number/currency config types are exported
 export function getNumericConfig(column: ColumnDef): NumericFormatConfig {
   const config = column.config;
   if (!config || typeof config !== "object") return {};

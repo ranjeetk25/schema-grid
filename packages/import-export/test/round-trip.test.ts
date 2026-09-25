@@ -210,6 +210,20 @@ describe("round trip: XLSX export → parseFile → autoMap → parse", () => {
     expect(formatOf(name, reparse(name, FORMULA_TEXT))).toBe(FORMULA_TEXT);
   });
 
+  it("keeps exact numeric values (not just their formatted text)", async () => {
+    const rows = makeRows();
+    const table = await exportXlsx(rows);
+    for (const id of ["c_count", "c_amount"]) {
+      const column = COLUMNS.find((c) => c.id === id) as ColumnDef;
+      const i = table.headers.indexOf(column.label);
+      for (const [r, row] of rows.entries()) {
+        const original = row.cells[column.key];
+        if (typeof original !== "number") continue;
+        expect(Number(table.rows[r]?.[i]), `${id} row ${r}`).toBe(original);
+      }
+    }
+  });
+
   it("round-trips datetimes as the same instant in the export tz", async () => {
     const rows = makeRows();
     const table = await exportXlsx(rows);

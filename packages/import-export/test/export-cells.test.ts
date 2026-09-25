@@ -66,15 +66,12 @@ describe("toExcelCell", () => {
     expect(excelNumFmtFor(adHoc("number", { config: { precision: 0 } }))).toBe(
       "#,##0",
     );
-    // No precision: per value, so whole numbers don't render "1,234."
+    // No precision: core's default (0); the value itself stays exact.
     expect(excelNumFmtFor(adHoc("number"))).toBe("#,##0");
-    expect(toExcelCell(7, adHoc("number"), registry, TZ)).toEqual({
-      value: 7,
+    expect(toExcelCell(1.2345, adHoc("number"), registry, TZ)).toEqual({
+      value: 1.2345,
       numFmt: "#,##0",
     });
-    expect(toExcelCell(1.2345, adHoc("number"), registry, TZ).numFmt).toBe(
-      "#,##0.##########",
-    );
   });
 
   it("date becomes a Date with matching UTC fields", () => {
