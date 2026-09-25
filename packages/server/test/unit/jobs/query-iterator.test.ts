@@ -41,7 +41,9 @@ describe("iterateQuery", () => {
     for await (const page of iterateQuery(ds, baseQuery, { pageSize: 3 })) pages.push(page);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.page).toEqual({ cursor: "", limit: 3 });
+    const call = calls[0];
+    if (!call) throw new Error("expected a recorded call");
+    expect(call.page).toEqual({ cursor: "", limit: 3 });
     expect(pages).toHaveLength(1);
   });
 
@@ -75,7 +77,9 @@ describe("iterateQuery", () => {
     for await (const _page of iterateQuery(ds, baseQuery)) {
       // drain
     }
-    expect(calls[0]!.page).toEqual({ cursor: "", limit: 500 });
+    const call = calls[0];
+    if (!call) throw new Error("expected a recorded call");
+    expect(call.page).toEqual({ cursor: "", limit: 500 });
   });
 
   it("stops iteration once the signal is aborted, without fetching further pages", async () => {

@@ -81,7 +81,9 @@ describe("translateSort", () => {
 
   it("the value term is NULL for empty rows (CASE WHEN <empty> THEN NULL ELSE <typed> END)", () => {
     const { keys } = translateSort([{ columnId: "fee", dir: "asc" }], makeScope());
-    const rendered = renderSql(keys[0]!.expr).sql;
+    const key = keys[0];
+    if (!key) throw new Error("expected a sort key");
+    const rendered = renderSql(key.expr).sql;
     expect(rendered).toMatch(/^\(CASE WHEN .+ THEN NULL ELSE .+ END\)$/);
     expect(rendered).toContain("THEN NULL ELSE");
   });
@@ -89,9 +91,11 @@ describe("translateSort", () => {
   it("SortKey carries columnId, dir, expr and nullFlag", () => {
     const { keys } = translateSort([{ columnId: "name", dir: "asc" }], makeScope());
     expect(keys).toHaveLength(1);
-    expect(keys[0]?.columnId).toBe("name");
-    expect(keys[0]?.dir).toBe("asc");
-    expect(renderSql(keys[0]!.expr).sql).toContain("$.name");
-    expect(renderSql(keys[0]!.nullFlag).sql).toContain("CASE WHEN");
+    const key = keys[0];
+    if (!key) throw new Error("expected a sort key");
+    expect(key.columnId).toBe("name");
+    expect(key.dir).toBe("asc");
+    expect(renderSql(key.expr).sql).toContain("$.name");
+    expect(renderSql(key.nullFlag).sql).toContain("CASE WHEN");
   });
 });

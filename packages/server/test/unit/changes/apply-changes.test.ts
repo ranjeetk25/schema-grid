@@ -35,14 +35,15 @@ const dbRow = (id: string, version: number, cells: Record<string, unknown>, extr
 describe("buildRowUpdate", () => {
   it("snapshot: two JSON cells, one physical cell, one emptied cell; version bumped once", () => {
     const [name, fee, email, notes] = schema.columns;
+    if (!name || !fee || !email || !notes) throw new Error("expected all four fixture columns to be defined");
     const plan: RowWritePlan = {
       rowId: "r1",
       baseVersion: 3,
       sets: [
-        { column: name!, next: "Asha", serialized: "Asha", prev: "A", remove: false },
-        { column: fee!, next: 12.5, serialized: 12.5, prev: 1, remove: false },
-        { column: email!, next: "a@b.co", serialized: "a@b.co", prev: null, remove: false },
-        { column: notes!, next: null, serialized: null, prev: "x", remove: true },
+        { column: name, next: "Asha", serialized: "Asha", prev: "A", remove: false },
+        { column: fee, next: 12.5, serialized: 12.5, prev: 1, remove: false },
+        { column: email, next: "a@b.co", serialized: "a@b.co", prev: null, remove: false },
+        { column: notes, next: null, serialized: null, prev: "x", remove: true },
       ],
     };
     const q = renderQuery(buildRowUpdate(plan, ctx, { db: mockDb(), tables, gridId: "grid1" }, NOW));

@@ -38,7 +38,8 @@ export function keysetPredicate(keys: readonly SortKey[], cursor: KeysetCursor):
   const branches: SQL[] = [];
 
   for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]!;
+    const key = keys[i];
+    if (!key) throw new Error(`keysetPredicate: missing sort key at index ${i}`);
     const raw = cursor.keys[i] ?? null;
     const bound = bindValue(key.kind, raw);
 

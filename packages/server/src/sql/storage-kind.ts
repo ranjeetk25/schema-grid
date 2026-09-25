@@ -1,4 +1,4 @@
-import { type ColumnDef, type FieldTypeRegistry, type FormulaResultType } from "../internal/core";
+import type { ColumnDef, FieldTypeRegistry, FormulaResultType } from "../internal/core";
 
 export type StorageKind = "text" | "number" | "boolean" | "date" | "datetime" | "choice" | "multi" | "ref" | "json";
 

@@ -46,7 +46,9 @@ describe("createDrizzleDataSource", () => {
   });
 
   it("an invalid schema throws at construction", () => {
-    const bad = { ...serverFixtureSchema, columns: [...serverFixtureSchema.columns, { ...serverFixtureSchema.columns[0]!, id: "dup" }] };
+    const firstColumn = serverFixtureSchema.columns[0];
+    if (!firstColumn) throw new Error("expected serverFixtureSchema to have at least one column");
+    const bad = { ...serverFixtureSchema, columns: [...serverFixtureSchema.columns, { ...firstColumn, id: "dup" }] };
     expect(() => make({ schema: bad })).toThrow(SchemaValidationError);
     expect(() => make({ tables: defineGridTables({ rowsTable: "r", changeLogTable: "l" }) })).toThrow(SchemaValidationError);
   });

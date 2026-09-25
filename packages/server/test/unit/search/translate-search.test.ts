@@ -22,8 +22,12 @@ describe("translateSearch", () => {
     const scope = makeScope(makeCtx(schema));
     const access = accessAllReadable(schema);
     access.set("name", "hidden");
-    const withHidden = renderSql(translateSearch("abc", access, scope)!).sql;
-    const allReadable = renderSql(translateSearch("abc", accessAllReadable(schema), scope)!).sql;
+    const hiddenSql = translateSearch("abc", access, scope);
+    if (!hiddenSql) throw new Error("expected translateSearch to return SQL");
+    const withHidden = renderSql(hiddenSql).sql;
+    const allReadableSql = translateSearch("abc", accessAllReadable(schema), scope);
+    if (!allReadableSql) throw new Error("expected translateSearch to return SQL");
+    const allReadable = renderSql(allReadableSql).sql;
     expect(withHidden).not.toContain("`cells`, '$.name'");
     expect(allReadable).toContain("`cells`, '$.name'");
   });
@@ -31,7 +35,9 @@ describe("translateSearch", () => {
   it("excludes number, date and datetime columns", () => {
     const schema = allTypesSchema();
     const scope = makeScope(makeCtx(schema));
-    const rendered = renderSql(translateSearch("abc", accessAllReadable(schema), scope)!).sql;
+    const excludeSql = translateSearch("abc", accessAllReadable(schema), scope);
+    if (!excludeSql) throw new Error("expected translateSearch to return SQL");
+    const rendered = renderSql(excludeSql).sql;
     expect(rendered).not.toContain("$.fee");
     expect(rendered).not.toContain("$.paid");
     expect(rendered).not.toContain("$.indexedFee");
@@ -43,7 +49,9 @@ describe("translateSearch", () => {
     const schema = allTypesSchema([]);
     const single = { id: "grid_one", schemaVersion: 1, columns: [col("name", "text")] };
     const scope = makeScope(makeCtx(single));
-    const { sql: rendered, params } = renderSql(translateSearch("50%", accessAllReadable(single), scope)!);
+    const likeSql = translateSearch("50%", accessAllReadable(single), scope);
+    if (!likeSql) throw new Error("expected translateSearch to return SQL");
+    const { sql: rendered, params } = renderSql(likeSql);
     expect(rendered).toContain("LIKE");
     expect(params).toEqual(["%50!%%"]);
   });
@@ -61,7 +69,9 @@ describe("translateSearch", () => {
       columns: [col("name", "text"), col("status", "select"), col("owner", "user")],
     };
     const scope = makeScope(makeCtx(schema));
-    const { sql: rendered, params } = renderSql(translateSearch("bob", accessAllReadable(schema), scope)!);
+    const snapshotSql = translateSearch("bob", accessAllReadable(schema), scope);
+    if (!snapshotSql) throw new Error("expected translateSearch to return SQL");
+    const { sql: rendered, params } = renderSql(snapshotSql);
     expect(rendered).toMatchInlineSnapshot(
       `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.status')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.status'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!')"`,
     );
@@ -95,7 +105,9 @@ describe("translateSearch", () => {
         ],
       ]),
     });
-    const rendered = renderSql(translateSearch("abc", access, scopeInline)!).sql;
+    const inlineSql = translateSearch("abc", access, scopeInline);
+    if (!inlineSql) throw new Error("expected translateSearch to return SQL");
+    const rendered = renderSql(inlineSql).sql;
     expect(rendered).toContain("LIKE");
   });
 });

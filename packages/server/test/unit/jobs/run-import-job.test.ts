@@ -270,7 +270,9 @@ describe("runImportJob", () => {
     expect(report.updated).toBe(0);
     expect(report.created).toBe(0);
     expect(report.failed.length).toBeGreaterThan(0);
-    expect(report.failed[0]!.rowIndex).toBe(0);
+    const failedRow = report.failed[0];
+    if (!failedRow) throw new Error("expected a failed row");
+    expect(failedRow.rowIndex).toBe(0);
   });
 
   it("throws when mode is upsert without a keyColumnId", async () => {
@@ -314,7 +316,9 @@ describe("runImportJob", () => {
 
     expect(saved.length).toBeGreaterThanOrEqual(2);
     expect(saved.every((s) => s.jobId === "job-1")).toBe(true);
-    expect(saved[saved.length - 1]!.report).toEqual({ created: 3, updated: 0, failed: [] });
+    const lastSaved = saved[saved.length - 1];
+    if (!lastSaved) throw new Error("expected at least one saved report");
+    expect(lastSaved.report).toEqual({ created: 3, updated: 0, failed: [] });
   });
 
   it("honours an already-aborted signal by stopping without further writes", async () => {
