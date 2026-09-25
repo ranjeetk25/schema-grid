@@ -169,6 +169,7 @@ describe("public entry points", () => {
     expect(keys(wire)).toMatchInlineSnapshot(`
       [
         "GRID_OPERATIONS",
+        "GRID_SCHEMA_OPERATIONS",
         "OPTIONAL_GRID_OPERATIONS",
         "RemoteDataSourceError",
         "WIRE_ERROR_STATUS",
@@ -177,8 +178,10 @@ describe("public entry points", () => {
         "filterNodeSchema",
         "gridQuerySchema",
         "gridRowSchema",
+        "gridSchemaSchema",
         "httpStatusFor",
         "isGridOperation",
+        "isGridSchemaOperation",
         "isWireError",
         "isWireErrorCode",
         "toWireError",

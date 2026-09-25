@@ -92,6 +92,18 @@ describe("createDataSourceHandler", () => {
     }
   });
 
+  it("answers the grid-level schema operations with UNSUPPORTED_OPERATION 501 (served by a grid registry)", async () => {
+    const onError = vi.fn();
+    const handle = createDataSourceHandler(source(), { onError });
+    for (const [op, input] of [
+      ["getSchema", null],
+      ["updateSchema", createFixtureSchema()],
+    ] as const) {
+      expect(await handle(op, input)).toMatchObject({ ok: false, status: 501, error: { code: "UNSUPPORTED_OPERATION" } });
+    }
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
   it("hides unexpected errors as INTERNAL 500 and reports them to onError", async () => {
     const boom = new Error("secret stack detail");
     const onError = vi.fn();

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { FilterNode, FilterValue } from "../filter/types";
 import type { GroupResult } from "../query/types";
+import type { GridSchema } from "../schema/types";
 import type { GridOperation, GridWireContract } from "./operations";
 
 // Only APIs shared by zod ^3.25 and ^4 are used here (two-argument
@@ -134,6 +135,35 @@ const changeResult = z.object({
 const option = z.object({ id, label: z.string(), color: z.string().optional() });
 const linkRef = z.object({ id, label: z.string() });
 
+/**
+ * Structural `GridSchema` check. Columns and views keep unknown keys (newer
+ * column options survive a round trip); semantic validation (field-type
+ * configs, formulas, permissions) is the server's `assertValidSchema`.
+ */
+export const gridSchemaSchema: WireSchema<GridSchema> = as<GridSchema>(
+  z
+    .object({
+      id,
+      schemaVersion: z.number(),
+      columns: z.array(
+        z
+          .object({
+            id,
+            key: z.string(),
+            label: z.string(),
+            type: z.string(),
+            config: z.unknown(),
+            order: z.number(),
+            createdAt: z.string(),
+            updatedAt: z.string(),
+          })
+          .passthrough(),
+      ),
+      views: z.array(z.object({ id, name: z.string() }).passthrough()).optional(),
+    })
+    .passthrough(),
+);
+
 /** Input/output schema for every grid operation (see `GridWireContract`). */
 export const wireSchemas: WireSchemas = {
   fetch: {
@@ -177,5 +207,14 @@ export const wireSchemas: WireSchemas = {
   lookup: {
     input: z.object({ columnId: id, search: z.string() }),
     output: z.array(linkRef),
+  },
+  getSchema: {
+    // `null` on the wire; an absent body (undefined) is accepted and normalised to null.
+    input: as<null>(z.null().optional().transform(() => null)),
+    output: gridSchemaSchema,
+  },
+  updateSchema: {
+    input: gridSchemaSchema,
+    output: gridSchemaSchema,
   },
 };

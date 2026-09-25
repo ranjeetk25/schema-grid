@@ -2,15 +2,26 @@
 // DataSource across a network boundary (tRPC, REST, Hono, Lambda, ...).
 export {
   GRID_OPERATIONS,
+  GRID_SCHEMA_OPERATIONS,
   isGridOperation,
+  isGridSchemaOperation,
   OPTIONAL_GRID_OPERATIONS,
   type GridOperation,
+  type GridSchemaOperation,
   type GridWireContract,
   type OptionalGridOperation,
   type WireInput,
   type WireOutput,
 } from "./operations";
-export { filterNodeSchema, gridQuerySchema, gridRowSchema, wireSchemas, type WireSchema, type WireSchemas } from "./schemas";
+export {
+  filterNodeSchema,
+  gridQuerySchema,
+  gridRowSchema,
+  gridSchemaSchema,
+  wireSchemas,
+  type WireSchema,
+  type WireSchemas,
+} from "./schemas";
 export {
   httpStatusFor,
   isWireError,

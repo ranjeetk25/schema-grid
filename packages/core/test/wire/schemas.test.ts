@@ -3,7 +3,14 @@ import type { FilterNode } from "../../src/filter/types";
 import type { GridQuery } from "../../src/query/types";
 import { createFixtureRows } from "../../src/testing/rows";
 import { FIXTURE_COLUMN_IDS as C } from "../../src/testing/schema";
-import { GRID_OPERATIONS, isGridOperation, OPTIONAL_GRID_OPERATIONS } from "../../src/wire/operations";
+import {
+  GRID_OPERATIONS,
+  GRID_SCHEMA_OPERATIONS,
+  isGridOperation,
+  isGridSchemaOperation,
+  OPTIONAL_GRID_OPERATIONS,
+} from "../../src/wire/operations";
+import { createFixtureSchema } from "../../src/testing/schema";
 import { wireSchemas } from "../../src/wire/schemas";
 
 const spec8: FilterNode = {
@@ -21,18 +28,27 @@ const query = (over: Partial<GridQuery> = {}): GridQuery => ({
 });
 
 describe("GRID_OPERATIONS", () => {
-  it("lists the 8 DataSource operations in contract order", () => {
-    expect(GRID_OPERATIONS).toEqual([
-      "fetch",
-      "applyChanges",
-      "createRows",
-      "deleteRows",
-      "getChanges",
-      "getOptions",
-      "createOption",
-      "lookup",
-    ]);
-    expect(OPTIONAL_GRID_OPERATIONS).toEqual(["getChanges", "getOptions", "createOption", "lookup"]);
+  it("lists the DataSource operations plus the grid-level schema operations (order-independent)", () => {
+    expect([...GRID_OPERATIONS]).toEqual(
+      expect.arrayContaining([
+        "fetch",
+        "applyChanges",
+        "createRows",
+        "deleteRows",
+        "getChanges",
+        "getOptions",
+        "createOption",
+        "lookup",
+        "getSchema",
+        "updateSchema",
+      ]),
+    );
+    expect(new Set(GRID_OPERATIONS).size).toBe(GRID_OPERATIONS.length);
+    expect([...OPTIONAL_GRID_OPERATIONS]).toEqual(
+      expect.arrayContaining(["getChanges", "getOptions", "createOption", "lookup"]),
+    );
+    expect([...GRID_SCHEMA_OPERATIONS].sort()).toEqual(["getSchema", "updateSchema"]);
+    for (const op of GRID_SCHEMA_OPERATIONS) expect(GRID_OPERATIONS).toContain(op);
   });
 
   it("isGridOperation only accepts own operation names", () => {
@@ -174,5 +190,48 @@ describe("wireSchemas outputs", () => {
     expect(wireSchemas.createRows.output.safeParse([]).success).toBe(true);
     expect(wireSchemas.deleteRows.output.safeParse(null).success).toBe(true);
     expect(wireSchemas.deleteRows.output.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("grid schema operations", () => {
+  it("isGridSchemaOperation only accepts getSchema / updateSchema", () => {
+    expect(isGridSchemaOperation("getSchema")).toBe(true);
+    expect(isGridSchemaOperation("updateSchema")).toBe(true);
+    for (const bad of ["fetch", "toString", "__proto__", "", null]) expect(isGridSchemaOperation(bad)).toBe(false);
+  });
+
+  it("getSchema takes null (or nothing) and answers a GridSchema", () => {
+    expect(wireSchemas.getSchema.input.safeParse(null).success).toBe(true);
+    expect(wireSchemas.getSchema.input.safeParse(undefined).success).toBe(true);
+    expect(wireSchemas.getSchema.input.safeParse({ x: 1 }).success).toBe(false);
+    const schema = createFixtureSchema();
+    const parsed = wireSchemas.getSchema.output.safeParse(schema);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual(schema);
+  });
+
+  it("updateSchema takes the GridSchema itself and keeps unknown column/view keys", () => {
+    const schema = createFixtureSchema();
+    const withExtras = {
+      ...schema,
+      columns: schema.columns.map((c, i) => (i === 0 ? { ...c, sortable: false, settable: false } : c)),
+    };
+    const parsed = wireSchemas.updateSchema.input.safeParse(withExtras);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual(withExtras);
+    expect(wireSchemas.updateSchema.output.safeParse(schema).success).toBe(true);
+  });
+
+  it("updateSchema rejects structurally broken schemas", () => {
+    const schema = createFixtureSchema();
+    for (const bad of [
+      null,
+      { ...schema, columns: "nope" },
+      { ...schema, schemaVersion: "1" },
+      { ...schema, id: undefined },
+      { ...schema, columns: [{ id: "x" }] },
+    ]) {
+      expect(wireSchemas.updateSchema.input.safeParse(bad).success).toBe(false);
+    }
   });
 });
