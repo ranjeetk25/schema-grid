@@ -35,6 +35,21 @@ const DATE_TYPES = new Set(["date", "datetime"]);
 /**
  * Reference filter semantics. A null node matches every row. Never throws:
  * unknown columns/operators and evaluation errors do not match.
+ *
+ * Details that other translators (SQL) must reproduce:
+ * - Empty = null, undefined, whitespace-only text or []. Negative operators
+ *   match empty cells; on non-empty cells they are the negation of their
+ *   positive counterpart, except that an unusable filter value (e.g. `neq "abc"`)
+ *   never matches a non-empty cell.
+ * - Text: case-insensitive; `is` trims both sides, `contains`/`startsWith` don't.
+ * - Numbers: strict decimal coercion of string values (no hex / Infinity).
+ * - Ids (select/user/link) compare as strings.
+ * - Dates: values are "YYYY-MM-DD" (start of that day in tz) or ISO instants
+ *   with Z/offset; anything else doesn't match. A date-only cell compared to an
+ *   instant uses its start-of-day instant.
+ * - Ranges: a null/blank bound is open; both open matches any non-empty cell.
+ *   `isBetween` date-only bounds include the whole `to` day.
+ * - `hasAllOf []` and `isAnyOf []`/`hasAnyOf []` never match (so the negatives match).
  */
 export function matchesFilter(node: FilterNode | null, row: GridRow, ctx: FilterMatchContext): boolean {
   if (node === null || node === undefined) return true;
@@ -77,18 +92,61 @@ function matchCondition(cond: FilterCondition, row: GridRow, ctx: FilterMatchCon
   const negative = isNegativeOperator(op);
   if (isEmptyValue(cell)) return negative;
 
-  const typeId = valueTypeId(column, ctx);
+  const typeId = valueFamily(column, ctx);
   if (typeId === undefined) return false;
   if (negative) {
     const positive = POSITIVE_OF[op];
     if (positive === undefined) return false;
+    // An unusable filter value never matches a non-empty cell, for positive and
+    // negative operators alike (so `neq "abc"` does not match every row).
+    if (!isUsableValue(typeId, positive, cond.value)) return false;
     return !matchPositive(typeId, positive, cell, cond.value, ctx);
   }
   return matchPositive(typeId, op, cell, cond.value, ctx);
 }
 
-function valueTypeId(column: ColumnDef, ctx: FilterMatchContext): string | undefined {
-  return getColumnValueFieldType(column, ctx.registry)?.id;
+/**
+ * The matcher family for a column: its (formula-resolved) built-in type id, or
+ * for custom types a built-in family inferred from the operators it declares.
+ */
+function valueFamily(column: ColumnDef, ctx: FilterMatchContext): string | undefined {
+  const type = getColumnValueFieldType(column, ctx.registry);
+  if (!type) return undefined;
+  const id = type.id;
+  if (
+    TEXT_TYPES.has(id) ||
+    NUMBER_TYPES.has(id) ||
+    DATE_TYPES.has(id) ||
+    SELECT_TYPES.has(id) ||
+    ["multiSelect", "user", "link", "boolean"].includes(id)
+  ) {
+    return id;
+  }
+  const ops = new Set(type.operators.map((o) => o.id));
+  if (ops.has("contains")) return "text";
+  if (ops.has("lt") || ops.has("between")) return "number";
+  if (ops.has("isWithin") || ops.has("isBefore")) return "date";
+  if (ops.has("hasAnyOf")) return "multiSelect";
+  if (ops.has("isMe")) return "user";
+  if (ops.has("isTrue")) return "boolean";
+  if (ops.has("isAnyOf")) return "select";
+  return id;
+}
+
+/** Whether a positive operator's filter value is usable at all (independent of the cell). */
+function isUsableValue(typeId: string, op: string, value: unknown): boolean {
+  if (op === "isMe") return true;
+  if (op === "isAnyOf" || op === "hasAnyOf") {
+    return Array.isArray(value) && value.some((v) => idOf(v) !== undefined);
+  }
+  if (TEXT_TYPES.has(typeId)) return isTextValue(value);
+  if (NUMBER_TYPES.has(typeId)) return !Number.isNaN(toNumber(value));
+  if (SELECT_TYPES.has(typeId) || typeId === "user" || typeId === "link") return idOf(value) !== undefined;
+  return value !== null && value !== undefined && typeof value !== "object";
+}
+
+function isTextValue(value: unknown): boolean {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
 
 function matchPositive(typeId: string, op: string, cell: unknown, value: unknown, ctx: FilterMatchContext): boolean {
@@ -114,7 +172,7 @@ function norm(v: unknown): string {
 }
 
 function matchText(op: string, cell: unknown, value: unknown): boolean {
-  if (value === undefined || (typeof value === "object" && value !== null)) return false;
+  if (!isTextValue(value)) return false;
   const c = String(cell).toLowerCase();
   const v = String(value).toLowerCase();
   switch (op) {
@@ -131,9 +189,15 @@ function matchText(op: string, cell: unknown, value: unknown): boolean {
 
 // ---------------------------------------------------------------- number
 
+const NUMERIC_TEXT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** Strict numeric coercion (no hex, no Infinity); NaN when not a finite number. */
 function toNumber(v: unknown): number {
-  if (typeof v === "number") return v;
-  if (typeof v === "string" && v.trim() !== "") return Number(v);
+  if (typeof v === "number") return Number.isFinite(v) ? v : Number.NaN;
+  if (typeof v === "string" && NUMERIC_TEXT.test(v.trim())) {
+    const n = Number(v.trim());
+    return Number.isFinite(n) ? n : Number.NaN;
+  }
   return Number.NaN;
 }
 
@@ -246,6 +310,13 @@ function matchCustom(op: string, cell: unknown, value: unknown): boolean {
 // ---------------------------------------------------------------- date / datetime
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** Full ISO datetimes with an explicit Z or ±HH:MM offset only (tz-independent). */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})$/i;
+
+function isRealDay(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
 
 interface ParsedInstant {
   t: number;
@@ -259,10 +330,13 @@ function parseInstant(v: unknown, tz: string): ParsedInstant | undefined {
   const m = DATE_ONLY.exec(s);
   if (m) {
     const day = { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
-    if (day.month < 1 || day.month > 12 || day.day < 1 || day.day > 31) return undefined;
+    if (!isRealDay(day.year, day.month, day.day)) return undefined;
     const t = zonedToInstant(day, tz).getTime();
     return Number.isNaN(t) ? undefined : { t, day };
   }
+  if (!ISO_INSTANT.test(s)) return undefined;
+  const [y, mo, d] = s.slice(0, 10).split("-").map(Number);
+  if (y === undefined || mo === undefined || d === undefined || !isRealDay(y, mo, d)) return undefined;
   const t = Date.parse(s);
   return Number.isNaN(t) ? undefined : { t };
 }
@@ -283,6 +357,18 @@ function isRelativeDate(v: unknown): v is RelativeDate {
   return typeof v === "object" && v !== null && typeof (v as { relative?: unknown }).relative === "string";
 }
 
+const rangeCache = new WeakMap<RelativeDate, { now: number; tz: string; range?: { from: number; to: number } }>();
+
+/** resolveRelativeDate as epoch ms, cached per filter value object (filters are matched row by row). */
+function resolveRangeCached(value: RelativeDate, now: Date, tz: string): { from: number; to: number } | undefined {
+  const hit = rangeCache.get(value);
+  if (hit && hit.now === now.getTime() && hit.tz === tz) return hit.range;
+  const r = resolveRelativeDate(value, now, tz);
+  const range = "error" in r ? undefined : { from: Date.parse(r.from), to: Date.parse(r.to) };
+  rangeCache.set(value, { now: now.getTime(), tz, ...(range ? { range } : {}) });
+  return range;
+}
+
 function matchDate(op: string, cell: unknown, value: unknown, ctx: FilterMatchContext): boolean {
   const tz = ctx.tz;
   const c = parseInstant(cell, tz);
@@ -291,11 +377,8 @@ function matchDate(op: string, cell: unknown, value: unknown, ctx: FilterMatchCo
 
   if (op === "isWithin") {
     if (!isRelativeDate(value)) return false;
-    const r = resolveRelativeDate(value, ctx.now, tz);
-    if ("error" in r) return false;
-    const from = Date.parse(r.from);
-    const to = Date.parse(r.to);
-    return from <= t && t < to;
+    const range = resolveRangeCached(value, ctx.now, tz);
+    return range !== undefined && range.from <= t && t < range.to;
   }
 
   if (op === "isBetween") {

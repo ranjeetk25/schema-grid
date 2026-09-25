@@ -424,3 +424,39 @@ describe("custom field types", () => {
     expect(m(cond("col_rating", "isNotEmpty"), { rating: 5 })).toBe(true);
   });
 });
+
+describe("matchesFilter: review hardening", () => {
+  const registry = createDefaultRegistry();
+  const schema = createFixtureSchema();
+  const ctx = { schema, registry, now: new Date(FIXTURE_NOW), tz: FIXTURE_TIME_ZONE };
+  const r = (cells: Record<string, unknown>) => ({ id: "x", version: 1, updatedAt: FIXTURE_NOW, cells });
+  const m = (columnId: string, operator: string, value: unknown, cells: Record<string, unknown>) =>
+    matchesFilter({ columnId, operator, value } as FilterNode, r(cells), ctx);
+
+  it("negative operators with an unusable value do not match non-empty cells", () => {
+    expect(m(C.fee, "neq", "abc", { fee: 5 })).toBe(false);
+    expect(m(C.status, "isNot", undefined, { status: "paid" })).toBe(false);
+    expect(m(C.status, "isNoneOf", "paid", { status: "paid" })).toBe(false);
+    expect(m(C.name, "notContains", undefined, { name: "a" })).toBe(false);
+    expect(m(C.fee, "neq", "abc", { fee: null })).toBe(true);
+  });
+
+  it("uses strict number and date parsing", () => {
+    expect(m(C.fee, "eq", "0x10", { fee: 16 })).toBe(false);
+    expect(m(C.fee, "gt", "Infinity", { fee: 1 })).toBe(false);
+    expect(m(C.fee, "eq", "1e3", { fee: 1000 })).toBe(true);
+    expect(m(C.callDate, "is", "2026-02-31", { callDate: "2026-03-03" })).toBe(false);
+    expect(m(C.callDate, "is", "Sep 25 2026", { callDate: "2026-09-25" })).toBe(false);
+    expect(m(C.calledAt, "isAfter", "2026-09-24T10:00", { calledAt: "2026-09-25T00:00:00.000Z" })).toBe(false);
+  });
+
+  it("text operators never treat null as the string 'null'", () => {
+    expect(m(C.name, "is", null, { name: "null" })).toBe(false);
+    expect(m(C.name, "contains", null, { name: "nullable" })).toBe(false);
+  });
+
+  it("open ranges and empty lists behave as documented", () => {
+    expect(m(C.fee, "between", { from: null, to: null }, { fee: 3 })).toBe(true);
+    expect(m(C.tags, "hasAllOf", [], { tags: ["vip"] })).toBe(false);
+  });
+});
