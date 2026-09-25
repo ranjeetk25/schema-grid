@@ -9,7 +9,9 @@
  * `gridProps`.
  *
  * Announcements: every applied batch announces `savedMessage(n)` ("Saved" /
- * "Saved N cells") politely, via the `onApplied` seam of `useSchemaGrid`.
+ * "Saved N cells") politely, via the `onApplied` seam of `useSchemaGrid` —
+ * except fill batches, whose handle announces one combined
+ * "Fill: N cells filled, saved" (see `savedAnnouncement`).
  *
  * Generic forwardRef: `forwardRef` erases the `Row` type parameter, so the
  * result is cast to a generic call signature (`SchemaGridComponent`). That
@@ -29,7 +31,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { createAnnouncer, type Politeness, savedMessage } from "../a11y/announcer";
+import { createAnnouncer, type Politeness, savedAnnouncement } from "../a11y/announcer";
 import { LiveAnnouncer } from "../a11y/LiveAnnouncer";
 import type { AppliedInfo } from "../editing/editController";
 import { FullWidthRowRenderer } from "../grouping/GroupRowRenderer";
@@ -93,8 +95,8 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
   );
   const onApplied = useCallback(
     (info: AppliedInfo<Row>) => {
-      const n = info.changedCells.length;
-      if (n > 0) announcer.announce(savedMessage(n), "polite");
+      const message = savedAnnouncement(info.batch.source, info.changedCells.length);
+      if (message) announcer.announce(message, "polite");
     },
     [announcer],
   );

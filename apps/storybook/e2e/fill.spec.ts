@@ -70,10 +70,10 @@ test("§3 fill handle down extrapolates 20,000 / 60,000 into r3..r5 as ONE fill 
     (c) => (c.arg as { source: string }).source === "fill",
   );
   expect(fills).toHaveLength(1);
-  // The fill summary is announced, then immediately replaced by the save ("Saved 3 cells").
+  // One combined message: the save no longer overwrites the fill summary.
   await expect
     .poll(() => politeText(page))
-    .toMatch(/^(Fill: 3 cells filled|Saved 3 cells)/);
+    .toBe("Fill: 3 cells filled, saved");
   // The range becomes the filled range.
   await expect(page.locator(".sg-cell-range")).toHaveCount(5);
 

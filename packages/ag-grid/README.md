@@ -433,8 +433,8 @@ AG Grid Community has no range module; `src/range/useRangeSelection.ts` implemen
   **right** (the dominant axis wins, ties go down); the extension cells show `sg-cell-fill-preview`.
 - On release, the series is extrapolated by `planFill` and sent as ONE `"fill"` batch; the range becomes the
   filled range. Esc (or pointer cancel) cancels without writing. Up/left fills are out of scope for v1.
-- Read-only and formula cells are skipped. The outcome is announced: "Fill: 3 cells filled, 1 read-only
-  cell skipped".
+- Read-only and formula cells are skipped. Once the save settles the outcome is announced as one message:
+  "Fill: 3 cells filled, 1 read-only cell skipped, saved" (", N saved" when only some were applied).
 - Limitations: no edge autoscroll while dragging; in server mode not-yet-loaded rows are skipped.
 
 ### Undo / redo
@@ -506,12 +506,12 @@ region. All wording is built in `src/a11y/announcer.ts`; an identical consecutiv
 
 | Event | Message | Politeness |
 |---|---|---|
-| Edit / paste / fill / undo applied | "Saved" / "Saved N cells" | polite |
+| Edit / paste / undo applied | "Saved" / "Saved N cells" | polite |
 | Conflict (one cell / several) | "Conflict on {column}, row {id}" / "Conflicts on N cells" | assertive |
 | Server rejected a cell (one / several) | "Edit rejected on {column}: {reason}" / "N edits rejected" | assertive |
 | `beforeCellsChange` veto | "Edit cancelled" | assertive |
 | Paste | "Paste: N pasted, M skipped, K errors" (+ ", C conflicts") | polite |
-| Fill | "Fill: N cells filled, M read-only cells skipped" | polite |
+| Fill (after its save settles; no separate "Saved") | "Fill: N cells filled, M read-only cells skipped, saved" | polite |
 | Range | "R rows by C columns selected" | polite |
 | Undo / redo | "Undone" / "Redone" / "Nothing to undo" / "Nothing to redo" | polite |
 | Clipboard failure | "Copy failed" / "Paste failed" | assertive |

@@ -8,6 +8,7 @@ import {
   editsRejectedMessage,
   fillMessage,
   pasteSummaryMessage,
+  savedAnnouncement,
   savedMessage,
   stripAnnouncementMarker,
 } from "../../src/a11y/announcer";
@@ -65,6 +66,21 @@ describe("announcement builders", () => {
       "Paste: 2 pasted, 1 skipped, 0 errors",
     );
     expect(fillMessage(3, 1)).toBe("Fill: 3 cells filled, 1 read-only cell skipped");
+  });
+
+  it("a settled fill combines the summary and the save into ONE message", () => {
+    expect(fillMessage(4, 0, 4)).toBe("Fill: 4 cells filled, saved");
+    expect(fillMessage(3, 1, 3)).toBe("Fill: 3 cells filled, 1 read-only cell skipped, saved");
+    expect(fillMessage(4, 0, 2)).toBe("Fill: 4 cells filled, 2 saved");
+    expect(fillMessage(4, 0, 0)).toBe("Fill: 4 cells filled");
+    expect(fillMessage(0, 0, 0)).toBeNull();
+  });
+
+  it("savedAnnouncement leaves fill batches to the fill summary (no overwrite)", () => {
+    expect(savedAnnouncement("edit", 1)).toBe("Saved");
+    expect(savedAnnouncement("paste", 4)).toBe("Saved 4 cells");
+    expect(savedAnnouncement("fill", 4)).toBeNull();
+    expect(savedAnnouncement("edit", 0)).toBeNull();
   });
 
   it("the clipboard and fill modules re-export the same builders", () => {

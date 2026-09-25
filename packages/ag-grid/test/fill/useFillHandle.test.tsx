@@ -2,7 +2,9 @@ import type { CellClassParams, CellMouseOverEvent, Column, GridApi, IRowNode } f
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { type MutableRefObject, useRef } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { stripAnnouncementMarker } from "../../src/a11y/announcer";
 import { computeFillTarget, type FillReport, useFillHandle } from "../../src/fill/useFillHandle";
+import type { SubmitOutcome } from "../../src/editing/editController";
 import { createKeyboardRegistry } from "../../src/grid/keyboard";
 import { createDefaultRegistry, type ChangeBatch, type GridRow } from "../../src/internal/core";
 import { createRangeCellClassRules } from "../../src/range/useRangeSelection";
@@ -21,11 +23,15 @@ const ROWS: GridRow[] = [
   row("e", { name: "E", score: null, status: null, email: null }),
 ];
 
-function setup(opts: { readOnly?: string[] } = {}) {
+function setup(opts: { readOnly?: string[]; applyNone?: boolean } = {}) {
   const fake = createFakeGridApi<GridRow>({ columns: COLS, rows: ROWS });
   const rangeStore = createRangeStore();
   const keyboard = createKeyboardRegistry<GridRow>();
-  const submit = vi.fn(async (_changes: ChangeBatch["changes"], _source: ChangeBatch["source"]) => ({}) as never);
+  const submit = vi.fn(async (changes: ChangeBatch["changes"], source: ChangeBatch["source"]): Promise<SubmitOutcome> => {
+    const batch: ChangeBatch = { id: "b", changes, baseVersions: {}, source };
+    const applied = opts.applyNone ? [] : changes;
+    return { batch, vetoed: false, result: { applied, conflicts: [], errors: [] } as never };
+  });
   const announce = vi.fn();
   const onReport = vi.fn<(r: FillReport) => void>();
   const readOnly = new Set(opts.readOnly ?? []);
@@ -116,7 +122,9 @@ describe("useFillHandle", () => {
     expect(rangeStore.getState().fillPreview).toBeNull();
     expect(rangeStore.get()).toEqual({ anchor: { rowIndex: 0, colId: "score" }, focus: { rowIndex: 4, colId: "score" } });
     expect(h().isFilling()).toBe(false);
-    expect(announce).toHaveBeenCalledWith("Fill: 3 cells filled", "polite");
+    // One combined message once the save settles (a separate "Saved 3 cells" would overwrite the summary).
+    await waitFor(() => expect(announce).toHaveBeenCalledWith("Fill: 3 cells filled, saved", "polite"));
+    expect(announce).toHaveBeenCalledTimes(1);
     expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 3, skippedReadOnly: 0 });
     // A later pointerup is a no-op.
     pointerUp();
@@ -160,7 +168,7 @@ describe("useFillHandle", () => {
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("read-only targets are skipped and reported", () => {
+  it("read-only targets are skipped and reported", async () => {
     const { fake, rangeStore, submit, h, announce, onReport } = setup({ readOnly: ["status"] });
     act(() => rangeStore.setAnchor({ rowIndex: 0, colId: "name" }));
     act(() => rangeStore.setFocus({ rowIndex: 0, colId: "name" }));
@@ -169,8 +177,19 @@ describe("useFillHandle", () => {
     pointerUp();
     const [changes] = submit.mock.calls[0] ?? [];
     expect(changes?.map((c) => c.columnId)).toEqual(["score", "email"]);
-    expect(announce).toHaveBeenCalledWith("Fill: 2 cells filled, 1 read-only cell skipped", "polite");
+    await waitFor(() =>
+      expect(announce).toHaveBeenCalledWith("Fill: 2 cells filled, 1 read-only cell skipped, saved", "polite"),
+    );
     expect(onReport).toHaveBeenCalledWith({ axis: "right", filledCells: 2, skippedReadOnly: 1 });
+  });
+
+  it("a fill the data source applies none of is announced without 'saved'", async () => {
+    const { fake, rangeStore, h, announce } = setup({ applyNone: true });
+    act(() => rangeStore.setAnchor({ rowIndex: 0, colId: "score" }));
+    act(() => h().onFillHandlePointerDown(pointerDown(), { rowIndex: 0, colId: "score" }));
+    act(() => h().onCellMouseOver(over(fake.api, 2, "score")));
+    pointerUp();
+    await waitFor(() => expect(announce).toHaveBeenCalledWith("Fill: 2 cells filled", "polite"));
   });
 
   it("everything read-only: no submit, still reported", () => {
@@ -279,6 +298,11 @@ describe("<SchemaGrid> fill handle (integration)", () => {
     ]);
     expect(handle.current?.stores.range.get()?.focus).toEqual({ rowIndex: 2, colId: "name" });
     await waitFor(() => expect(cellEl(container, "r2", "name").classList.contains(SG_CLASSES.fillPreview)).toBe(false));
+    // One combined polite message; "Saved 2 cells" must not overwrite the fill summary.
+    const polite = () => stripAnnouncementMarker(container.querySelector(".sg-live-polite")?.textContent ?? "");
+    await waitFor(() => expect(polite()).toBe("Fill: 2 cells filled, saved"));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(polite()).toBe("Fill: 2 cells filled, saved");
   });
 
   it.todo("real drag of the fill handle, including fills that cross virtualised rows (Playwright: see playwright-scenarios.md)");

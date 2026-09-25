@@ -24,8 +24,8 @@
  * - Esc cancels without a submit: a root key handler on `keyboard` (focus
  *   inside `.sg-root`) plus a document `keydown` listener (focus elsewhere).
  * - Read-only targets (and formula columns) are skipped by `planFill`. The
- *   outcome is announced ("Fill: 3 cells filled, 1 read-only cell skipped")
- *   and handed to `onReport` as a `FillReport`. It is deliberately NOT routed
+ *   outcome is announced once the save settles, as ONE polite message
+ *   ("Fill: 3 cells filled, 1 read-only cell skipped, saved"), and handed to `onReport` as a `FillReport`. It is deliberately NOT routed
  *   through `onClipboardReport`: that callback's `pastedCells` would make
  *   hosts miscount pastes. A public `onFillReport` prop can forward `onReport`
  *   later if hosts need it.
@@ -131,6 +131,11 @@ export function computeFillTarget(
 /** "Fill: 3 cells filled, 1 read-only cell skipped"; the builder lives in `a11y/announcer` (re-exported here). */
 export { fillMessage };
 
+/** Distinct cells in an applied change list. */
+function countAppliedCells(applied: readonly { rowId: string; columnId: string }[]): number {
+  return new Set(applied.map((c) => `${c.rowId}\u0000${c.columnId}`)).size;
+}
+
 interface FillSession {
   source: NormalizedRange;
   current: FillTarget | null;
@@ -196,9 +201,20 @@ export function useFillHandle<Row extends GridRow = GridRow>(
       rangeStore.setAnchor({ rowIndex: target.rowStart, colId: firstCol });
       rangeStore.setFocus({ rowIndex: target.rowEnd, colId: lastCol });
     }
-    if (changes.length > 0) void o.controller.submit(changes, "fill").catch(() => {});
-    const message = fillMessage(changes.length, skippedReadOnly);
-    if (message) o.announce?.(message, "polite");
+    const announce = (saved?: number) => {
+      const message = fillMessage(changes.length, skippedReadOnly, saved);
+      if (message) latest.current.announce?.(message, "polite");
+    };
+    if (changes.length > 0) {
+      // Announce once the save settles, folding it in: a separate "Saved N cells"
+      // would overwrite the fill summary in the polite live region.
+      void o.controller.submit(changes, "fill").then(
+        (outcome) => announce(outcome.vetoed ? 0 : countAppliedCells(outcome.result.applied)),
+        () => announce(),
+      );
+    } else {
+      announce();
+    }
     o.onReport?.({ axis, filledCells: changes.length, skippedReadOnly });
   }, [apiRef, exit, rangeStore]);
 

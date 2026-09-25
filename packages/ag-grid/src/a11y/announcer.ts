@@ -17,9 +17,11 @@
  *   - rejected (assertive): "Edit rejected on {column}: {reason}" / "N edits rejected"
  *   - veto (assertive):     "Edit cancelled"
  *   - paste (polite):       "Paste: N pasted, M skipped, K errors[, C conflicts]"
- *   - fill (polite):        "Fill: N cells filled[, M read-only cells skipped]"
+ *   - fill (polite):        "Fill: N cells filled[, M read-only cells skipped][, saved]"
+ *     (announced once the fill's save settles; fill batches get no separate "Saved")
  */
 import type { ClipboardReport } from "../clipboard/types";
+import type { ChangeSource } from "../internal/core";
 
 export type Politeness = "polite" | "assertive";
 
@@ -75,12 +77,29 @@ export function pasteSummaryMessage(report: ClipboardReport): string {
   return report.conflicts > 0 ? `${base}, ${report.conflicts} conflicts` : base;
 }
 
-/** "Fill: 3 cells filled, 1 read-only cell skipped"; null when nothing happened. */
-export function fillMessage(filled: number, skipped: number): string | null {
+/**
+ * "Fill: 3 cells filled, 1 read-only cell skipped"; null when nothing happened.
+ * With `saved` (cells the data source applied, once the fill's save settled)
+ * the save is folded in — ", saved" when all were, ", N saved" when some
+ * were — so ONE polite message carries both (a separate "Saved N cells"
+ * would overwrite the summary in the live region).
+ */
+export function fillMessage(filled: number, skipped: number, saved?: number): string | null {
   if (filled === 0 && skipped === 0) return null;
   const parts = [`${filled} ${filled === 1 ? "cell" : "cells"} filled`];
   if (skipped > 0) parts.push(`${skipped} read-only ${skipped === 1 ? "cell" : "cells"} skipped`);
+  if (saved !== undefined && saved > 0) parts.push(saved >= filled ? "saved" : `${saved} saved`);
   return `Fill: ${parts.join(", ")}`;
+}
+
+/**
+ * The polite "Saved" announcement for an applied batch, or null when there is
+ * none to make: nothing applied, or a `"fill"` batch (the fill handle
+ * announces one combined "Fill: N cells filled, saved" itself).
+ */
+export function savedAnnouncement(source: ChangeSource, count: number): string | null {
+  if (count <= 0 || source === "fill") return null;
+  return savedMessage(count);
 }
 
 export function createAnnouncer(): Announcer {
