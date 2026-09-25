@@ -82,3 +82,11 @@ export class GroupingError extends SchemaGridServerError {
     super("GROUPING_ERROR", message, details);
   }
 }
+
+/** A row passed to `createRows` has an invalid, unknown or non-editable cell. */
+export class RowValidationError extends SchemaGridServerError {
+  declare readonly details: { rowIndex: number; columnId: string; message: string };
+  constructor(rowIndex: number, columnId: string, message: string) {
+    super("INVALID_ROW", `Row ${rowIndex}: ${columnId}: ${message}`, { rowIndex, columnId, message });
+  }
+}
