@@ -123,4 +123,19 @@ describe("createRowStore", () => {
       expect(listener).toHaveBeenCalledTimes(2);
     });
   });
+  it("upsert skips incoming rows older than the stored version unless forced", () => {
+    const store = createRowStore<GridRow>();
+    store.upsert([makeRow("r1", { name: "new" }, 3)]);
+    const rev = store.getRevision();
+    store.upsert([makeRow("r1", { name: "stale" }, 2)]);
+    expect(store.getRow("r1")?.cells).toEqual({ name: "new" });
+    expect(store.getRevision()).toBe(rev);
+
+    store.upsert([makeRow("r1", { name: "same-version" }, 3)]);
+    expect(store.getRow("r1")?.cells).toEqual({ name: "same-version" });
+
+    store.upsert([makeRow("r1", { name: "forced" }, 1)], { force: true });
+    expect(store.getRow("r1")?.cells).toEqual({ name: "forced" });
+    expect(store.getVersion("r1")).toBe(1);
+  });
 });

@@ -11,11 +11,22 @@
  */
 import type { GridRow } from "../internal/core";
 
+export interface UpsertOptions {
+  /** Replace even when the incoming version is older than the stored one. */
+  force?: boolean;
+}
+
 export interface RowStore<Row extends GridRow> {
   getRow(id: string): Row | undefined;
   getVersion(id: string): number | undefined;
-  /** Insert or replace rows by id. New ids are appended, keeping insertion order. */
-  upsert(rows: readonly Row[]): void;
+  /**
+   * Insert or replace rows by id. New ids are appended, keeping insertion order.
+   * By default an incoming row whose `version` is LOWER than the stored one is
+   * skipped (a late page / refetch must never roll back a newer local or
+   * remote state); equal versions replace. `{ force: true }` replaces
+   * unconditionally.
+   */
+  upsert(rows: readonly Row[], options?: UpsertOptions): void;
   /**
    * Merge `cells` into the row's existing cells, returning a new row object
    * (never mutating the previous one). Returns undefined if the row is
@@ -49,13 +60,17 @@ export function createRowStore<Row extends GridRow>(): RowStore<Row> {
 
   const getVersion = (id: string): number | undefined => rowsById.get(id)?.version;
 
-  const upsert = (rows: readonly Row[]): void => {
+  const upsert = (rows: readonly Row[], options?: UpsertOptions): void => {
     if (rows.length === 0) return;
+    let changed = false;
     for (const r of rows) {
-      if (!rowsById.has(r.id)) order.push(r.id);
+      const prev = rowsById.get(r.id);
+      if (prev && !options?.force && r.version < prev.version) continue;
+      if (!prev) order.push(r.id);
       rowsById.set(r.id, r);
+      changed = true;
     }
-    bump();
+    if (changed) bump();
   };
 
   const patchCells = (rowId: string, cells: Record<string, unknown>, version?: number): Row | undefined => {
