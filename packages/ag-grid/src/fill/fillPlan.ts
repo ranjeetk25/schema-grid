@@ -47,12 +47,12 @@ function readCellValue<Row extends GridRow>(row: Row, column: ColumnDef, getCell
  * present; otherwise repeats the (non-empty) values cyclically. Returns an
  * empty array when there are no usable source values at all.
  */
-function extendValues(values: unknown[], count: number, fieldType: ReturnType<FieldTypeRegistry["get"]>): unknown[] {
+function extendValues(values: unknown[], count: number, fieldType: ReturnType<FieldTypeRegistry["get"]>, config: unknown): unknown[] {
   const nonEmpty = values.filter((v) => !isEmptyValue(v));
   if (nonEmpty.length === 0) return Array.from({ length: count }, () => null);
 
   if (fieldType?.fillSeries && nonEmpty.length >= 2) {
-    return fieldType.fillSeries(nonEmpty as never[], count) as unknown[];
+    return fieldType.fillSeries(nonEmpty, count, config ?? fieldType.defaultConfig);
   }
 
   return Array.from({ length: count }, (_, i) => nonEmpty[i % nonEmpty.length]);
@@ -89,7 +89,7 @@ function planDown<Row extends GridRow>(options: PlanFillOptions<Row>): FillPlanR
       readCellValue(row, column, getCellValue),
     );
 
-    const extended = extendValues(sourceValues, extraCount, fieldType);
+    const extended = extendValues(sourceValues, extraCount, fieldType, column.config);
     let extendedIdx = 0;
 
     for (const rowIndex of targetRowIndices) {
@@ -132,7 +132,7 @@ function planRight<Row extends GridRow>(options: PlanFillOptions<Row>): FillPlan
     const lastSourceFieldType = lastSourceColumn ? effectiveFieldType(registry, lastSourceColumn) : undefined;
 
     const sourceValues = sourceColumns.map((col) => readCellValue(row, col, getCellValue));
-    const extended = extendValues(sourceValues, extraCount, lastSourceFieldType);
+    const extended = extendValues(sourceValues, extraCount, lastSourceFieldType, lastSourceColumn?.config);
     let extendedIdx = 0;
 
     for (const colId of target.colIds) {
@@ -150,7 +150,7 @@ function planRight<Row extends GridRow>(options: PlanFillOptions<Row>): FillPlan
       const targetFieldType = effectiveFieldType(registry, column);
       let nextValue: unknown = rawValue;
       if (targetFieldType && lastSourceFieldType && targetFieldType !== lastSourceFieldType) {
-        const formatted = lastSourceFieldType.format(rawValue as never, lastSourceColumn?.config as never);
+        const formatted = lastSourceFieldType.format(rawValue, lastSourceColumn?.config ?? lastSourceFieldType.defaultConfig);
         const parsed = targetFieldType.parse(formatted, column.config ?? targetFieldType.defaultConfig);
         nextValue = parsed.ok ? parsed.value : null;
       }

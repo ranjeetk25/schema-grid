@@ -109,7 +109,10 @@ describe("planPaste", () => {
       canEditCell: alwaysEditable,
     });
 
-    expect(plan.errors).toEqual([{ rowId: "r0", columnId: "score", message: "Not a number" }]);
+    const coreError = registry.get("number")!.parse("not-a-number", {});
+    expect(coreError.ok).toBe(false);
+    const message = coreError.ok ? "" : coreError.error;
+    expect(plan.errors).toEqual([{ rowId: "r0", columnId: "score", message }]);
     expect(plan.changes).toEqual([{ rowId: "r0", columnId: "name", prev: "n0", next: "ok" }]);
   });
 
@@ -222,5 +225,44 @@ describe("planPaste", () => {
     });
 
     expect(plan.changes).toEqual([{ rowId: "r0", columnId: "name", prev: "n0", next: "Y" }]);
+  });
+
+  it("parses into core value shapes: user → UserRef, link → LinkRef[], multiSelect labels → ids", () => {
+    const rows = makeRows(1);
+    const plan = planPaste({
+      matrix: [["u-9", "p-1, p-2", "Hot, Cold"]],
+      anchor: { rowIndex: 0, colId: "owner" },
+      displayedColIds: ["owner", "program", "tags"],
+      rowCount: rows.length,
+      getRowAt: getRowAtFrom(rows),
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.errors).toEqual([]);
+    expect(plan.changes.map((c) => c.next)).toEqual([
+      { id: "u-9" },
+      [
+        { id: "p-1", label: "p-1" },
+        { id: "p-2", label: "p-2" },
+      ],
+      ["hot", "cold"],
+    ]);
+  });
+
+  it("reports creatableSelect labels that need a new option in pendingOptions", () => {
+    const rows = makeRows(1);
+    const plan = planPaste({
+      matrix: [["Newsletter"]],
+      anchor: { rowIndex: 0, colId: "source" },
+      displayedColIds: ["source"],
+      rowCount: rows.length,
+      getRowAt: getRowAtFrom(rows),
+      columnsById,
+      registry,
+      canEditCell: alwaysEditable,
+    });
+    expect(plan.changes).toEqual([{ rowId: "r0", columnId: "source", prev: "src0", next: "Newsletter" }]);
+    expect(plan.pendingOptions).toEqual([{ rowId: "r0", columnId: "source", labels: ["Newsletter"] }]);
   });
 });

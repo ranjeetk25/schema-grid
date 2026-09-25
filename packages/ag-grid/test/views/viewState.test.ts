@@ -3,6 +3,7 @@ import type { Access, ViewDef } from "../../src/internal/core";
 import { createQueryStore } from "../../src/state/queryStore";
 import { applyViewState, captureViewState } from "../../src/views/viewState";
 import { createFakeGridApi } from "../fixtures/fakeGridApi";
+import { col } from "../fixtures/schema";
 
 function baseView(overrides: Partial<ViewDef> = {}): ViewDef {
   return {
@@ -55,6 +56,24 @@ describe("captureViewState", () => {
     const query = createQueryStore({ search: "hello" });
     const view = captureViewState(api, { query }, baseView());
     expect(view.search).toBe("hello");
+  });
+
+  it("always records a width: grid width, else base view, else schema column width, else 200", () => {
+    // A column state without widths (the fake grid api always reports one).
+    const api = {
+      getColumnState: () => [{ colId: "a" }, { colId: "b" }, { colId: "c" }, { colId: "d", width: 90 }],
+    } as unknown as Parameters<typeof captureViewState>[0];
+    const query = createQueryStore();
+    const base = baseView({ columnState: [{ id: "b", hidden: false, width: 111, pinned: null, order: 0 }] });
+    const view = captureViewState(api, { query }, base, {
+      columns: [col({ id: "c", type: "text", width: 222 }), col({ id: "d", type: "text", width: 333 })],
+    });
+    expect(view.columnState.map((c) => [c.id, c.width])).toEqual([
+      ["a", 200],
+      ["b", 111],
+      ["c", 222],
+      ["d", 90],
+    ]);
   });
 });
 

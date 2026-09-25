@@ -30,7 +30,7 @@ export interface ResolvedFilterColumn {
   fieldType: FieldType<unknown, unknown>;
   /** `column.config`, or the effective type's default config for formulas / missing config. */
   config: unknown;
-  operators: FilterOperatorDef[];
+  operators: readonly FilterOperatorDef[];
 }
 
 interface SchemaParamsLike {
@@ -176,7 +176,7 @@ function str(v: FilterPrimitive | undefined): string {
   return v === null || v === undefined ? "" : String(v);
 }
 
-function draftFrom(model: FilterCondition | null, operators: FilterOperatorDef[]): Draft {
+function draftFrom(model: FilterCondition | null, operators: readonly FilterOperatorDef[]): Draft {
   const operator =
     model && operators.some((o) => o.id === model.operator) ? model.operator : (operators[0]?.id ?? "");
   const v = model?.value;

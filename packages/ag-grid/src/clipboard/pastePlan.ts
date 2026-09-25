@@ -15,9 +15,23 @@ export interface PastePlanError {
   message: string;
 }
 
+/**
+ * A pasted cell whose text named options that don't exist yet (core
+ * creatableSelect / multiSelect-with-allowCreate `parse` → `pendingOptions`).
+ * The matching change's `next` holds core's label placeholder(s); the caller
+ * creates each option (`dataSource.createOption`) and swaps the label for the
+ * new option id before applying.
+ */
+export interface PastePendingOptions {
+  rowId: string;
+  columnId: string;
+  labels: string[];
+}
+
 export interface PastePlan {
   changes: CellChange[];
   errors: PastePlanError[];
+  pendingOptions: PastePendingOptions[];
   skippedReadOnly: number;
   targetRange: NormalizedRange;
 }
@@ -81,10 +95,11 @@ export function planPaste<Row extends GridRow>(options: PlanPasteOptions<Row>): 
 
   const changes: CellChange[] = [];
   const errors: PastePlanError[] = [];
+  const pendingOptions: PastePendingOptions[] = [];
   let skippedReadOnly = 0;
 
   if (matrixRows === 0 || matrixCols === 0) {
-    return { changes, errors, skippedReadOnly, targetRange };
+    return { changes, errors, pendingOptions, skippedReadOnly, targetRange };
   }
 
   let rowOffset = 0;
@@ -119,10 +134,13 @@ export function planPaste<Row extends GridRow>(options: PlanPasteOptions<Row>): 
         continue;
       }
 
+      if (parsed.pendingOptions && parsed.pendingOptions.length > 0) {
+        pendingOptions.push({ rowId: row.id, columnId: colId, labels: [...parsed.pendingOptions] });
+      }
       const prev = row.cells[column.key];
       changes.push({ rowId: row.id, columnId: colId, prev, next: parsed.value });
     }
   }
 
-  return { changes, errors, skippedReadOnly, targetRange };
+  return { changes, errors, pendingOptions, skippedReadOnly, targetRange };
 }

@@ -2,8 +2,8 @@
  * Server mode: adapts a core `DataSource` to AG Grid's infinite row model.
  *
  * - offset mode: block [startRow, endRow) → `{ offset: startRow, limit }`.
- * - cursor mode: block k → `{ cursor, limit }` using block k-1's nextCursor
- *   from the cursor cache. A request for a block whose cursor is unknown walks
+ * - cursor mode: block 0 → `{ offset: 0, limit }`; block k → `{ cursor, limit }`
+ *   using block k-1's nextCursor from the cursor cache. A request for a block whose cursor is unknown walks
  *   forward from the nearest known block, fetching the missing blocks one by
  *   one (their rows go to `onRows` too), then serves the requested block.
  *
@@ -94,8 +94,9 @@ export function createInfiniteDatasource<Row extends GridRow>(
       const isTarget = block === target;
       const startRow = isTarget ? params.startRow : block * blockSize;
       const limit = isTarget ? params.endRow - params.startRow : blockSize;
-      const cursor = cursors.cursorFor(block) ?? null;
-      const result = await fetchPage(query, { cursor, limit });
+      // core's PageRequest cursor is a string: the first page is requested by offset 0.
+      const cursor = cursors.cursorFor(block);
+      const result = await fetchPage(query, typeof cursor === "string" ? { cursor, limit } : { offset: 0, limit });
       const stale = gen !== generation;
       const ended = !result.nextCursor;
       if (!stale) {

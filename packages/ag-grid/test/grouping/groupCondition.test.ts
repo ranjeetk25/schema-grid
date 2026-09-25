@@ -22,12 +22,31 @@ describe("groupKeyToCondition", () => {
     expect(groupKeyToCondition(name, "Asha", registry)).toEqual({ columnId: "name", operator: "is", value: "Asha" });
   });
 
-  it("link uses 'is' with the link's id as value", () => {
+  it("link (LinkRef[]) uses 'is' with the id for one link, 'isAnyOf' with the ids for several", () => {
     const program = byId.get("program")!;
-    expect(groupKeyToCondition(program, { id: "prog-1", label: "Program 1" }, registry)).toEqual({
+    expect(groupKeyToCondition(program, [{ id: "prog-1", label: "Program 1" }], registry)).toEqual({
       columnId: "program",
       operator: "is",
       value: "prog-1",
+    });
+    expect(
+      groupKeyToCondition(
+        program,
+        [
+          { id: "prog-1", label: "Program 1" },
+          { id: "prog-2", label: "Program 2" },
+        ],
+        registry,
+      ),
+    ).toEqual({ columnId: "program", operator: "isAnyOf", value: ["prog-1", "prog-2"] });
+  });
+
+  it("user (UserRef) uses 'is' with the user id", () => {
+    const owner = byId.get("owner")!;
+    expect(groupKeyToCondition(owner, { id: "u-agent", name: "Agent" }, registry)).toEqual({
+      columnId: "owner",
+      operator: "is",
+      value: "u-agent",
     });
   });
 
@@ -73,10 +92,10 @@ describe("groupKeyToCondition", () => {
   it("uses PAYMENT_OPTIONS values as-is (no label translation)", () => {
     const payment = byId.get("payment")!;
     for (const opt of PAYMENT_OPTIONS) {
-      expect(groupKeyToCondition(payment, opt.value, registry)).toEqual({
+      expect(groupKeyToCondition(payment, opt.id, registry)).toEqual({
         columnId: "payment",
         operator: "is",
-        value: opt.value,
+        value: opt.id,
       });
     }
   });

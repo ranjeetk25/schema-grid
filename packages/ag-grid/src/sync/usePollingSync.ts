@@ -112,7 +112,8 @@ export function usePollingSync<Row extends GridRow>(
     const getChanges = dataSourceRef.current.getChanges;
     if (!getChanges) return Promise.resolve();
 
-    const promise = getChanges(cursorRef.current)
+    // core's getChanges takes a string cursor; "" = from the beginning.
+    const promise = getChanges(cursorRef.current ?? "")
       .then((entry) => {
         if (activeGenerationRef.current !== gen) return; // stale: discard
         cursorRef.current = entry.cursor;

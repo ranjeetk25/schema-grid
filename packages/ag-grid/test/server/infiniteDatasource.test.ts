@@ -21,6 +21,10 @@ function call(ds: { getRows(p: IGetRowsParams): void }, startRow: number, endRow
   });
 }
 
+// core's in-memory source encodes offset cursors as "sgm:<base36 offset>".
+const C10 = "sgm:a";
+const C20 = "sgm:k";
+
 const baseQuery = (): Omit<GridQuery, "page"> => ({ filter: null, sort: [] });
 
 describe("createCursorCache", () => {
@@ -46,6 +50,7 @@ describe("createInfiniteDatasource — offset mode", () => {
       filter: { columnId: "score", operator: "gte", value: 0 },
       sort: [{ columnId: "score", dir: "desc" }],
       search: "n",
+      includeTotal: true,
     };
     const onRows = vi.fn();
     const adapter = createInfiniteDatasource({ dataSource: ds, getQuery: () => query, pageMode: "offset", blockSize: 10, onRows });
@@ -59,7 +64,7 @@ describe("createInfiniteDatasource — offset mode", () => {
 
   it("lastRow from a short page when total is absent, unknown otherwise", async () => {
     const fetch = vi.fn(async (q: GridQuery): Promise<QueryResult> => {
-      const off = "offset" in q.page ? q.page.offset : 0;
+      const off = q.page.offset ?? 0;
       return { rows: rows.slice(off, off + q.page.limit) };
     });
     const adapter = createInfiniteDatasource({ dataSource: { fetch } as unknown as DataSource, getQuery: baseQuery, pageMode: "offset", blockSize: 10 });
@@ -69,15 +74,15 @@ describe("createInfiniteDatasource — offset mode", () => {
 });
 
 describe("createInfiniteDatasource — cursor mode", () => {
-  it("block 0 uses a null cursor; block 1 uses block 0's nextCursor", async () => {
+  it("block 0 is requested by offset 0 (core cursors are strings); block 1 uses block 0's nextCursor", async () => {
     const ds = createInMemoryDataSource(fixtureSchema, rows);
     const adapter = createInfiniteDatasource({ dataSource: ds, getQuery: baseQuery, pageMode: "cursor", blockSize: 10 });
     const first = await call(adapter, 0, 10);
     expect(first).toMatchObject({ ok: true, lastRow: undefined });
     await call(adapter, 10, 20);
     expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
-      { cursor: null, limit: 10 },
-      { cursor: "10", limit: 10 },
+      { offset: 0, limit: 10 },
+      { cursor: C10, limit: 10 },
     ]);
   });
 
@@ -87,9 +92,9 @@ describe("createInfiniteDatasource — cursor mode", () => {
     const adapter = createInfiniteDatasource({ dataSource: ds, getQuery: baseQuery, pageMode: "cursor", blockSize: 10, onRows });
     const res = await call(adapter, 20, 30);
     expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
-      { cursor: null, limit: 10 },
-      { cursor: "10", limit: 10 },
-      { cursor: "20", limit: 10 },
+      { offset: 0, limit: 10 },
+      { cursor: C10, limit: 10 },
+      { cursor: C20, limit: 10 },
     ]);
     expect(onRows.mock.calls.map((c) => [(c[0] as GridRow[]).length, c[1]])).toEqual([
       [10, 0],
@@ -98,7 +103,8 @@ describe("createInfiniteDatasource — cursor mode", () => {
     ]);
     // lastRow is known because block 2 has no nextCursor
     expect(res).toMatchObject({ ok: true, lastRow: 25 });
-    if (res.ok) expect((res.rows as GridRow[]).map((r) => r.id)).toEqual(["r20", "r21", "r22", "r23", "r24"]);
+    // core orders unsorted rows by id in code-unit order (r0, r1, r10…r19, r2, r20…r24, r3…r9).
+    if (res.ok) expect((res.rows as GridRow[]).map((r) => r.id)).toEqual(["r5", "r6", "r7", "r8", "r9"]);
   });
 
   it("reuses cached cursors on a later jump", async () => {
@@ -108,8 +114,8 @@ describe("createInfiniteDatasource — cursor mode", () => {
     ds.calls.fetch.mockClear();
     await call(adapter, 20, 30);
     expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
-      { cursor: "10", limit: 10 },
-      { cursor: "20", limit: 10 },
+      { cursor: C10, limit: 10 },
+      { cursor: C20, limit: 10 },
     ]);
   });
 
@@ -128,8 +134,8 @@ describe("createInfiniteDatasource — cursor mode", () => {
     ds.calls.fetch.mockClear();
     await call(adapter, 10, 20);
     expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
-      { cursor: null, limit: 10 },
-      { cursor: "10", limit: 10 },
+      { offset: 0, limit: 10 },
+      { cursor: C10, limit: 10 },
     ]);
 
     // a query change is detected even without an explicit reset
@@ -137,8 +143,8 @@ describe("createInfiniteDatasource — cursor mode", () => {
     ds.calls.fetch.mockClear();
     await call(adapter, 10, 20);
     expect(ds.calls.fetch.mock.calls.map((c) => (c[0] as GridQuery).page)).toEqual([
-      { cursor: null, limit: 10 },
-      { cursor: "10", limit: 10 },
+      { offset: 0, limit: 10 },
+      { cursor: C10, limit: 10 },
     ]);
     expect((ds.calls.fetch.mock.calls[0]?.[0] as GridQuery).sort).toEqual(query.sort);
   });

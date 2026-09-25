@@ -2,8 +2,9 @@ import {
   DEFAULT_TZ,
   dependencies,
   evaluate,
-  FormulaError,
+  formulaError,
   isFormulaError,
+  type FormulaError,
   parseFormula,
   type ColumnDef,
   type FormulaAst,
@@ -40,9 +41,10 @@ export function formulaValueGetter<Row extends GridRow>(
     if (cache.has(row)) return cache.get(row);
     let value: unknown;
     try {
+      // core `evaluate` returns errors as values; the catch is defensive only.
       value = evaluate(parsed, row, schema, env);
     } catch (e) {
-      value = e instanceof FormulaError ? e : new FormulaError(e instanceof Error ? e.message : String(e));
+      value = formulaError(e instanceof Error ? e.message : String(e));
     }
     cache.set(row, value);
     return value;

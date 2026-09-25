@@ -337,14 +337,15 @@ describe("createPopupEditor", () => {
 describe("LongTextEditor", () => {
   const column = col({ id: "notes", type: "longText" });
 
-  it("is a popup textarea whose typed text round-trips through parse (keeps whitespace)", () => {
+  it("is a popup textarea whose typed text round-trips through core parse (keeps inner newlines)", () => {
     const props = makeProps(column, "hello");
     render(<LongTextEditor {...props} />);
     const area = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(area.tagName).toBe("TEXTAREA");
     expect(area.value).toBe("hello");
     fireEvent.change(area, { target: { value: " line1\nline2 " } });
-    expect(lastValue(props)).toBe(" line1\nline2 ");
+    // core longText parse trims the ends but keeps the newline
+    expect(lastValue(props)).toBe("line1\nline2");
   });
 
   it("Enter commits via stopEditing; Shift+Enter does not", () => {

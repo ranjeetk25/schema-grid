@@ -15,15 +15,15 @@ export function col(partial: Partial<ColumnDef> & { id: string; type: FieldTypeI
 }
 
 export const PAYMENT_OPTIONS = [
-  { value: "paid", label: "Paid" },
-  { value: "pending", label: "Pending" },
-  { value: "failed", label: "Failed" },
+  { id: "paid", label: "Paid" },
+  { id: "pending", label: "Pending" },
+  { id: "failed", label: "Failed" },
 ];
 
 export const TAG_OPTIONS = [
-  { value: "hot", label: "Hot" },
-  { value: "warm", label: "Warm" },
-  { value: "cold", label: "Cold" },
+  { id: "hot", label: "Hot" },
+  { id: "warm", label: "Warm" },
+  { id: "cold", label: "Cold" },
 ];
 
 /** One column per built-in type, plus permission variants. Column id === key. */
@@ -38,7 +38,7 @@ export const fixtureColumns: ColumnDef[] = [
   col({ id: "payment", type: "select", label: "Payment status", config: { options: PAYMENT_OPTIONS } }, 7),
   col({ id: "tags", type: "multiSelect", label: "Tags", config: { options: TAG_OPTIONS } }, 8),
   col({ id: "source", type: "creatableSelect", label: "Source", config: { options: [] } }, 9),
-  col({ id: "owner", type: "user", label: "Owner", config: { options: [] } }, 10),
+  col({ id: "owner", type: "user", label: "Owner" }, 10),
   col({ id: "website", type: "url", label: "Website" }, 11),
   col({ id: "email", type: "email", label: "Email" }, 12),
   col({ id: "phone", type: "phone", label: "Phone" }, 13),
@@ -74,7 +74,7 @@ export const fixtureRows: GridRow[] = [
     callDate: "2026-09-24",
     payment: "paid",
     tags: ["hot"],
-    owner: "u-agent",
+    owner: { id: "u-agent", name: "Agent" },
     email: "asha@example.com",
     salary: 50,
     status: "open",
@@ -87,10 +87,10 @@ export const fixtureRows: GridRow[] = [
     callDate: "2026-09-23",
     payment: "pending",
     tags: ["warm", "cold"],
-    owner: "u-admin",
+    owner: { id: "u-admin", name: "Admin" },
     salary: 70,
     status: "closed",
   }),
   row("r3", { name: "Chitra", score: null, payment: null, callDate: "2026-09-24", tags: [], status: "open" }),
-  row("r4", { name: "Dev", score: 20, payment: "failed", callDate: null, active: true, owner: "u-agent" }),
+  row("r4", { name: "Dev", score: 20, payment: "failed", callDate: null, active: true, owner: { id: "u-agent", name: "Agent" } }),
 ];

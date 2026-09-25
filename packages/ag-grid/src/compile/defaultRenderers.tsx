@@ -87,7 +87,7 @@ export function MultiSelectRenderer<Row extends GridRow = GridRow>(props: Schema
   return (
     <>
       {values.map((v) => {
-        const label = options.find((o) => o.value === v)?.label ?? v;
+        const label = options.find((o) => o.id === v)?.label ?? v;
         return (
           <span className="sg-chip" key={v}>
             {label}

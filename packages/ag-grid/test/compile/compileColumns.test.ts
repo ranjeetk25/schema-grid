@@ -3,7 +3,6 @@ import type { ColDef, EditableCallbackParams, ValueGetterParams } from "ag-grid-
 import {
   createDefaultRegistry,
   createRolePermissionResolver,
-  FormulaError,
   isFormulaError,
   resolveColumnAccess,
   type Access,
@@ -154,7 +153,7 @@ describe("compileColumns", () => {
       pageSize: 50,
       columnState: [
         { id: "name", hidden: true, width: 300, pinned: "right", order: 99 },
-        { id: "score", hidden: false, pinned: "left", order: -1 },
+        { id: "score", hidden: false, width: 120, pinned: "left", order: -1 },
       ],
     };
     const defs = compileColumns(fixtureSchema, adminAccess, registry, ui, { view });
@@ -206,6 +205,7 @@ describe("compileFormulaColumns", () => {
       col({ id: "dbl", type: "formula", formula: "{sumKey} * 2", config: { resultType: "number" } }),
       col({ id: "div", type: "formula", formula: "{a} / {b}", config: { resultType: "number" } }),
       col({ id: "bad", type: "formula", formula: "(", config: { resultType: "number" } }),
+      col({ id: "missing", type: "formula", formula: "{nope} + 1", config: { resultType: "number" } }),
     ],
   };
 
@@ -226,14 +226,17 @@ describe("compileFormulaColumns", () => {
 
   it("records parse errors and the getter returns the error instead of throwing", () => {
     const f = compileFormulaColumns<GridRow>(schema, env);
-    expect(f.errors.get("bad")).toBeInstanceOf(FormulaError);
+    expect(isFormulaError(f.errors.get("bad"))).toBe(true);
+    expect(f.errors.get("bad")?.code).toBe("syntax");
     expect(isFormulaError(f.getters.get("bad")?.(row("r1", {})))).toBe(true);
   });
 
-  it("returns runtime errors as FormulaError values", () => {
+  it("returns runtime errors as FormulaError values (core evaluate never throws)", () => {
     const f = compileFormulaColumns<GridRow>(schema, env);
-    const v = f.getters.get("div")?.(row("r1", { a: 1, b: 0 }));
+    const v = f.getters.get("missing")?.(row("r1", { a: 1 }));
     expect(isFormulaError(v)).toBe(true);
+    // core: division by zero is null, not an error
+    expect(f.getters.get("div")?.(row("r1", { a: 1, b: 0 }))).toBeNull();
   });
 
   it("memoises per row object; a new row object recomputes", () => {
@@ -267,8 +270,8 @@ describe("review follow-ups", () => {
       groupBy: [],
       pageSize: 50,
       columnState: [
-        { id: "z", hidden: false, pinned: null, order: 5 },
-        { id: "y", hidden: false, pinned: null, order: 6 },
+        { id: "z", hidden: false, width: 100, pinned: null, order: 5 },
+        { id: "y", hidden: false, width: 100, pinned: null, order: 6 },
       ],
     };
     const defs = compileColumns(schema, access, registry, ui, { view });

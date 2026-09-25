@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { GridRow, LinkRef, Option } from "../internal/core";
+import type { GridRow, LinkRef, Option, UserRef } from "../internal/core";
 import { getSchemaGridContext } from "../grid/gridContext";
 import { createPopupEditor, type PopupEditorInnerProps } from "./createPopupEditor";
 import { columnOptions } from "./SelectEditor";
 
 /** `cellEditorParams` the combobox understands (AG Grid spreads them into the editor props). */
 export interface ComboboxEditorParams {
-  /** Select several values (stored as an array). Default: `config.multiple === true`. */
+  /**
+   * Select several values (stored as an array). Default: link → `config.multiple`
+   * (core default true); otherwise `config.multiple === true`.
+   */
   multiple?: boolean;
   /** Offer a "Create “x”" row. Default: true for creatableSelect, else false. */
   creatable?: boolean;
@@ -16,7 +19,8 @@ export interface ComboboxEditorParams {
   debounceMs?: number;
 }
 
-type StoredValue = string | LinkRef;
+/** Option id (select-likes), `UserRef` (user) or `LinkRef` (link). */
+type StoredValue = string | UserRef | LinkRef;
 
 interface Item {
   key: string;
@@ -28,18 +32,16 @@ type Entry = { kind: "item"; item: Item } | { kind: "create"; label: string };
 
 const DEFAULT_DEBOUNCE_MS = 150;
 
-function isOption(x: Option | LinkRef): x is Option {
-  return typeof (x as Partial<Option>).value === "string";
-}
-
-function toItem(x: Option | LinkRef): Item {
-  if (isOption(x)) return { key: x.value, label: x.label, value: x.value };
-  return { key: x.id, label: x.label, value: { id: x.id, label: x.label } };
+/** Core value shape per column type: user → UserRef, link → LinkRef, else the option id. */
+function toItem(x: Option | LinkRef, columnType: string | undefined): Item {
+  if (columnType === "link") return { key: x.id, label: x.label, value: { id: x.id, label: x.label } };
+  if (columnType === "user") return { key: x.id, label: x.label, value: { id: x.id, name: x.label } };
+  return { key: x.id, label: x.label, value: x.id };
 }
 
 function keyOf(v: unknown): string | undefined {
   if (typeof v === "string") return v;
-  if (v && typeof v === "object" && typeof (v as Partial<LinkRef>).id === "string") return (v as LinkRef).id;
+  if (v && typeof v === "object" && typeof (v as { id?: unknown }).id === "string") return (v as { id: string }).id;
   return undefined;
 }
 
@@ -54,7 +56,11 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
   const columnId = schemaColumn?.id ?? editorProps.column?.getColId?.() ?? "";
   const columnType = schemaColumn?.type;
   const config = schemaColumn?.config ?? fieldType?.defaultConfig;
-  const multiple = props.multiple ?? (config as { multiple?: unknown } | undefined)?.multiple === true;
+  const configMultiple = (config as { multiple?: unknown } | null | undefined)?.multiple;
+  const isLink = columnType === "link";
+  const multiple = props.multiple ?? (isLink ? configMultiple !== false : configMultiple === true);
+  // Link values are always `LinkRef[]` in core, even when only one is allowed.
+  const arrayValued = multiple || isLink;
   const creatable = props.creatable ?? columnType === "creatableSelect";
   const debounceMs = props.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const gridContext = getSchemaGridContext(editorProps.context);
@@ -89,7 +95,7 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
           raw = columnOptions(cfg).filter((o) => o.label.toLowerCase().includes(s));
         }
         if (request !== requestRef.current) return;
-        setItems(raw.map(toItem));
+        setItems(raw.map((x) => toItem(x, type)));
         setActive(multiple ? -1 : 0);
       } catch {
         if (request === requestRef.current) setItems([]);
@@ -127,16 +133,16 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
   }, [items, creatable, trimmed]);
 
   const selectedKeys = useMemo(() => {
-    if (multiple) return new Set((Array.isArray(props.value) ? props.value : []).map(keyOf).filter((k): k is string => !!k));
+    if (arrayValued) return new Set((Array.isArray(props.value) ? props.value : []).map(keyOf).filter((k): k is string => !!k));
     const k = keyOf(props.value);
     return new Set(k ? [k] : []);
-  }, [multiple, props.value]);
+  }, [arrayValued, props.value]);
 
   const currentList = (): StoredValue[] => (Array.isArray(props.value) ? (props.value as StoredValue[]) : []);
 
   const choose = (item: Item): void => {
     if (!multiple) {
-      props.commit(item.value);
+      props.commit(arrayValued ? [item.value] : item.value);
       return;
     }
     const list = currentList();
@@ -149,16 +155,16 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
     setCreating(true);
     const ds = gridContext?.dataSource;
     try {
-      const option: Option = ds?.createOption ? await ds.createOption(columnId, label) : { value: label, label };
+      const option: Option = ds?.createOption ? await ds.createOption(columnId, label) : { id: label, label };
       gridContext?.events()?.onOptionCreate?.(columnId, option);
-      const item = toItem(option);
+      const item = toItem(option, columnType);
       setItems((prev) => (prev.some((i) => i.key === item.key) ? prev : [...prev, item]));
       if (multiple) {
         setSearch("");
         const list = currentList();
         props.onChange(selectedKeys.has(item.key) ? list : [...list, item.value]);
       } else {
-        props.commit(item.value);
+        props.commit(arrayValued ? [item.value] : item.value);
       }
     } finally {
       setCreating(false);
@@ -266,7 +272,8 @@ const comboboxPopup = createPopupEditor<unknown, GridRow, ComboboxEditorParams>(
  * Community replacement for a rich select). Options come from
  * `cellEditorParams.loadOptions`, else `dataSource.lookup` (link) /
  * `dataSource.getOptions`, else static `config.options`; the data source is
- * read from AG Grid's `context` (`SchemaGridContext`). Link values are stored
- * as `LinkRef`, everything else as the option's `value`.
+ * read from AG Grid's `context` (`SchemaGridContext`). Values follow core's
+ * shapes: link → `LinkRef[]` (always an array), user → `UserRef {id, name}`,
+ * everything else → the option id (an array of ids when `multiple`).
  */
 export const ComboboxEditor = comboboxPopup.component;

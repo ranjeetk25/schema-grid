@@ -47,7 +47,7 @@ export function buildCopyMatrix<Row extends GridRow>(
       }
       const fieldType = effectiveFieldType(registry, column);
       const value = options.getCellValue ? options.getCellValue(row, column) : row.cells[column.key];
-      line.push(fieldType ? fieldType.format(value as never, (column.config ?? fieldType.defaultConfig) as never) : String(value ?? ""));
+      line.push(fieldType ? fieldType.format(value, column.config ?? fieldType.defaultConfig) : String(value ?? ""));
     }
     matrix.push(line);
   }

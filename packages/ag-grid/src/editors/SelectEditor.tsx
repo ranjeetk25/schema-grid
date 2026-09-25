@@ -41,7 +41,7 @@ export function SelectEditor<Row extends GridRow = GridRow>(props: SchemaCellEdi
     >
       <option value="" />
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.id} value={o.id}>
           {o.label}
         </option>
       ))}

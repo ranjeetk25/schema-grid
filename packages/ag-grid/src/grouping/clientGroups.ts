@@ -3,7 +3,7 @@
  * into a flat list of display rows interleaving group headers with data
  * rows, honouring the current expansion state.
  */
-import type { ColumnDef, FieldType, FieldTypeRegistry, GridRow, GridSchema, GroupSpec } from "../internal/core";
+import type { AnyFieldType, ColumnDef, FieldTypeRegistry, GridRow, GridSchema, GroupSpec } from "../internal/core";
 import { computeAggregate, effectiveFieldType, isEmptyValue } from "../internal/core";
 
 export interface GroupPathEntry {
@@ -70,10 +70,15 @@ function readGroupValue(row: GridRow, column: ColumnDef, ctx: BuildClientGroupsC
   return ctx.getCellValue ? ctx.getCellValue(row, column) : row.cells[column.key];
 }
 
+function refId(v: unknown): string {
+  if (v && typeof v === "object" && "id" in v) return String((v as { id: unknown }).id);
+  return String(v);
+}
+
 function bucketOf<Row extends GridRow>(
   raw: unknown,
   column: ColumnDef,
-  fieldType: FieldType<unknown, unknown> | undefined,
+  fieldType: AnyFieldType | undefined,
 ): { key: unknown; dedupKey: string; label: string } {
   if (isEmptyValue(raw)) {
     return { key: null, dedupKey: EMPTY_DEDUP_KEY, label: EMPTY_LABEL };
@@ -84,10 +89,14 @@ function bucketOf<Row extends GridRow>(
     return { key: raw, dedupKey: `ms:${formatted}`, label: formatted };
   }
   if (fieldType?.id === "link") {
-    const linkRef = raw as { id?: unknown; label?: unknown } | null;
-    const id = linkRef && typeof linkRef === "object" ? String(linkRef.id) : String(raw);
-    const label = fieldType.format(raw, config);
-    return { key: raw, dedupKey: `id:${id}`, label };
+    // core link values are `LinkRef[]`; bucket by the joined ids.
+    const refs = Array.isArray(raw) ? raw : [raw];
+    const ids = refs.map(refId).join(",");
+    return { key: raw, dedupKey: `link:${ids}`, label: fieldType.format(Array.isArray(raw) ? raw : [raw], config) };
+  }
+  if (fieldType?.id === "user") {
+    // core user values are `UserRef {id, name?}`; bucket by id.
+    return { key: raw, dedupKey: `user:${refId(raw)}`, label: fieldType.format(raw, config) };
   }
   if (fieldType) {
     return { key: raw, dedupKey: `v:${String(raw)}`, label: fieldType.format(raw, config) };
@@ -98,7 +107,7 @@ function bucketOf<Row extends GridRow>(
 function bucketRows<Row extends GridRow>(
   rows: Row[],
   column: ColumnDef,
-  fieldType: FieldType<unknown, unknown> | undefined,
+  fieldType: AnyFieldType | undefined,
   ctx: BuildClientGroupsContext,
 ): Bucket<Row>[] {
   const buckets: Bucket<Row>[] = [];
@@ -149,7 +158,11 @@ function buildLevel<Row extends GridRow>(
       const aggColumn = columnsById.get(aggSpec.columnId);
       if (!aggColumn) continue;
       const values = bucket.rows.map((r) => readGroupValue(r, aggColumn, ctx));
-      aggregates[`${aggSpec.columnId}:${aggSpec.agg}`] = computeAggregate(values, aggSpec.agg);
+      const aggType = effectiveFieldType(ctx.registry, aggColumn) ?? ctx.registry.get("text");
+      if (!aggType) continue;
+      // Formula columns aggregate through their result type (its default config).
+      const aggConfig = aggColumn.type === "formula" ? aggType.defaultConfig : (aggColumn.config ?? aggType.defaultConfig);
+      aggregates[`${aggSpec.columnId}:${aggSpec.agg}`] = computeAggregate(aggSpec.agg, values, aggType, aggConfig);
     }
 
     const expanded = expansion.isExpanded(id);

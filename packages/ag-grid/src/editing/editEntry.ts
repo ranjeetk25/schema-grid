@@ -33,7 +33,11 @@ export interface EditRequestHandlerOptions<Row extends GridRow = GridRow> {
   parseValue?(value: unknown, column: ColumnDef): unknown;
 }
 
-/** Types whose stored value is itself a string — a string newValue is already typed. */
+/**
+ * Types whose stored value is itself a string — a string newValue is already
+ * typed. (`user` is not: core stores `UserRef {id, name?}`, so a string is
+ * parsed into one; `link` stores `LinkRef[]`.)
+ */
 const STRING_VALUED_TYPES: ReadonlySet<FieldTypeId> = new Set<FieldTypeId>([
   "text",
   "longText",
@@ -42,7 +46,6 @@ const STRING_VALUED_TYPES: ReadonlySet<FieldTypeId> = new Set<FieldTypeId>([
   "phone",
   "select",
   "creatableSelect",
-  "user",
   "date",
   "datetime",
 ]);

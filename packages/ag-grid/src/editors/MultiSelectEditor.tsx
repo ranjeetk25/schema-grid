@@ -16,7 +16,7 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
 
   const toNext = (value: string, checked: boolean): string[] | null => {
     // Keep option order stable regardless of click order.
-    const next = options.map((o) => o.value).filter((v) => (v === value ? checked : selected.has(v)));
+    const next = options.map((o) => o.id).filter((v) => (v === value ? checked : selected.has(v)));
     const result = parseEditorInput(next, schemaColumn, fieldType);
     const parsed = result.ok ? (result.value as string[] | null) : next;
     return parsed && parsed.length > 0 ? parsed : null;
@@ -40,8 +40,8 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
       }}
     >
       {options.map((o) => (
-        <label key={o.value} className="sg-multi-select-option">
-          <input type="checkbox" checked={selected.has(o.value)} onChange={(e) => props.onChange(toNext(o.value, e.target.checked))} />
+        <label key={o.id} className="sg-multi-select-option">
+          <input type="checkbox" checked={selected.has(o.id)} onChange={(e) => props.onChange(toNext(o.id, e.target.checked))} />
           {o.label}
         </label>
       ))}

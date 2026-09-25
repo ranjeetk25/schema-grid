@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultRegistry, type GridRow } from "../../src/internal/core";
 import { buildClientGroups, isDataRow, isGroupRow } from "../../src/grouping/clientGroups";
 import { createExpansionStore } from "../../src/state/expansionStore";
-import { fixtureRows, fixtureSchema } from "../fixtures/schema";
+import { fixtureRows, fixtureSchema, row } from "../fixtures/schema";
 
 const registry = createDefaultRegistry();
 const ctx = { schema: fixtureSchema, registry };
@@ -110,5 +110,32 @@ describe("buildClientGroups", () => {
     expect(labels).toContain("(empty)"); // r3 has [], r4 has undefined tags
     const emptyGroup = groups.find((g) => g.label === "(empty)")!;
     expect(emptyGroup.count).toBe(2);
+  });
+
+  it("groups user (UserRef) cells by id with the name as label", () => {
+    const rows = [
+      row("a", { owner: { id: "u-1", name: "Asha" } }),
+      row("b", { owner: { id: "u-2", name: "Ravi" } }),
+      row("c", { owner: { id: "u-1", name: "Asha" } }),
+    ];
+    const out = buildClientGroups(rows, [{ columnId: "owner" }], createExpansionStore(), ctx);
+    const groups = out.filter(isGroupRow);
+    expect(groups.map((g) => [g.label, g.count])).toEqual([
+      ["Asha", 2],
+      ["Ravi", 1],
+    ]);
+    expect(groups[0]!.key).toEqual({ id: "u-1", name: "Asha" });
+  });
+
+  it("groups link (LinkRef[]) cells by their joined ids", () => {
+    const p1 = { id: "p-1", label: "Data" };
+    const p2 = { id: "p-2", label: "Web" };
+    const rows = [row("a", { program: [p1] }), row("b", { program: [p1, p2] }), row("c", { program: [{ ...p1 }] })];
+    const out = buildClientGroups(rows, [{ columnId: "program" }], createExpansionStore(), ctx);
+    const groups = out.filter(isGroupRow);
+    expect(groups.map((g) => [g.label, g.count])).toEqual([
+      ["Data", 2],
+      ["Data, Web", 1],
+    ]);
   });
 });

@@ -16,7 +16,7 @@ import { ADMIN, AGENT, fixtureRows, fixtureSchema } from "../fixtures/schema";
 
 const registry = createDefaultRegistry();
 const ui = createDefaultUiRegistry();
-const roleResolver = createRolePermissionResolver<GridRow>();
+const roleResolver = createRolePermissionResolver();
 
 function compile(user: GridUser, resolver: PermissionResolver<GridRow> = roleResolver): ColDef<GridRow>[] {
   const access = resolveColumnAccess(fixtureSchema, resolver, user);

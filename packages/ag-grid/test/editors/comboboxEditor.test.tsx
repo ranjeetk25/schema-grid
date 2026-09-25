@@ -26,13 +26,14 @@ import type { SchemaGridContext } from "../../src/grid/gridContext";
 const registry = createDefaultRegistry();
 
 const SOURCE_OPTIONS: Option[] = [
-  { value: "google", label: "Google" },
-  { value: "facebook", label: "Facebook" },
-  { value: "referral", label: "Referral" },
+  { id: "google", label: "Google" },
+  { id: "facebook", label: "Facebook" },
+  { id: "referral", label: "Referral" },
 ];
+/** Users offered as core `Option`s by `getOptions` (core's in-memory source reads them off `config.options`). */
 const USERS: Option[] = [
-  { value: "u-1", label: "Asha" },
-  { value: "u-2", label: "Ravi" },
+  { id: "u-1", label: "Asha" },
+  { id: "u-2", label: "Ravi" },
 ];
 const PROGRAMS: LinkRef[] = [
   { id: "p-1", label: "Data Science" },
@@ -40,8 +41,9 @@ const PROGRAMS: LinkRef[] = [
 ];
 
 const sourceCol = col({ id: "source", type: "creatableSelect", label: "Source", config: { options: SOURCE_OPTIONS } });
-const ownerCol = col({ id: "owner", type: "user", label: "Owner", config: { options: [] } });
+const ownerCol = col({ id: "owner", type: "user", label: "Owner", config: { options: USERS } });
 const programCol = col({ id: "program", type: "link", label: "Program" });
+const singleProgramCol = col({ id: "program", type: "link", label: "Program", config: { target: "programs", multiple: false } });
 const tagsCol = col({ id: "tags", type: "creatableSelect", label: "Tags", config: { options: SOURCE_OPTIONS } });
 
 const schema: GridSchema = {
@@ -57,7 +59,7 @@ function setup(
   value: unknown,
   extra: Record<string, unknown> = {},
 ): { props: Props; ds: InMemoryDataSource; events: SchemaGridEvents } {
-  const ds = createInMemoryDataSource(schema, [], { options: { owner: USERS }, links: { program: PROGRAMS } });
+  const ds = createInMemoryDataSource(schema, [], { links: { program: PROGRAMS } });
   const events: SchemaGridEvents = { onOptionCreate: vi.fn() };
   const context: SchemaGridContext = { dataSource: ds, events: () => events };
   const props = {
@@ -217,8 +219,11 @@ describe("ComboboxEditor", () => {
     fireEvent.click(create as HTMLElement);
     await flush();
     expect(ds.calls.createOption).toHaveBeenCalledWith("source", "Newsletter");
-    expect(events.onOptionCreate).toHaveBeenCalledWith("source", { value: "newsletter", label: "Newsletter" });
-    expect(lastValue(props)).toBe("newsletter");
+    const created = (await ds.calls.createOption.mock.results[0]?.value) as Option;
+    expect(created.label).toBe("Newsletter");
+    expect(events.onOptionCreate).toHaveBeenCalledWith("source", created);
+    // the stored value is the new option's id
+    expect(lastValue(props)).toBe(created.id);
     expect(props.stopEditing).toHaveBeenCalled();
   });
 
@@ -232,7 +237,7 @@ describe("ComboboxEditor", () => {
     expect(optionLabels()[0]).toBe("Referral");
   });
 
-  it("user type uses getOptions and stores the option value", async () => {
+  it("user type uses getOptions and stores a core UserRef", async () => {
     const { props, ds } = setup(ownerCol, null);
     render(<ComboboxEditor {...props} />);
     await flush();
@@ -240,22 +245,37 @@ describe("ComboboxEditor", () => {
     expect(optionLabels()).toEqual(["Asha", "Ravi"]);
     await type("ra");
     fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
-    expect(lastValue(props)).toBe("u-2");
+    expect(lastValue(props)).toEqual({ id: "u-2", name: "Ravi" });
   });
 
-  it("link type uses lookup and stores a LinkRef", async () => {
-    const { props, ds } = setup(programCol, null);
+  it("link type uses lookup and is multiple by default, storing LinkRef[]", async () => {
+    const { props, ds } = setup(programCol, [{ id: "p-1", label: "Data Science" }]);
     render(<ComboboxEditor {...props} />);
     await flush();
+    expect(screen.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
     await type("web");
     expect(ds.calls.lookup).toHaveBeenLastCalledWith("program", "web");
     expect(optionLabels()).toEqual(["Web Development"]);
     fireEvent.click(screen.getByRole("option"));
-    expect(lastValue(props)).toEqual({ id: "p-2", label: "Web Development" });
+    expect(lastValue(props)).toEqual([
+      { id: "p-1", label: "Data Science" },
+      { id: "p-2", label: "Web Development" },
+    ]);
+    expect(props.stopEditing).not.toHaveBeenCalled();
+  });
+
+  it("single link (config.multiple false) commits a one-element LinkRef[]", async () => {
+    const { props } = setup(singleProgramCol, null);
+    render(<ComboboxEditor {...props} />);
+    await flush();
+    await type("web");
+    fireEvent.click(screen.getByRole("option"));
+    expect(lastValue(props)).toEqual([{ id: "p-2", label: "Web Development" }]);
+    expect(props.stopEditing).toHaveBeenCalled();
   });
 
   it("cellEditorParams.loadOptions overrides the data source", async () => {
-    const loadOptions = vi.fn(async (search: string) => [{ value: "x", label: `X ${search}` }]);
+    const loadOptions = vi.fn(async (search: string) => [{ id: "x", label: `X ${search}` }]);
     const { props, ds } = setup(ownerCol, null, { loadOptions });
     render(<ComboboxEditor {...props} />);
     await flush();

@@ -1,207 +1,223 @@
 /**
- * Tests for the local core stand-ins in src/internal/core.ts.
- * TODO(core): delete once the real core ships (core owns these semantics).
+ * Tests for the ADAPTER / LOCAL pieces of the core facade (src/internal/core.ts)
+ * and the in-memory data source fixture wrapper. Core's own semantics
+ * (filters, formulas, field types, relative dates, permissions) are tested in
+ * @masai/schema-grid-core; here we only check that our adapters agree with it.
  */
 import { describe, expect, it } from "vitest";
 import {
+  type ColumnDef,
   type FilterNode,
+  type GridRow,
+  type SortSpec,
   createDefaultRegistry,
-  createRolePermissionResolver,
-  computeAggregate,
-  dependencies,
-  evaluate,
+  effectiveFieldType,
+  formulaError,
   isFormulaError,
   matchesFilter,
-  parseFormula,
-  resolveColumnAccess,
-  resolveRelativeDate,
+  NUMBER_OPERATORS,
+  operatorsFor,
+  searchRows,
   sortRows,
+  TEXT_OPERATORS,
   validateFilter,
 } from "../../src/internal/core";
+import { compileFormulaColumns } from "../../src/compile/formulaColumns";
 import { createInMemoryDataSource } from "../fixtures/dataSource";
-import { ADMIN, AGENT, fixtureRows, fixtureSchema, row } from "../fixtures/schema";
+import { col, fixtureRows, fixtureSchema, row } from "../fixtures/schema";
 
 const registry = createDefaultRegistry();
 const now = new Date("2026-09-25T06:00:00.000Z"); // 11:30 IST, Friday
-const ctx = { schema: fixtureSchema, registry, now, tz: "Asia/Kolkata", user: { id: "u-agent" } };
-const ids = (node: FilterNode) => fixtureRows.filter((r) => matchesFilter(r, node, ctx)).map((r) => r.id);
+const tz = "Asia/Kolkata";
+const byId = new Map(fixtureSchema.columns.map((c) => [c.id, c]));
+const column = (id: string): ColumnDef => {
+  const c = byId.get(id);
+  if (!c) throw new Error(`no column ${id}`);
+  return c;
+};
 
-describe("registry", () => {
-  it("has all 16 built-ins", () => {
-    expect(registry.list()).toHaveLength(16);
-  });
-  it("parse never throws and reports errors", () => {
-    expect(registry.get("number")?.parse("1,234.5", {})).toEqual({ ok: true, value: 1234.5 });
-    expect(registry.get("number")?.parse("abc", {}).ok).toBe(false);
-    expect(registry.get("date")?.parse("25/09/2026", {})).toEqual({ ok: true, value: "2026-09-25" });
-    expect(registry.get("boolean")?.parse("yes", {})).toEqual({ ok: true, value: true });
-    expect(registry.get("select")?.parse("Paid", { options: [{ value: "paid", label: "Paid" }] })).toEqual({
-      ok: true,
-      value: "paid",
-    });
-  });
-  it("fillSeries continues number and date series", () => {
-    expect(registry.get("number")?.fillSeries?.([1, 2], 3)).toEqual([3, 4, 5]);
-    expect(registry.get("date")?.fillSeries?.(["2026-09-01", "2026-09-03"], 2)).toEqual(["2026-09-05", "2026-09-07"]);
-  });
-});
+// Formula values as the grid computes them (fixture rows don't store `total`).
+const formulas = compileFormulaColumns<GridRow>(fixtureSchema, { now, tz });
+const getCellValue = (r: GridRow, c: ColumnDef): unknown =>
+  c.type === "formula" ? formulas.getters.get(c.id)?.(r) : r.cells[c.key];
 
-describe("matchesFilter null semantics", () => {
-  it("negative operators match empty, positive never do", () => {
+describe("matchesFilter adapter", () => {
+  const ctx = { schema: fixtureSchema, registry, now, tz, user: { id: "u-agent" } };
+  const ids = (node: FilterNode | null, c: Parameters<typeof matchesFilter>[2] = ctx) =>
+    fixtureRows.filter((r) => matchesFilter(r, node, c)).map((r) => r.id);
+
+  it("takes (row, node, ctx); a null node matches everything", () => {
+    expect(ids(null)).toEqual(["r1", "r2", "r3", "r4"]);
     expect(ids({ columnId: "payment", operator: "isNot", value: "paid" })).toEqual(["r2", "r3", "r4"]);
-    expect(ids({ columnId: "payment", operator: "is", value: "paid" })).toEqual(["r1"]);
-    expect(ids({ columnId: "score", operator: "neq", value: 10 })).toEqual(["r2", "r3", "r4"]);
-    expect(ids({ columnId: "score", operator: "lt", value: 100 })).toEqual(["r1", "r2", "r4"]);
-    expect(ids({ columnId: "name", operator: "notContains", value: "a" })).toEqual(["r4"]);
-    expect(ids({ columnId: "tags", operator: "hasNoneOf", value: ["hot"] })).toEqual(["r2", "r3", "r4"]);
+  });
+
+  it("maps ctx.user to core's userId for isMe / isNotMe (UserRef cells)", () => {
+    expect(ids({ columnId: "owner", operator: "isMe" })).toEqual(["r1", "r4"]);
     expect(ids({ columnId: "owner", operator: "isNotMe" })).toEqual(["r2", "r3"]);
   });
-  it("isBetween / between are inclusive", () => {
-    expect(ids({ columnId: "score", operator: "between", value: { from: 5, to: 10 } })).toEqual(["r1", "r2"]);
-    expect(ids({ columnId: "callDate", operator: "isBetween", value: { from: "2026-09-23", to: "2026-09-24" } })).toEqual([
-      "r1",
-      "r2",
-      "r3",
-    ]);
+
+  it("defaults now/tz when omitted", () => {
+    const loose = { schema: fixtureSchema, registry };
+    expect(ids({ columnId: "score", operator: "gte", value: 10 }, loose)).toEqual(["r1", "r4"]);
   });
-  it("acceptance: payment is not Paid AND call date within yesterday (IST)", () => {
-    const node: FilterNode = {
-      op: "and",
-      children: [
-        { columnId: "payment", operator: "isNot", value: "paid" },
-        { columnId: "callDate", operator: "isWithin", value: { relative: "yesterday" } },
-      ],
-    };
-    // yesterday = 2026-09-24 → r1 (paid, excluded) and r3 (empty payment, included)
-    expect(ids(node)).toEqual(["r3"]);
+
+  it("feeds getCellValue overrides for formula columns to core", () => {
+    const node: FilterNode = { columnId: "total", operator: "gte", value: 20 };
+    // Without the override the formula cell is absent (empty) → a positive operator never matches.
+    expect(ids(node)).toEqual([]);
+    expect(ids(node, { ...ctx, getCellValue })).toEqual(["r1", "r4"]);
   });
 });
 
-describe("resolveRelativeDate", () => {
-  it("is half-open in Asia/Kolkata", () => {
-    expect(resolveRelativeDate({ relative: "today" }, now)).toEqual({
-      from: "2026-09-24T18:30:00.000Z",
-      to: "2026-09-25T18:30:00.000Z",
-    });
-  });
-  it("weeks start Monday", () => {
-    expect(resolveRelativeDate({ relative: "thisWeek" }, now).from).toBe("2026-09-20T18:30:00.000Z");
-  });
-  it("lastNDays includes today", () => {
-    expect(resolveRelativeDate({ relative: "lastNDays", n: 3 }, now)).toEqual({
-      from: "2026-09-22T18:30:00.000Z",
-      to: "2026-09-25T18:30:00.000Z",
-    });
-  });
-  it("lastMonth", () => {
-    expect(resolveRelativeDate({ relative: "lastMonth" }, now)).toEqual({
-      from: "2026-07-31T18:30:00.000Z",
-      to: "2026-08-31T18:30:00.000Z",
-    });
+describe("validateFilter adapter", () => {
+  const node: FilterNode = {
+    op: "and",
+    children: [
+      { columnId: "nope", operator: "is", value: "x" },
+      { columnId: "salary", operator: "eq", value: 1 },
+    ],
+  };
+
+  it("accepts an array or a Set of readable column ids", () => {
+    const fromArray = validateFilter(node, fixtureSchema, registry, ["name", "payment"]);
+    const fromSet = validateFilter(node, fixtureSchema, registry, new Set(["name", "payment"]));
+    expect(fromArray.map((e) => e.code)).toEqual(["unknownColumn", "unreadableColumn"]);
+    expect(fromSet).toEqual(fromArray);
   });
 });
 
-describe("validateFilter", () => {
-  const readable = ["name", "payment"];
-  it("reports unknown and unreadable columns", () => {
-    const errs = validateFilter(
-      {
-        op: "and",
-        children: [
-          { columnId: "nope", operator: "is" },
-          { columnId: "salary", operator: "eq", value: 1 },
-        ],
-      },
-      fixtureSchema,
+describe("operatorsFor / effectiveFieldType", () => {
+  it("formula columns resolve through config.resultType", () => {
+    const total = column("total"); // resultType: number
+    const ft = effectiveFieldType(registry, total);
+    expect(ft?.id).toBe("number");
+    expect(operatorsFor(registry.get("formula")!, total).map((o) => o.id)).toEqual(NUMBER_OPERATORS.map((o) => o.id));
+    const textFormula = col({ id: "t", type: "formula", formula: "{name}", config: { resultType: "text" } });
+    expect(operatorsFor(registry.get("formula")!, textFormula).map((o) => o.id)).toEqual(TEXT_OPERATORS.map((o) => o.id));
+  });
+
+  it("other columns use their own type", () => {
+    const name = column("name");
+    expect(effectiveFieldType(registry, name)?.id).toBe("text");
+    expect(operatorsFor(registry.get("text")!, name)).toBe(registry.get("text")!.operators);
+  });
+});
+
+describe("sortRows / searchRows parity with core's in-memory data source", () => {
+  const ds = createInMemoryDataSource(fixtureSchema, fixtureRows, { now, tz });
+  const serverIds = async (sort: SortSpec[], search?: string) =>
+    (await ds.fetch({ filter: null, sort, ...(search ? { search } : {}), page: { offset: 0, limit: 100 } })).rows.map((r) => r.id);
+  const localSort = (rows: readonly GridRow[], sort: SortSpec[]) => sortRows(rows, sort, { schema: fixtureSchema, registry, getCellValue });
+
+  const sorts: SortSpec[][] = [
+    [],
+    [{ columnId: "score", dir: "asc" }],
+    [{ columnId: "score", dir: "desc" }],
+    [{ columnId: "payment", dir: "asc" }],
+    [{ columnId: "payment", dir: "desc" }],
+    [{ columnId: "callDate", dir: "desc" }],
+    [{ columnId: "owner", dir: "asc" }],
+    [{ columnId: "tags", dir: "desc" }],
+    [{ columnId: "total", dir: "desc" }],
+    [
+      { columnId: "active", dir: "asc" },
+      { columnId: "score", dir: "desc" },
+    ],
+  ];
+
+  for (const sort of sorts) {
+    it(`sort ${JSON.stringify(sort)}`, async () => {
+      // Shuffle the input so the id tie-break is actually exercised.
+      const input = [...fixtureRows].reverse();
+      expect(localSort(input, sort).map((r) => r.id)).toEqual(await serverIds(sort));
+    });
+  }
+
+  it("empties go last in both directions, ties break by id", () => {
+    const rows = [row("b", { score: 1 }), row("d", { score: null }), row("a", { score: 1 }), row("c", {})];
+    expect(localSort(rows, [{ columnId: "score", dir: "asc" }]).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
+    expect(localSort(rows, [{ columnId: "score", dir: "desc" }]).map((r) => r.id)).toEqual(["a", "b", "c", "d"]);
+    const withTwo = [...rows, row("e", { score: 2 })];
+    expect(localSort(withTwo, [{ columnId: "score", dir: "desc" }]).map((r) => r.id)).toEqual(["e", "a", "b", "c", "d"]);
+  });
+
+  for (const search of ["a", "PAID", "agent", "hot", "2026-09-24", "40", "  "]) {
+    it(`search ${JSON.stringify(search)}`, async () => {
+      const local = searchRows(fixtureRows, search, { schema: fixtureSchema, registry, getCellValue });
+      expect(localSort(local, []).map((r) => r.id)).toEqual(await serverIds([], search));
+    });
+  }
+
+  it("searchRows honours readableColumnIds", () => {
+    const out = searchRows(fixtureRows, "open", {
+      schema: fixtureSchema,
       registry,
-      readable,
-    );
-    expect(errs.map((e) => e.code)).toEqual(["unknownColumn", "unreadableColumn"]);
-  });
-  it("reports depth > 2", () => {
-    const deep: FilterNode = {
-      op: "and",
-      children: [{ op: "or", children: [{ op: "and", children: [{ columnId: "name", operator: "isEmpty" }] }] }],
-    };
-    expect(validateFilter(deep, fixtureSchema, registry, readable).map((e) => e.code)).toEqual(["depthExceeded"]);
+      readableColumnIds: new Set(["name"]),
+    });
+    expect(out).toEqual([]);
   });
 });
 
-describe("sortRows", () => {
-  it("puts nulls last in both directions", () => {
-    const opts = { schema: fixtureSchema, registry };
-    expect(sortRows(fixtureRows, [{ columnId: "score", dir: "asc" }], opts).map((r) => r.id)).toEqual(["r2", "r1", "r4", "r3"]);
-    expect(sortRows(fixtureRows, [{ columnId: "score", dir: "desc" }], opts).map((r) => r.id)).toEqual(["r4", "r1", "r2", "r3"]);
+describe("formulaError helper", () => {
+  it("builds a core-shaped FormulaError value", () => {
+    const e = formulaError("boom");
+    expect(e).toEqual({ kind: "formulaError", code: "eval", message: "boom" });
+    expect(isFormulaError(e)).toBe(true);
+    expect(formulaError("bad", "syntax").code).toBe("syntax");
   });
-});
-
-describe("aggregate", () => {
-  it("sums, averages, counts", () => {
-    expect(computeAggregate([1, 2, null], "sum")).toBe(3);
-    expect(computeAggregate([1, 2, null], "avg")).toBe(1.5);
-    expect(computeAggregate([1, 2, null], "countEmpty")).toBe(1);
-  });
-});
-
-describe("permissions", () => {
-  it("role rule resolves hidden/read/edit", () => {
-    const resolver = createRolePermissionResolver();
-    const agent = resolveColumnAccess(fixtureSchema, resolver, AGENT);
-    const admin = resolveColumnAccess(fixtureSchema, resolver, ADMIN);
-    expect(agent.get("salary")).toBe("hidden");
-    expect(agent.get("status")).toBe("read");
-    expect(agent.get("name")).toBe("edit");
-    expect(agent.get("total")).toBe("read");
-    expect(admin.get("salary")).toBe("edit");
-  });
-});
-
-describe("formula (minimal)", () => {
-  it("parses refs and arithmetic", () => {
-    const ast = parseFormula("{score} * 2 + {fee}");
-    if (isFormulaError(ast)) throw ast;
-    expect(dependencies(ast)).toEqual(["score", "fee"]);
-    expect(evaluate(ast, row("x", { score: 3, fee: 4 }), fixtureSchema, { now, tz: "Asia/Kolkata" })).toBe(10);
-  });
-  it("supports IF and IS_EMPTY", () => {
-    const ast = parseFormula('IF(IS_EMPTY({name}), "none", {name})');
-    if (isFormulaError(ast)) throw ast;
-    expect(evaluate(ast, row("x", {}), fixtureSchema, { now, tz: "Asia/Kolkata" })).toBe("none");
-  });
-  it("returns a FormulaError for bad syntax", () => {
-    expect(isFormulaError(parseFormula("{score} *"))).toBe(true);
-  });
-  it.todo("DATEADD / DATEDIFF / YEAR / MONTH / DAY / LEFT / RIGHT (owned by core)");
-  it.todo("cross-column cycle detection report (owned by core)");
-  it.todo("inferResultType for every function (owned by core)");
 });
 
 describe("in-memory data source fixture", () => {
-  it("applies with matching version and conflicts on mismatch without blocking other rows", async () => {
-    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
-    const result = await ds.applyChanges({
-      id: "b1",
-      source: "edit",
-      baseVersions: { r1: 1, r2: 99 },
-      changes: [
-        { rowId: "r1", columnId: "name", prev: "Asha", next: "A" },
-        { rowId: "r2", columnId: "name", prev: "Bala", next: "B" },
-      ],
-    });
-    expect(result.applied.map((c) => c.rowId)).toEqual(["r1"]);
-    expect(result.conflicts).toMatchObject([{ rowId: "r2", serverValue: "Bala", serverVersion: 1 }]);
-    const feed = await ds.getChanges(null);
-    expect(feed.rows.map((r) => [r.id, r.version])).toEqual([["r1", 2]]);
-    const next = await ds.getChanges(feed.cursor);
-    expect(next.rows).toEqual([]);
+  const batch = (baseVersions: Record<string, number>) => ({
+    id: "b1",
+    source: "edit" as const,
+    baseVersions,
+    changes: [
+      { rowId: "r1", columnId: "name", prev: "Asha", next: "A" },
+      { rowId: "r2", columnId: "name", prev: "Bala", next: "B" },
+    ],
   });
-  it("pages by offset and cursor", async () => {
+
+  it("a version conflict on one row doesn't block another; returns versions", async () => {
     const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
-    const a = await ds.fetch({ filter: null, sort: [], page: { cursor: null, limit: 3 } });
-    expect(a.rows).toHaveLength(3);
-    expect(a.nextCursor).toBe("3");
-    const b = await ds.fetch({ filter: null, sort: [], page: { cursor: "3", limit: 3 } });
-    expect(b.rows.map((r) => r.id)).toEqual(["r4"]);
-    expect(b.nextCursor).toBeUndefined();
+    const result = await ds.applyChanges(batch({ r1: 1, r2: 99 }));
+    expect(result.applied.map((c) => c.rowId)).toEqual(["r1"]);
+    expect(result.conflicts).toMatchObject([{ rowId: "r2", columnId: "name", serverValue: "Bala", serverVersion: 1 }]);
+    expect(result.versions).toEqual({ r1: 2 });
+    expect(ds.rows().find((r) => r.id === "r1")?.cells.name).toBe("A");
+    expect(ds.rows().find((r) => r.id === "r2")?.cells.name).toBe("Bala");
+  });
+
+  it("getChanges feeds changed rows since a cursor", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
+    await ds.applyChanges(batch({ r1: 1, r2: 99 }));
+    const feed = await ds.getChanges("");
+    expect(feed.rows.map((r) => [r.id, r.version])).toEqual([["r1", 2]]);
+    expect((await ds.getChanges(feed.cursor)).rows).toEqual([]);
+    await ds.remoteEdit("r2", { name: "Bee" });
+    await ds.remoteDelete("r3");
+    const next = await ds.getChanges(feed.cursor);
+    expect(next.rows.map((r) => [r.id, r.cells.name])).toEqual([["r2", "Bee"]]);
+    expect(next.deletedRowIds).toEqual(["r3"]);
+  });
+
+  it("errorOn reports a scripted per-cell error and applies the rest", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
+    ds.errorOn("r2", "name", "Nope");
+    const result = await ds.applyChanges(batch({ r1: 1, r2: 1 }));
+    expect(result.applied.map((c) => c.rowId)).toEqual(["r1"]);
+    expect(result.errors).toEqual([{ rowId: "r2", columnId: "name", message: "Nope" }]);
+    // one-shot
+    const again = await ds.applyChanges({ ...batch({ r2: 1 }), changes: [{ rowId: "r2", columnId: "name", prev: "Bala", next: "B" }] });
+    expect(again.applied.map((c) => c.rowId)).toEqual(["r2"]);
+  });
+
+  it("failNextApply rejects once", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows);
+    ds.failNextApply(new Error("offline"));
+    await expect(ds.applyChanges(batch({ r1: 1, r2: 1 }))).rejects.toThrow("offline");
+    const ok = await ds.applyChanges(batch({ r1: 1, r2: 1 }));
+    expect(ok.applied).toHaveLength(2);
+    expect(ok.versions).toEqual({ r1: 2, r2: 2 });
   });
 });

@@ -97,7 +97,7 @@ describe("default renderers", () => {
       id: "tags",
       type: "multiSelect",
       label: "Tags",
-      config: { options: [{ value: "hot", label: "Hot" }, { value: "cold", label: "Cold" }] },
+      config: { options: [{ id: "hot", label: "Hot" }, { id: "cold", label: "Cold" }] },
     });
     const { container } = render(
       // biome-ignore lint/suspicious/noExplicitAny: minimal ag-grid renderer params stand-in for the test
@@ -109,11 +109,35 @@ describe("default renderers", () => {
     expect(chips[1]?.textContent).toBe("Cold");
   });
 
+  it("renders core user (UserRef) and link (LinkRef[]) values via the field type's format", async () => {
+    const { TextRenderer } = await import("../../src/compile/defaultRenderers");
+    const reg = createDefaultRegistry();
+    const owner = col({ id: "owner", type: "user", label: "Owner" });
+    const program = col({ id: "program", type: "link", label: "Program" });
+    const a = render(
+      // biome-ignore lint/suspicious/noExplicitAny: minimal ag-grid renderer params stand-in for the test
+      (TextRenderer as any)({ value: { id: "u-1", name: "Asha" }, schemaColumn: owner, fieldType: reg.get("user") }),
+    );
+    expect(a.container.textContent).toBe("Asha");
+    const b = render(
+      // biome-ignore lint/suspicious/noExplicitAny: minimal ag-grid renderer params stand-in for the test
+      (TextRenderer as any)({
+        value: [
+          { id: "p-1", label: "Data" },
+          { id: "p-2", label: "Web" },
+        ],
+        schemaColumn: program,
+        fieldType: reg.get("link"),
+      }),
+    );
+    expect(b.container.textContent).toBe("Data, Web");
+  });
+
   it("renders formula errors as #ERROR with the message as a title", async () => {
     const { TextRenderer } = await import("../../src/compile/defaultRenderers");
-    const { FormulaError } = await import("../../src/internal/core");
+    const { formulaError } = await import("../../src/internal/core");
     const column = col({ id: "total", type: "formula", label: "Total" });
-    const error = new FormulaError("Division by zero");
+    const error = formulaError("Division by zero");
     render(
       // biome-ignore lint/suspicious/noExplicitAny: minimal ag-grid renderer params stand-in for the test
       (TextRenderer as any)({ value: error, schemaColumn: column, fieldType: undefined }),

@@ -673,7 +673,15 @@ describe("createEditRequestHandler", () => {
     const handler = createEditRequestHandler<GridRow>({ submit }, { schema: fixtureSchema, registry: createDefaultRegistry(), cellStatus });
     handler(makeEvent({ columnId: "score", oldValue: 10, newValue: "not a number" }));
     expect(submit).not.toHaveBeenCalled();
-    expect(cellStatus.get("r1", "score").error).toBe("Not a number");
+    const core = createDefaultRegistry().get("number")!.parse("not a number", {});
+    expect(cellStatus.get("r1", "score").error).toBe(core.ok ? "(parsed)" : core.error);
+  });
+
+  it("a string for a user column is parsed into a core UserRef", () => {
+    const submit = vi.fn();
+    const handler = createEditRequestHandler<GridRow>({ submit }, { schema: fixtureSchema, registry: createDefaultRegistry() });
+    handler(makeEvent({ columnId: "owner", oldValue: null, newValue: "u-9" }));
+    expect(submit).toHaveBeenLastCalledWith([{ rowId: "r1", columnId: "owner", prev: null, next: { id: "u-9" } }], "edit");
   });
 
   it("ignores non-user sources (undo, redo, data)", () => {

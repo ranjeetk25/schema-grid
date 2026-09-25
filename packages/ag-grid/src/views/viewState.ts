@@ -7,7 +7,7 @@
  * apply so the header sort indicators match the view.
  */
 import type { ColumnState, GridApi } from "ag-grid-community";
-import type { Access, FilterNode, GridRow, Pinned, SortSpec, ViewColumnState, ViewDef } from "../internal/core";
+import type { Access, ColumnDef, FilterNode, GridRow, Pinned, SortSpec, ViewColumnState, ViewDef } from "../internal/core";
 import { isFilterGroup } from "../internal/core";
 import type { QueryStore } from "../state/queryStore";
 
@@ -19,12 +19,28 @@ function normalizePinned(pinned: ColumnState["pinned"]): Pinned {
   return null;
 }
 
+/** Width recorded when neither the grid, the base view nor the schema column has one. */
+export const DEFAULT_VIEW_COLUMN_WIDTH = 200;
+
+/**
+ * Captures the grid's column state + query store as a view. core's
+ * `ColumnState.width` is required: the grid's current width is used, else the
+ * base view's width, else `ColumnDef.width` (from `opts.columns`), else 200.
+ */
 export function captureViewState<Row extends GridRow>(
   api: Pick<GridApi<Row>, "getColumnState">,
   stores: { query: QueryStore },
   base: ViewDef,
+  opts?: { columns?: readonly ColumnDef[] },
 ): ViewDef {
   const raw = api.getColumnState();
+  const baseWidths = new Map(base.columnState.map((c) => [c.id, c.width]));
+  const schemaWidths = new Map((opts?.columns ?? []).map((c) => [c.id, c.width]));
+  const widthOf = (colId: string, live: number | null | undefined): number => {
+    const candidates = [live, baseWidths.get(colId), schemaWidths.get(colId)];
+    const found = candidates.find((w): w is number => typeof w === "number" && Number.isFinite(w));
+    return found ?? DEFAULT_VIEW_COLUMN_WIDTH;
+  };
   const columnState: ViewColumnState[] = [];
   let order = 0;
   for (const cs of raw) {
@@ -32,10 +48,10 @@ export function captureViewState<Row extends GridRow>(
     const entry: ViewColumnState = {
       id: cs.colId,
       hidden: !!cs.hide,
+      width: widthOf(cs.colId, cs.width),
       pinned: normalizePinned(cs.pinned),
       order,
     };
-    if (typeof cs.width === "number") entry.width = cs.width;
     columnState.push(entry);
     order += 1;
   }

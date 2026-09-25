@@ -2,7 +2,9 @@ import type { IRowNode, PostSortRowsParams } from "ag-grid-community";
 import { describe, expect, it } from "vitest";
 import { combineFilters } from "../../src/client/combineFilters";
 import { deriveClientRows, makePostSortRows, toGridQuery } from "../../src/client/deriveClientRows";
+import { compileFormulaColumns } from "../../src/compile/formulaColumns";
 import {
+  type ColumnDef,
   type FilterNode,
   type GridRow,
   type GridSchema,
@@ -71,12 +73,28 @@ describe("deriveClientRows matches core's in-memory data source", () => {
       }),
     ],
     ["isEmpty", q({ filter: { columnId: "payment", operator: "isEmpty" } })],
+    ["user isAnyOf (UserRef ids)", q({ filter: { columnId: "owner", operator: "isAnyOf", value: ["u-admin"] } })],
+    ["user isMe", q({ filter: { columnId: "owner", operator: "isMe", value: { me: true } } })],
+    ["sort by user desc", q({ sort: [{ columnId: "owner", dir: "desc" }] })],
+    ["hidden-for-agent column readable for admin", q({ filter: { columnId: "salary", operator: "gt", value: 60 } })],
+    [
+      "formula filter + sort",
+      q({ filter: { columnId: "total", operator: "gte", value: 20 }, sort: [{ columnId: "total", dir: "desc" }] }),
+    ],
   ];
 
+  const formulas = compileFormulaColumns<GridRow>(fixtureSchema, { now: NOW, tz: TZ });
+  const withFormulas = {
+    ...adminCtx,
+    getCellValue: (row: GridRow, column: ColumnDef) =>
+      column.type === "formula" ? formulas.getters.get(column.id)?.(row) : row.cells[column.key],
+  };
+
   it.each(cases)("%s", async (_name, state) => {
-    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows, { registry, user: { id: ADMIN.id }, now: NOW, tz: TZ });
+    // ADMIN carries roles, so core applies real column permissions.
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows, { registry, user: ADMIN, now: NOW, tz: TZ });
     const expected = await ds.fetch(toGridQuery(state, { offset: 0, limit: 1000 }));
-    const out = deriveClientRows(fixtureRows, state, adminCtx);
+    const out = deriveClientRows(fixtureRows, state, withFormulas);
     expect(out.errors).toEqual([]);
     expect(ids(out.rows)).toEqual(ids(expected.rows));
     expect([...out.orderIndex.entries()]).toEqual(ids(expected.rows).map((id, i) => [id, i]));
@@ -87,6 +105,12 @@ describe("deriveClientRows semantics", () => {
   it("a negative operator includes empty values", () => {
     const out = deriveClientRows(fixtureRows, q({ filter: { columnId: "payment", operator: "isNot", value: "paid" } }), adminCtx);
     expect(ids(out.rows)).toEqual(["r2", "r3", "r4"]);
+  });
+
+  it("core's data source rejects the same unreadable-column filter", async () => {
+    const ds = createInMemoryDataSource(fixtureSchema, fixtureRows, { registry, user: AGENT, now: NOW, tz: TZ });
+    const filter: FilterNode = { columnId: "salary", operator: "gt", value: 60 };
+    await expect(ds.fetch(toGridQuery(q({ filter }), { offset: 0, limit: 10 }))).rejects.toMatchObject({ code: "unreadableColumn" });
   });
 
   it("a filter on an unreadable column is rejected and reported, never applied", () => {
@@ -156,12 +180,12 @@ describe("toGridQuery", () => {
       search: "a",
       groupBy: [{ columnId: "payment" }],
     });
-    expect(toGridQuery(state, { cursor: null, limit: 50 }, { includeTotal: true })).toEqual({
+    expect(toGridQuery(state, { cursor: "c1", limit: 50 }, { includeTotal: true })).toEqual({
       filter: state.filter,
       sort: state.sort,
       search: "a",
       groupBy: [{ columnId: "payment" }],
-      page: { cursor: null, limit: 50 },
+      page: { cursor: "c1", limit: 50 },
       includeTotal: true,
     });
     expect(toGridQuery(q({}), { offset: 0, limit: 10 })).toEqual({ filter: null, sort: [], page: { offset: 0, limit: 10 } });
