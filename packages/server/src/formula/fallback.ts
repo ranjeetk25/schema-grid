@@ -1,9 +1,10 @@
+import { compareRows } from "./compare-rows";
 import { type SQL, and, eq, isNull } from "drizzle-orm";
 import { projectRow, projectionSql } from "../access/projection";
 import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
 import { CursorError, FormulaQueryLimitError } from "../errors";
 import { translateFilter } from "../filter/translate-filter";
-import { type FilterNode, type GridQuery, type GridRow, type QueryResult, compareRows, matchesFilter } from "../internal/core";
+import { type FilterNode, type GridQuery, type GridRow, type QueryResult, matchesFilter } from "../internal/core";
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
 import { offsetClause } from "../pagination/offset";
 import type { GridSqlScope, SelectCapableDb } from "../query/build-query";

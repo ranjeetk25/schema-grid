@@ -4,7 +4,7 @@ import {
   type ChangeError,
   type ColumnDef,
   type GridRow,
-  getColumnFieldType,
+  getColumnValueFieldType,
   isEmptyValue,
 } from "../internal/core";
 
@@ -47,7 +47,7 @@ export function validateCellValue(
   value: unknown,
   ctx: ServerContext,
 ): ValidatedCell | { ok: false; message: string } {
-  const ft = getColumnFieldType(column, ctx.registry);
+  const ft = getColumnValueFieldType(column, ctx.registry);
   if (!ft) return { ok: false, message: `Unknown field type "${column.type}"` };
   const normalized = isEmptyValue(value) ? null : value;
   if (normalized === null && column.required) return { ok: false, message: "Value is required" };

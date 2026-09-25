@@ -1,4 +1,4 @@
-import { type FieldTypeRegistry, type GridRow, type GridSchema, getColumnFieldType } from "../internal/core";
+import { type FieldTypeRegistry, type GridRow, type GridSchema, getColumnValueFieldType } from "../internal/core";
 
 /** Raw row as selected from the rows table (plus any physical columns). */
 export interface DbRow {
@@ -57,7 +57,7 @@ export function hydrateRow(dbRow: DbRow, schema: GridSchema, registry: FieldType
       raw = stored[column.key];
       if (raw === null) continue;
     }
-    const ft = column.type === "formula" ? undefined : getColumnFieldType(column, registry);
+    const ft = column.type === "formula" ? undefined : getColumnValueFieldType(column, registry);
     cells[column.key] = ft ? ft.deserialize(raw) : raw;
   }
   const row: GridRow = {

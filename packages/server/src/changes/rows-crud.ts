@@ -3,7 +3,7 @@ import { projectRow } from "../access/projection";
 import { resolveAccess } from "../access/query-access";
 import type { ServerContext } from "../context";
 import { PermissionError, RowValidationError } from "../errors";
-import { type GridRow, type PermissionUser, type RowPartial, getColumnFieldType } from "../internal/core";
+import { type GridRow, type PermissionUser, type RowPartial, getColumnValueFieldType } from "../internal/core";
 import { ident } from "../sql/column-expr";
 import { hydrateRow } from "../storage/hydrate";
 import { type ChangeLogEntry, insertChangeLog } from "./change-log";
@@ -54,7 +54,7 @@ export async function createRows(
       let value: unknown;
       if (column.key in given) value = given[column.key];
       else if (column.defaultValue !== undefined) value = column.defaultValue;
-      else value = getColumnFieldType(column, ctx.registry)?.defaultValue(column.config) ?? null;
+      else value = getColumnValueFieldType(column, ctx.registry)?.defaultValue(column.config) ?? null;
       const v = validateCellValue(column, value, ctx);
       if (!v.ok) throw new RowValidationError(rowIndex, column.id, v.message);
       if (column.source) {

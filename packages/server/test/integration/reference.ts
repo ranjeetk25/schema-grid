@@ -1,3 +1,4 @@
+import { compareRows } from "../../src/formula/compare-rows";
 /**
  * In-memory reference semantics for parity tests.
  * TODO(core): replace with core's `createInMemoryDataSource` over the shared fixture.
@@ -11,7 +12,6 @@ import {
   type GridSchema,
   type RowPartial,
   type SortSpec,
-  compareRows,
   createDefaultRegistry,
   createRolePermissionResolver,
   matchesFilter,

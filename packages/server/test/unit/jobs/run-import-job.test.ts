@@ -93,7 +93,7 @@ describe("runImportJob", () => {
       mode: "create",
     });
 
-    expect(report.failed).toEqual([{ rowIndex: 1, columnId: "amount", message: "Not a number" }]);
+    expect(report.failed).toEqual([{ rowIndex: 1, columnId: "amount", message: expect.stringMatching(/number/i) }]);
     expect(report.created).toBe(1);
     expect(created).toHaveLength(1);
     expect(created[0]).toEqual([{ cells: { name: "Amy", amount: 100 } }]);

@@ -92,7 +92,7 @@ describe("core contract (via src/internal/core.ts)", () => {
   it("temporary shim: parseFormula precedence", () => {
     const ast = core.parseFormula("1 + 2 * 3");
     expect(core.isFormulaError(ast)).toBe(false);
-    expect(ast).toMatchObject({ type: "BinaryExpr", op: "+", right: { type: "BinaryExpr", op: "*" } });
+    expect(ast).toMatchObject({ type: "binary", op: "+", right: { type: "binary", op: "*" } });
     expect(core.isFormulaError(core.parseFormula("1 +"))).toBe(true);
   });
 });

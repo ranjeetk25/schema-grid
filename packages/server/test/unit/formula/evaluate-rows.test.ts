@@ -16,6 +16,7 @@ const schema = {
     col("net", "formula", { formula: "{salary} - {fee}", config: { resultType: "number" } }),
     col("ratio", "formula", { formula: "{fee} / {paid}", config: { resultType: "number" } }),
     col("label", "formula", { formula: "CONCAT({fee}, \"x\")", config: { resultType: "text" } }),
+    col("broken", "formula", { formula: "{gone} + 1", config: { resultType: "number" } }),
   ],
 };
 const row = (cells: Record<string, unknown>): GridRow => ({ id: "r1", version: 1, updatedAt: "x", cells });
@@ -42,12 +43,19 @@ describe("evaluateFormulaCells", () => {
   it("evaluation errors become empty and are logged, never thrown", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const ctx = makeCtx(schema);
-    const [out] = evaluateFormulaCells([row({ fee: 1 })], resolveAccess(ctx), ctx);
-    expect(out?.cells).not.toHaveProperty("label");
-    expect(spy).toHaveBeenCalled();
+    // resolveAccess would hide `broken` (unknown dependency); force it readable to exercise the error path.
+    const access = new Map(resolveAccess(ctx));
+    access.set("broken", "read");
+    const [out] = evaluateFormulaCells([row({ fee: 1 }), row({ fee: 2 })], access, ctx);
+    expect(out?.cells).not.toHaveProperty("broken");
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it.todo("CONCAT/TODAY/DATEADD etc. evaluate via core `evaluate` (TODO(core): shim only evaluates the SQL subset)");
+  it("non-SQL functions evaluate via core `evaluate` (CONCAT)", () => {
+    const ctx = makeCtx(schema);
+    const [out] = evaluateFormulaCells([row({ fee: 12 })], resolveAccess(ctx), ctx);
+    expect(out?.cells.label).toBe("12x");
+  });
 
   it("parses once per schema", () => {
     expect(formulaAsts(schema)).toBe(formulaAsts(schema));

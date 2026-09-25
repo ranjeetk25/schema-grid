@@ -8,7 +8,7 @@ import {
   createRolePermissionResolver,
   dependencies,
   detectFormulaCycles,
-  getColumnFieldType,
+  getColumnValueFieldType,
   isFormulaError,
   parseFormula,
   validateFilter,
@@ -108,7 +108,13 @@ export function validateSchema(
         message: `Unknown field type "${column.type}"`,
       });
     } else {
-      const configResult = fieldType.configSchema.safeParse(column.config);
+      // Core treats persisted config as a partial overlay on `defaultConfig`.
+      const base = fieldType.defaultConfig;
+      const merged =
+        base && typeof base === "object" && column.config && typeof column.config === "object"
+          ? { ...(base as Record<string, unknown>), ...(column.config as Record<string, unknown>) }
+          : (column.config ?? base);
+      const configResult = fieldType.configSchema.safeParse(merged);
       if (!configResult.success) {
         issues.push({
           code: "invalidConfig",
@@ -220,7 +226,7 @@ export function validateSchema(
     }
 
     if (column.defaultValue !== undefined && fieldType) {
-      const valueFieldType = getColumnFieldType(column, registry) ?? fieldType;
+      const valueFieldType = getColumnValueFieldType(column, registry) ?? fieldType;
       const result = valueFieldType.valueSchema(column.config).safeParse(column.defaultValue);
       if (!result.success) {
         issues.push({

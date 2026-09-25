@@ -1,4 +1,4 @@
-import { getColumnFieldType } from "../internal/core";
+import { getColumnValueFieldType } from "../internal/core";
 import type { Access, ColumnDef, ColumnState, FieldTypeRegistry, GridRow, GridSchema, QueryResult } from "../internal/core";
 
 export interface ExportColumn {
@@ -91,7 +91,7 @@ export function streamExport<Row extends GridRow = GridRow>(
           const column = columnById.get(exportColumn.id);
           if (!column) return "";
           const value = row.cells[column.key] ?? null;
-          const fieldType = getColumnFieldType(column, registry);
+          const fieldType = getColumnValueFieldType(column, registry);
           if (!fieldType) return value === null || value === undefined ? "" : String(value);
           return fieldType.format(value, column.config);
         });

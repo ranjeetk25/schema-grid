@@ -94,9 +94,9 @@ export function formulaToSql(ast: FormulaNode, scope: Scope, options: FormulaToS
     if (typeOf(n) !== "number") throw NO;
     const out = walk(n);
     const neverNull =
-      n.type === "NumberLiteral" ||
-      (n.type === "UnaryExpr" && n.op === "-") ||
-      (n.type === "BinaryExpr" && (n.op === "+" || n.op === "-" || n.op === "*"));
+      n.type === "number" ||
+      (n.type === "unary" && n.op === "-") ||
+      (n.type === "binary" && (n.op === "+" || n.op === "-" || n.op === "*"));
     return neverNull ? out : sql`COALESCE(${out}, 0)`;
   };
 
@@ -124,7 +124,7 @@ export function formulaToSql(ast: FormulaNode, scope: Scope, options: FormulaToS
       case "IS_EMPTY": {
         const [x] = args;
         if (!x || args.length !== 1) throw NO;
-        if (x.type === "ColumnRef") {
+        if (x.type === "ref") {
           const column = byKey.get(x.key);
           if (column && column.type !== "formula") {
             ref(x.key); // validates the ref is translatable
@@ -141,19 +141,19 @@ export function formulaToSql(ast: FormulaNode, scope: Scope, options: FormulaToS
 
   const walk = (n: FormulaNode): SQL => {
     switch (n.type) {
-      case "NumberLiteral":
+      case "number":
         return number(n.value);
-      case "StringLiteral":
+      case "string":
         return string(n.value);
-      case "BooleanLiteral":
+      case "boolean":
         return sql.raw(n.value ? "TRUE" : "FALSE");
-      case "ColumnRef":
+      case "ref":
         return ref(n.key);
-      case "UnaryExpr":
+      case "unary":
         if (n.op === "-") return sql`(-${operand(n.operand)})`;
         // core: `!v` is true for empty values → NOT COALESCE(v, FALSE)
         return sql`(NOT COALESCE(${condition(n.operand)}, FALSE))`;
-      case "BinaryExpr": {
+      case "binary": {
         if (ARITH.has(n.op)) {
           const l = operand(n.left);
           const r = operand(n.right);
@@ -170,7 +170,7 @@ export function formulaToSql(ast: FormulaNode, scope: Scope, options: FormulaToS
         if (lt !== rt || lt === "date") throw NO;
         return sql`(${walk(n.left)} ${sql.raw(cmp)} ${walk(n.right)})`;
       }
-      case "CallExpr":
+      case "call":
         return call(n.name, n.args);
       default:
         throw NO;

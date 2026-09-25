@@ -11,8 +11,8 @@ import {
   type GroupAggregateValue,
   type GroupResult,
   type QueryResult,
-  getColumnFieldType,
-  isAggregationAllowed,
+  getColumnValueFieldType,
+  getColumnAggregations,
 } from "../internal/core";
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
 import { offsetClause, trimPage } from "../pagination/offset";
@@ -99,7 +99,7 @@ function aggregateSql(
   scope: GridSqlScope,
 ): { sql: SQL; valueKind: AggValueKind } {
   const column = findColumn(scope, spec.columnId);
-  if (!isAggregationAllowed(getColumnFieldType(column, scope.ctx.registry), spec.agg)) {
+  if (!getColumnAggregations(column, scope.ctx.registry).includes(spec.agg)) {
     throw new GroupingError(`Aggregation "${spec.agg}" is not allowed for column "${column.id}" (${column.type})`, {
       columnId: column.id,
       agg: spec.agg,

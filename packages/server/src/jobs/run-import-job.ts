@@ -1,5 +1,5 @@
 import { PermissionError } from "../errors";
-import { getColumnFieldType } from "../internal/core";
+import { getColumnValueFieldType } from "../internal/core";
 import type { Access, CellChange, ColumnDef, DataSource, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core";
 
 export interface ImportFailure {
@@ -66,7 +66,7 @@ function generateBatchId(jobId: string | undefined): string {
 type KeyLookupMode = "isAnyOf" | "is" | "eq";
 
 function chooseKeyLookupMode(keyColumn: ColumnDef, registry: FieldTypeRegistry): KeyLookupMode {
-  const ops = new Set((getColumnFieldType(keyColumn, registry)?.operators ?? []).map((o) => o.id));
+  const ops = new Set((getColumnValueFieldType(keyColumn, registry)?.operators ?? []).map((o) => o.id));
   if (ops.has("isAnyOf")) return "isAnyOf";
   if (ops.has("is")) return "is";
   return "eq";
@@ -261,7 +261,7 @@ export async function runImportJob<Row extends GridRow = GridRow>(
     for (const [sourceHeader, columnId] of Object.entries(mapping)) {
       const column = columnById.get(columnId);
       if (!column) continue;
-      const fieldType = getColumnFieldType(column, registry);
+      const fieldType = getColumnValueFieldType(column, registry);
       if (!fieldType) {
         failuresForRow.push({ rowIndex, columnId, message: "No field type registered for column" });
         continue;
