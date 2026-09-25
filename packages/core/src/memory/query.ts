@@ -7,6 +7,7 @@ import type { GridQuery, QueryResult, SortSpec } from "../query/types";
 import type { GridRow } from "../rows/types";
 import { getColumnById } from "../schema/lookup";
 import type { ColumnDef, GridSchema } from "../schema/types";
+import { groupRows } from "./group";
 import { projectRow } from "./materialize";
 import { InMemoryQueryError } from "./types";
 
@@ -135,8 +136,9 @@ export function runQuery<Row extends GridRow>(
   if (firstError) {
     throw new InMemoryQueryError(firstError.code, "Invalid filter", filterErrors);
   }
-  for (const g of query.groupBy ?? []) requireReadableColumn(g.columnId, ctx, "group");
   const { offset, limit } = resolvePage(query);
+  // Validate grouping/aggregations before doing any work.
+  if (query.groupBy?.length) groupRows([], query.groupBy, ctx);
 
   const matchCtx = {
     schema: ctx.schema,
@@ -150,6 +152,8 @@ export function runQuery<Row extends GridRow>(
   const needle = query.search?.trim().toLowerCase();
   if (needle) result = result.filter((row) => matchesSearch(row, needle, readable, ctx));
 
+  const groups = query.groupBy?.length ? groupRows(result, query.groupBy, ctx) : undefined;
+
   result = sortRows(result, query.sort ?? [], ctx);
 
   const total = result.length;
@@ -157,6 +161,7 @@ export function runQuery<Row extends GridRow>(
   const readableKeys = new Set(readable.map((c) => c.key));
   const out: QueryResult<Row> = { rows: pageRows.map((r) => projectRow(r, readableKeys)) };
   if (query.includeTotal) out.total = total;
+  if (groups) out.groups = groups;
   if (offset + limit < total) out.nextCursor = encodeOffsetCursor(offset + limit);
   return out;
 }
