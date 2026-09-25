@@ -6,3 +6,10 @@ export {
   type DdlStatement,
   type PhysicalColumnDDL,
 } from "./tables-ddl";
+export {
+  dropGeneratedColumnDDL,
+  formulaSqlHook,
+  generatedColumnDDL,
+  type GeneratedColumnOptions,
+} from "./generated-columns";
+export { diffIndexedColumns } from "./diff-indexes";
