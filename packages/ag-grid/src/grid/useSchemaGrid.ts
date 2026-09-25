@@ -92,6 +92,7 @@ import type {
 import type { AgGridReactProps, CustomCellRendererProps } from "ag-grid-react";
 import { type ComponentType, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "../agModules";
+import { withEditAnnouncements } from "../a11y/editAnnouncements";
 import { combineFilters } from "../client/combineFilters";
 import { deriveClientRows, makePostSortRows } from "../client/deriveClientRows";
 import type { ClipboardReport } from "../clipboard/types";
@@ -985,7 +986,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   // ---- Edit controller + undo ----------------------------------------------------------
   const controller = useMemo(
     () =>
-      createEditController<Row>({
+      // T30: veto / conflict / rejected-edit outcomes are announced (assertive) through the announce seam.
+      withEditAnnouncements<Row>(createEditController<Row>({
         dataSource: { applyChanges: (batch) => latest.current.dataSource.applyChanges(batch) },
         schema,
         rowStore: stores.rows,
@@ -1004,6 +1006,9 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         onRowStale: () => {
           void refetch().catch(() => {});
         },
+      }), {
+        getSchema: () => schema,
+        announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
       }),
     [schema, stores, getEvents, formulas, undoStack, scheduleRowSync, refetch],
   );

@@ -38,6 +38,7 @@
  */
 import type { CellMouseOverEvent, GridApi, IRowNode } from "ag-grid-community";
 import { type RefObject, useCallback, useEffect, useMemo, useRef } from "react";
+import { fillMessage } from "../a11y/announcer";
 import type { EditController } from "../editing/editController";
 import type { FillHandlePointerEvent } from "../grid/gridContext";
 import type { KeyboardRegistry } from "../grid/keyboard";
@@ -127,13 +128,8 @@ export function computeFillTarget(
   return null;
 }
 
-/** "Fill: 3 cells filled, 1 read-only cell skipped"; null when nothing happened. */
-export function fillMessage(filled: number, skipped: number): string | null {
-  if (filled === 0 && skipped === 0) return null;
-  const parts = [`${filled} ${filled === 1 ? "cell" : "cells"} filled`];
-  if (skipped > 0) parts.push(`${skipped} read-only ${skipped === 1 ? "cell" : "cells"} skipped`);
-  return `Fill: ${parts.join(", ")}`;
-}
+/** "Fill: 3 cells filled, 1 read-only cell skipped"; the builder lives in `a11y/announcer` (re-exported here). */
+export { fillMessage };
 
 interface FillSession {
   source: NormalizedRange;

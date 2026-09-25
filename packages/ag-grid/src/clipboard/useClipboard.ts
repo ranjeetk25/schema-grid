@@ -65,7 +65,7 @@
  */
 import type { GridApi } from "ag-grid-community";
 import { type RefObject, useEffect, useState } from "react";
-import type { Politeness } from "../a11y/announcer";
+import { type Politeness, pasteSummaryMessage } from "../a11y/announcer";
 import type { EditController } from "../editing/editController";
 import {
   isEditableTarget,
@@ -140,11 +140,8 @@ export interface ClipboardHandlers {
   paste(text: string): Promise<ClipboardReport | null>;
 }
 
-/** T30 standard wording, plus ", C conflicts" when there were any. */
-export function pasteSummaryMessage(report: ClipboardReport): string {
-  const base = `Paste: ${report.pastedCells} pasted, ${report.skippedReadOnly} skipped, ${report.errors.length} errors`;
-  return report.conflicts > 0 ? `${base}, ${report.conflicts} conflicts` : base;
-}
+/** T30 standard wording; the builder lives in `a11y/announcer` (re-exported here). */
+export { pasteSummaryMessage };
 
 export const NOTHING_TO_PASTE = "Nothing to paste";
 export const PASTE_FAILED = "Paste failed";
