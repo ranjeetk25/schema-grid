@@ -178,6 +178,12 @@ export interface ChangeResult {
   applied: CellChange[];
   conflicts: CellConflict[];
   errors: CellError[];
+  /**
+   * New server version per row that had applied changes.
+   * TODO(core): not in spec §4.5 — proposed addition. When absent, the client
+   * assumes `baseVersion + 1` per applyChanges call.
+   */
+  versions?: Record<string, number>;
 }
 
 export interface ChangeFeedEntry<Row extends GridRow = GridRow> {

@@ -184,6 +184,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
         });
         record(rowId);
         result.applied.push(...ok);
+        result.versions = { ...(result.versions ?? {}), [rowId]: current.version + 1 };
       }
     }
     return result;
