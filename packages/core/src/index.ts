@@ -1,10 +1,3 @@
-export const SCHEMA_GRID_CORE_VERSION = "0.0.1";
-
-/** Placeholder kept so sibling packages' scaffolds still compile. */
-export function ping(): string {
-  return "core";
-}
-
 export type {
   ActorRef,
   ISODateString,

@@ -52,7 +52,6 @@ import {
 // ============================================================================
 
 export {
-  SCHEMA_GRID_CORE_VERSION,
   BUILTIN_FIELD_TYPE_IDS,
   BUILTIN_FIELD_TYPE_IDS as BUILT_IN_FIELD_TYPE_IDS,
 } from "@masai/schema-grid-core";
