@@ -25,7 +25,7 @@ import {
   createServerFixtureRows,
   serverFixtureSchema,
 } from "../fixtures/admissions";
-import { type StartedMysql, describeMysql, setupGrid, startMysql } from "./mysql";
+import { type StartedMysql, describeMysql, seedRows, setupGrid, startMysql } from "./mysql";
 import { referenceGroups, referenceIds } from "./reference";
 
 const NOW = new Date(FIXTURE_NOW);
@@ -96,6 +96,9 @@ describeMysql("§8 acceptance + in-memory parity (MySQL 8.4)", () => {
     ["date isBetween inclusive", { columnId: col.callDate, operator: "isBetween", value: { from: "2026-09-23", to: "2026-09-24" } }, [{ columnId: col.callDate, dir: "desc" }]],
     ["datetime isWithin yesterday", { columnId: col.calledAt, operator: "isWithin", value: { relative: "yesterday" } }, [{ columnId: col.calledAt, dir: "asc" }]],
     ["no filter, sort nulls last", null, [{ columnId: col.paid, dir: "asc" }]],
+    // select sorts by the column's OPTION ORDER (paid, pending, partial), not alphabetically.
+    ["select sort asc by option order", null, [{ columnId: col.status, dir: "asc" }]],
+    ["select sort desc by option order", null, [{ columnId: col.status, dir: "desc" }]],
   ];
   for (const [name, filter, sort] of parityCases) {
     it(`parity: ${name}`, async () => {
@@ -122,6 +125,66 @@ describeMysql("§8 acceptance + in-memory parity (MySQL 8.4)", () => {
     }
     expect(seen).toEqual(all);
     expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it("cursor paging over a select sort (option order) matches the in-memory order with no dups/gaps", async () => {
+    const source = ds();
+    const sort: SortSpec[] = [{ columnId: col.status, dir: "asc" }, { columnId: col.paid, dir: "desc" }];
+    const seen: string[] = [];
+    let page: GridQuery["page"] = { cursor: "", limit: 2 };
+    for (let i = 0; i < 20; i++) {
+      const res = await source.fetch({ filter: null, sort, page });
+      seen.push(...res.rows.map((r) => r.id));
+      if (!res.nextCursor) break;
+      page = { cursor: res.nextCursor, limit: 2 };
+    }
+    expect(seen).toEqual(await reference(null, sort));
+  });
+
+  it("text matching is case-insensitive but accent-SENSITIVE, like core", async () => {
+    const gridId = "accents";
+    const accentRows: GridRow[] = [
+      { id: "a1", version: 1, updatedAt: "2026-09-01T00:00:00.000Z", cells: { name: "José Ruiz" } },
+      { id: "a2", version: 1, updatedAt: "2026-09-01T00:00:00.000Z", cells: { name: "JOSE Ortiz" } },
+      { id: "a3", version: 1, updatedAt: "2026-09-01T00:00:00.000Z", cells: { name: "Renée" } },
+      { id: "a4", version: 1, updatedAt: "2026-09-01T00:00:00.000Z", cells: { name: "renee" } },
+    ];
+    await seedRows(
+      mysql.db,
+      tables,
+      serverFixtureSchema,
+      accentRows.map((r) => ({ id: r.id, cells: r.cells })),
+      { gridId, now: NOW },
+    );
+    const source = createDrizzleDataSource({
+      db: mysql.db,
+      gridId,
+      schema: serverFixtureSchema,
+      registry: createDefaultRegistry(),
+      resolver: createRolePermissionResolver(),
+      user: { id: "u1", roles: ["admin"] },
+      tz: FIXTURE_TIME_ZONE,
+      now: () => NOW,
+      tables,
+    });
+    const env = { now: NOW, tz: FIXTURE_TIME_ZONE, userId: "u1" };
+    const cases: FilterNode[] = [
+      { columnId: col.name, operator: "contains", value: "jose" },
+      { columnId: col.name, operator: "contains", value: "josé" },
+      { columnId: col.name, operator: "is", value: "RENEE" },
+      { columnId: col.name, operator: "isNot", value: "renée" },
+      { columnId: col.name, operator: "startsWith", value: "rené" },
+    ];
+    for (const filter of cases) {
+      const sort: SortSpec[] = [];
+      const got = (await source.fetch({ filter, sort, page: { offset: 0, limit: 100 } })).rows.map((r) => r.id);
+      expect({ filter, ids: got }).toEqual({
+        filter,
+        ids: await referenceIds(serverFixtureSchema, accentRows, { filter, sort }, env),
+      });
+    }
+    const searched = (await source.fetch({ filter: null, sort: [], search: "JOSE", page: { offset: 0, limit: 100 } })).rows;
+    expect(searched.map((r) => r.id)).toEqual(["a2"]);
   });
 
   it("grouping counts and aggregates match the in-memory reference", async () => {

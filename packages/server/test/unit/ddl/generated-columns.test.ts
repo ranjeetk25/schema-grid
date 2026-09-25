@@ -12,7 +12,7 @@ describe("generatedColumnDDL", () => {
   it("emits the ALTER for a text column", () => {
     const stmt = generatedColumnDDL(TABLE, column(schema, "name"));
     expect(stmt.sql).toMatchInlineSnapshot(
-      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_name\` VARCHAR(191) GENERATED ALWAYS AS (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci) VIRTUAL, ADD INDEX \`idx_gc_name\` (\`gc_name\`)"`,
+      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_name\` VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_ci GENERATED ALWAYS AS (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_as_ci) VIRTUAL, ADD INDEX \`idx_gc_name\` (\`gc_name\`)"`,
     );
   });
 

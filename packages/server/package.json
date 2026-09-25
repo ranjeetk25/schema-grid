@@ -30,7 +30,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration"
   },
   "dependencies": {
     "@masai/schema-grid-core": "workspace:*"

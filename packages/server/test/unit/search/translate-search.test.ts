@@ -73,7 +73,7 @@ describe("translateSearch", () => {
     if (!snapshotSql) throw new Error("expected translateSearch to return SQL");
     const { sql: rendered, params } = renderSql(snapshotSql);
     expect(rendered).toMatchInlineSnapshot(
-      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.status')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.status'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!')"`,
+      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_as_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.status')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.status'))) COLLATE utf8mb4_0900_as_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_as_ci LIKE ? ESCAPE '!')"`,
     );
     expect(params).toEqual(["%bob%", "%bob%", "%bob%"]);
   });

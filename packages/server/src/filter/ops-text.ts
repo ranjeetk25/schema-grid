@@ -5,8 +5,8 @@ import { textValue } from "./values";
 
 /**
  * Text operators (core `matchText`). Case-insensitivity comes from the
- * `utf8mb4_0900_ai_ci` collation on `typed` (NB: that collation is also
- * accent-insensitive, which core's `toLowerCase` is not).
+ * `utf8mb4_0900_as_ci` collation (`TEXT_COLLATION`) on `typed`; like core's
+ * `toLowerCase`, it is accent-SENSITIVE ("jose" ≠ "José").
  *
  * - `contains` / `notContains` / `startsWith` do NOT trim either side.
  * - `is` / `isNot` trim BOTH sides: `TRIM(typed) = ?` with a JS-trimmed param.

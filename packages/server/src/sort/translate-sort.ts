@@ -1,6 +1,7 @@
 import { type SQL, sql } from "drizzle-orm";
 import { UnsupportedOperatorError } from "../errors";
 import type { SortSpec } from "../internal/core";
+import { binaryText, choiceRank } from "../sql/choice-order";
 import { ident, resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import type { StorageKind } from "../sql/storage-kind";
@@ -21,7 +22,8 @@ const ID_ASC = sql`${ident("id")} ASC`;
 
 /**
  * Builds ORDER BY from `SortSpec[]`: each spec contributes `nullFlag ASC, typed <dir>`
- * (nulls last in both directions), and the list always ends with `id ASC` as a stable
+ * (nulls last in both directions) — for `choice` columns `nullFlag ASC, optionRank <dir>,
+ * binary(value) <dir>` (two keys), matching core's option-order compare — and the list always ends with `id ASC` as a stable
  * tie-breaker. Throws `UnsupportedOperatorError` for an unknown column id or an
  * unsortable kind (multi, json).
  */
@@ -47,6 +49,17 @@ export function translateSort(sort: SortSpec[], scope: SqlScope): { orderBy: SQL
     const dirSql = spec.dir === "desc" ? sql`DESC` : sql`ASC`;
 
     orderBy.push(sql`${nullFlag} ASC`);
+    if (resolved.kind === "choice") {
+      // Core orders select values by OPTION ORDER (`compareByOptionOrder`), not alphabetically:
+      // rank in config order, then code-point order for ids outside the options. Two keyset keys.
+      const rank = choiceRank(expr, column);
+      const bin = binaryText(expr);
+      orderBy.push(sql`${rank} ${dirSql}`);
+      orderBy.push(sql`${bin} ${dirSql}`);
+      keys.push({ columnId: column.id, dir: spec.dir, expr: rank, nullFlag, kind: "number" });
+      keys.push({ columnId: column.id, dir: spec.dir, expr: bin, nullFlag, kind: resolved.kind });
+      continue;
+    }
     orderBy.push(sql`${expr} ${dirSql}`);
     keys.push({ columnId: column.id, dir: spec.dir, expr, nullFlag, kind: resolved.kind });
   }

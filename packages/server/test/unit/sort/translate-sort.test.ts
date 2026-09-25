@@ -98,4 +98,20 @@ describe("translateSort", () => {
     expect(renderSql(key.expr).sql).toContain("$.name");
     expect(renderSql(key.nullFlag).sql).toContain("CASE WHEN");
   });
+
+  it("a choice (select) sort orders by option order, then code point — core compareByOptionOrder", () => {
+    const { orderBy, keys } = translateSort([{ columnId: "paymentStatus", dir: "desc" }], makeScope());
+    const rendered = orderSql(orderBy);
+    // rank CASE binds the option ids in config order; unknown ids rank options.length (3).
+    expect(rendered.params).toEqual(["paid", "pending", "failed"]);
+    expect(rendered.sql).toContain("COLLATE utf8mb4_bin = ? THEN 0 WHEN");
+    expect(rendered.sql).toContain("ELSE 3 END) DESC");
+    expect(rendered.sql).toContain("COLLATE utf8mb4_bin DESC, `id` ASC");
+    // Two keyset keys sharing the empty flag: numeric rank, then the binary value.
+    expect(keys.map((k) => [k.columnId, k.dir, k.kind])).toEqual([
+      ["paymentStatus", "desc", "number"],
+      ["paymentStatus", "desc", "choice"],
+    ]);
+    expect(keys[0]?.nullFlag).toBe(keys[1]?.nullFlag);
+  });
 });

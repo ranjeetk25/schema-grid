@@ -3,7 +3,7 @@ import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { SchemaValidationError } from "../errors";
 import { formulaGeneratedSql } from "../formula/formula-plan";
 import type { ColumnDef, FormulaResultType } from "../internal/core";
-import { typedJsonExpr } from "../sql/column-expr";
+import { TEXT_COLLATION, typedJsonExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { type StorageKind, type StorageOverrides, formulaResultKind, storageKindOf } from "../sql/storage-kind";
 import { assertSafeColumnKey, generatedColumnName, generatedIndexName } from "../storage/keys";
@@ -21,10 +21,17 @@ export interface GeneratedColumnOptions {
 
 const dialect = new MySqlDialect();
 
+/**
+ * Text-ish generated columns declare `TEXT_COLLATION` explicitly: comparisons on
+ * `gc_<key>` use the COLUMN's collation (not the `COLLATE` inside the generation
+ * expression), so without it they would silently follow the table default.
+ */
+const TEXT_GC_TYPE = `VARCHAR(191) CHARACTER SET utf8mb4 COLLATE ${TEXT_COLLATION}`;
+
 const SQL_TYPE_BY_KIND: Readonly<Partial<Record<StorageKind, string>>> = {
-  text: "VARCHAR(191)",
-  choice: "VARCHAR(191)",
-  ref: "VARCHAR(191)",
+  text: TEXT_GC_TYPE,
+  choice: TEXT_GC_TYPE,
+  ref: TEXT_GC_TYPE,
   number: "DECIMAL(38,10)",
   date: "DATE",
   datetime: "DATETIME(3)",
