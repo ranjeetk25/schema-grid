@@ -2,7 +2,7 @@
  * Real-MySQL integration harness (plan Task 24). Everything here is skipped
  * unless `SCHEMA_GRID_MYSQL_IT=1` (requires Docker for @testcontainers/mysql).
  */
-import { varchar } from "drizzle-orm/mysql-core";
+import { boolean, date, datetime, decimal, int, mysqlEnum, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import { drizzle } from "drizzle-orm/mysql2";
 import { describe } from "vitest";
 import type { GridDb } from "../../src/changes/db";
@@ -10,8 +10,10 @@ import { createRows } from "../../src/changes/rows-crud";
 import { createServerContext } from "../../src/context";
 import { formulaSqlHook } from "../../src/ddl/generated-columns";
 import { diffIndexedColumns } from "../../src/ddl/diff-indexes";
+import { createExtensionCellsTableDDL } from "../../src/ddl/extension-ddl";
 import { createChangeLogTableDDL, createRowsTableDDL } from "../../src/ddl/tables-ddl";
 import {
+  type GridRow,
   type GridSchema,
   type RowPartial,
   createDefaultRegistry,
@@ -109,4 +111,86 @@ export async function seedRows(
     now: () => opts.now,
   });
   await createRows(rows, ctx, { db, tables, gridId: opts.gridId });
+}
+
+// ---- plain existing table (SQL-view reference, spec v0.2 §C4) ---------------
+
+/** A plain `leads` table — no `cells` JSON — as an app would already have it. */
+export const leadsTable = mysqlTable("leads", {
+  id: int("id").primaryKey(),
+  name: varchar("name", { length: 100 }),
+  email: varchar("email", { length: 191 }),
+  paymentStatus: mysqlEnum("payment_status", ["paid", "pending", "partial"]),
+  callDate: date("call_date", { mode: "string" }),
+  aiVerified: boolean("ai_verified"),
+  fee: decimal("fee", { precision: 12, scale: 2 }),
+  version: int("version").notNull().default(1),
+  updatedAt: datetime("updated_at", { mode: "date", fsp: 3 }).notNull(),
+});
+
+export const IT_EXTENSION_TABLE = "grid_extension_cells";
+
+export interface LeadSeed {
+  id: number;
+  name?: string | null;
+  email?: string | null;
+  paymentStatus?: "paid" | "pending" | "partial" | null;
+  callDate?: string | null;
+  aiVerified?: boolean | null;
+  fee?: number | null;
+  updatedAt: Date;
+}
+
+/** Fixture row `rN` → lead N (name/email/status/callDate/isActive/fee). */
+export function leadSeedFromFixture(row: GridRow, updatedAt: Date): LeadSeed {
+  const c = row.cells as Record<string, unknown>;
+  return {
+    id: Number(row.id.replace(/^r/, "")),
+    name: (c.name as string | null | undefined) ?? null,
+    email: (c.email as string | null | undefined) ?? null,
+    paymentStatus: (c.status as LeadSeed["paymentStatus"]) ?? null,
+    callDate: (c.callDate as string | null | undefined) ?? null,
+    aiVerified: (c.isActive as boolean | null | undefined) ?? null,
+    fee: (c.fee as number | null | undefined) ?? null,
+    updatedAt,
+  };
+}
+
+/** (Re)creates `leads` + the extension cells table and seeds `rows`. */
+export async function setupLeadsTable(db: GridDb, rows: LeadSeed[]): Promise<void> {
+  const exec = (s: string) => db.execute(s as never);
+  await exec("DROP TABLE IF EXISTS `leads`");
+  await exec(`DROP TABLE IF EXISTS \`${IT_EXTENSION_TABLE}\``);
+  await exec(
+    [
+      "CREATE TABLE `leads` (",
+      "  `id` INT NOT NULL,",
+      "  `name` VARCHAR(100) NULL,",
+      "  `email` VARCHAR(191) NULL,",
+      "  `payment_status` ENUM('paid','pending','partial') NULL,",
+      "  `call_date` DATE NULL,",
+      "  `ai_verified` BOOLEAN NULL,",
+      "  `fee` DECIMAL(12,2) NULL,",
+      "  `version` INT NOT NULL DEFAULT 1,",
+      "  `updated_at` DATETIME(3) NOT NULL,",
+      "  PRIMARY KEY (`id`)",
+      ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci",
+    ].join("\n"),
+  );
+  await exec(createExtensionCellsTableDDL({ table: IT_EXTENSION_TABLE }).sql);
+  if (rows.length > 0) {
+    await db.insert(leadsTable).values(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name ?? null,
+        email: r.email ?? null,
+        paymentStatus: r.paymentStatus ?? null,
+        callDate: r.callDate ?? null,
+        aiVerified: r.aiVerified ?? null,
+        fee: r.fee === null || r.fee === undefined ? null : String(r.fee),
+        version: 1,
+        updatedAt: r.updatedAt,
+      })),
+    );
+  }
 }

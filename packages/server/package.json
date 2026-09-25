@@ -69,13 +69,13 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration"
+    "test:integration": "SCHEMA_GRID_MYSQL_IT=1 vitest run test/integration --no-file-parallelism"
   },
   "dependencies": {
     "@ranjeetk25/schema-grid-core": "workspace:*"
   },
   "peerDependencies": {
-    "drizzle-orm": "^0.45.0",
+    "drizzle-orm": ">=0.41.0 <1",
     "mysql2": "^3.0.0"
   },
   "peerDependenciesMeta": {

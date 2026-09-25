@@ -7,6 +7,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "vitest run",
     "test:integration": "bun run --filter @ranjeetk25/schema-grid-server test:integration",
+    "test:drizzle-matrix": "bun scripts/drizzle-matrix.ts",
     "build": "bun run --filter '*' build",
     "lint": "biome lint .",
     "format:check": "biome format .",

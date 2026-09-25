@@ -1,6 +1,6 @@
 import { compareRows } from "./compare-rows";
-import { type SQL, and, eq, isNull } from "drizzle-orm";
-import { projectRow, projectionSql } from "../access/projection";
+import { type SQL, and } from "drizzle-orm";
+import { projectRow } from "../access/projection";
 import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
 import { CursorError, FormulaQueryLimitError } from "../errors";
 import { translateFilter } from "../filter/translate-filter";
@@ -8,9 +8,9 @@ import { type FilterNode, type GridQuery, type GridRow, type QueryResult, matche
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
 import { offsetClause } from "../pagination/offset";
 import type { GridSqlScope, SelectCapableDb } from "../query/build-query";
+import { rowSourceOf } from "../query/row-source";
 import { translateSearch } from "../search/translate-search";
 import type { FormulaPlan } from "../sql/scope";
-import { type DbRow, hydrateRow } from "../storage/hydrate";
 import { evaluateFormulaCells } from "./evaluate-rows";
 import { planFormulaColumns } from "./formula-plan";
 
@@ -92,21 +92,20 @@ export async function executeFallbackQuery(
   ctx.onWarning?.({ code: "FORMULA_FALLBACK", columnIds, rowCap: cap });
 
   const { sqlPart, memoryPart } = splitFilterForPushdown(query.filter, plans);
-  const rowsTable = planned.tables.rows;
+  const source = rowSourceOf(planned);
   const where: (SQL | undefined)[] = [
-    eq(rowsTable.gridId, planned.gridId),
-    isNull(rowsTable.deletedAt),
+    ...source.where,
     translateFilter(sqlPart, planned),
     translateSearch(query.search, access, planned),
   ];
   const candidates = (await db
-    .select(projectionSql(ctx.schema, access, planned.tables))
-    .from(rowsTable)
+    .select(source.projection(access))
+    .from(source.from)
     .where(and(...where))
-    .limit(cap + 1)) as DbRow[];
+    .limit(cap + 1)) as Record<string, unknown>[];
   if (candidates.length > cap) throw new FormulaQueryLimitError(columnIds, cap);
 
-  const hydrated = candidates.map((r) => hydrateRow(r, ctx.schema, ctx.registry));
+  const hydrated = candidates.map((r) => source.hydrate(r));
   const evaluated = evaluateFormulaCells(hydrated, access, ctx);
   const matchCtx = { schema: ctx.schema, registry: ctx.registry, now: ctx.now(), tz: ctx.tz, userId: ctx.user.id };
   const filtered = memoryPart ? evaluated.filter((r) => matchesFilter(memoryPart, r, matchCtx)) : evaluated;

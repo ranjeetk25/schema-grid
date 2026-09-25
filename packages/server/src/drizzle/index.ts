@@ -2,7 +2,19 @@
 export { type DefineGridTablesOptions, type GridTables, defineGridTables } from "../storage/tables";
 export type { FormulaPlan, SqlScope } from "../sql/scope";
 export type { StorageInfo, StorageKind, StorageOverrides } from "../sql/storage-kind";
-export { type ColumnExpr, isEmptyExpr, resolveColumnExpr } from "../sql/column-expr";
+export {
+  type ColumnExpr,
+  type ColumnExprResolver,
+  type JsonCellsResolverOptions,
+  type MappedColumn,
+  type MappedColumnResolverOptions,
+  createJsonCellsResolver,
+  createMappedColumnResolver,
+  isEmptyExpr,
+  jsonCellsResolver,
+  resolveColumnExpr,
+} from "../sql/column-expr";
+export { type RowSource, gridRowsSource } from "../query/row-source";
 export { translateFilter } from "../filter/translate-filter";
 export { registerOperatorTranslator } from "../filter/operator-table";
 export type { OperatorTranslator, OperatorTranslatorArgs } from "../filter/types";
@@ -24,3 +36,22 @@ export {
   type DrizzleDataSourceOptions,
   createDrizzleDataSource,
 } from "../datasource/create-drizzle-data-source";
+export { type DrizzleSchemaStoreOptions, createDrizzleSchemaStore } from "../schema-store/drizzle-schema-store";
+export {
+  SQL_VIEW_BASE_ALIAS,
+  SQL_VIEW_EXTENSION_ALIAS,
+  type SqlViewContext,
+  type SqlViewDataSource,
+  type SqlViewDataSourceOptions,
+  type SqlViewUpdateInput,
+  type SqlViewUpdateResult,
+  type SqlViewWriteHooks,
+  createSqlViewDataSource,
+} from "../sqlview/create-sql-view-data-source";
+export {
+  type ExtensionCellStore,
+  type ExtensionCellStoreOptions,
+  type ExtensionCellsTable,
+  createExtensionCellStore,
+} from "../sqlview/extension-store";
+export { rebaseColumns } from "../sqlview/rebase";

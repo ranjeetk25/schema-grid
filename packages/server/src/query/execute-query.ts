@@ -3,8 +3,8 @@ import type { GridRow, QueryResult } from "../internal/core";
 import { encodeCursor } from "../pagination/cursor";
 import { cursorFromDbRow } from "../pagination/keyset";
 import { trimPage } from "../pagination/offset";
-import { hydrateRow } from "../storage/hydrate";
 import type { BuiltQuery, GridSqlScope } from "./build-query";
+import { rowSourceOf } from "./row-source";
 
 export interface ExecuteQueryOptions {
   /**
@@ -28,7 +28,8 @@ export async function executeQuery(
   const [dbRows, countRows] = await Promise.all([built.select, built.count]);
   const { rows: page, hasMore } = trimPage(dbRows, built.limit);
 
-  const hydrated = page.map((r) => hydrateRow(r, scope.ctx.schema, scope.ctx.registry));
+  const source = rowSourceOf(scope);
+  const hydrated = page.map((r) => source.hydrate(r as unknown as Record<string, unknown>));
   const transformed = options.transformRows ? options.transformRows(hydrated) : hydrated;
   const rows = transformed.map((r) => projectRow(r, scope.ctx.schema, built.access));
 

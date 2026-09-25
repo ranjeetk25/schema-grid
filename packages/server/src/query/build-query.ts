@@ -1,6 +1,5 @@
-import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
+import { type SQL, and, sql } from "drizzle-orm";
 import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
-import { type ProjectionSelect, projectionSql } from "../access/projection";
 import { CursorError } from "../errors";
 import { translateFilter } from "../filter/translate-filter";
 import { planFormulaColumns } from "../formula/formula-plan";
@@ -9,11 +8,13 @@ import { assertCursorMatches, decodeCursor, queryFingerprint } from "../paginati
 import { keysetPredicate, sortKeySelect } from "../pagination/keyset";
 import { offsetClause } from "../pagination/offset";
 import { translateSearch } from "../search/translate-search";
+import { rowIdExpr } from "../sql/column-expr";
 import type { FormulaPlan, SqlScope } from "../sql/scope";
 import { type SortKey, translateSort } from "../sort/translate-sort";
 import type { DbRow } from "../storage/hydrate";
+import { rowSourceOf } from "./row-source";
 
-/** A SQL scope bound to one grid (`grid_id`). */
+/** A SQL scope bound to one grid (`grid_id`; also the extension-store key for existing-table sources). */
 export type GridSqlScope = SqlScope & { gridId: string };
 
 /** A built, awaitable drizzle select (anything that renders SQL and resolves to rows). */
@@ -96,20 +97,18 @@ export function buildQuery(query: GridQuery, scope: GridSqlScope, db: SelectCapa
   const fingerprint = queryFingerprint(query, planned.ctx.schema.schemaVersion);
   const paging = resolvePaging(query, fingerprint);
 
-  const rows = planned.tables.rows;
+  const source = rowSourceOf(planned);
   const baseWhere: (SQL | undefined)[] = [
-    eq(rows.gridId, planned.gridId),
-    isNull(rows.deletedAt),
+    ...source.where,
     translateFilter(query.filter, planned),
     translateSearch(query.search, resolvedAccess, planned),
   ];
   const { orderBy, keys: sortKeys } = translateSort(query.sort ?? [], planned);
-  const keyset = paging.keyset ? keysetPredicate(sortKeys, paging.keyset) : undefined;
+  const keyset = paging.keyset ? keysetPredicate(sortKeys, paging.keyset, rowIdExpr(planned)) : undefined;
 
-  const projection: ProjectionSelect = projectionSql(planned.ctx.schema, resolvedAccess, planned.tables);
   let select = db
-    .select({ ...projection, ...sortKeySelect(sortKeys) })
-    .from(rows)
+    .select({ ...source.projection(resolvedAccess), ...sortKeySelect(sortKeys) })
+    .from(source.from)
     .where(and(...baseWhere, keyset))
     .orderBy(...orderBy)
     .limit(paging.limit + 1);
@@ -128,7 +127,7 @@ export function buildQuery(query: GridQuery, scope: GridSqlScope, db: SelectCapa
   if (query.includeTotal) {
     built.count = db
       .select({ total: sql<number>`COUNT(*)` })
-      .from(rows)
+      .from(source.from)
       .where(and(...baseWhere)) as SelectStatement<{ total: number | string }>;
   }
   return built;

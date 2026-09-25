@@ -12,7 +12,7 @@ export interface KeysetCursor {
 }
 
 /** MySQL binds a bound ISO datetime string against `DATETIME(3)` fine only in this normalized shape. */
-function toDatetimeLiteral(iso: string): string {
+export function toDatetimeLiteral(iso: string): string {
   return iso.replace("T", " ").replace("Z", "");
 }
 
@@ -31,9 +31,9 @@ function bindValue(kind: StorageKind, value: CursorKeyValue): CursorKeyValue {
  *   (nulls always come after a non-null value in both directions), equal_i is
  *   `(nullFlag_i = 0 AND expr_i = ?)`.
  * Branches: for each key i with a defined after_i, AND(equal_0..equal_{i-1}, after_i);
- * plus a final branch AND(all equal_i), `id > ?`.
+ * plus a final branch AND(all equal_i), `id > ?` (`rowId` — the scope resolver's row id; default the `id` column).
  */
-export function keysetPredicate(keys: readonly SortKey[], cursor: KeysetCursor): SQL {
+export function keysetPredicate(keys: readonly SortKey[], cursor: KeysetCursor, rowId: SQL = ident("id")): SQL {
   const equalParts: SQL[] = [];
   const branches: SQL[] = [];
 
@@ -54,7 +54,7 @@ export function keysetPredicate(keys: readonly SortKey[], cursor: KeysetCursor):
     equalParts.push(sql`(${key.nullFlag} = 0 AND ${key.expr} = ${bound})`);
   }
 
-  const idBranch = sql`(${sql.join([...equalParts, sql`${ident("id")} > ${cursor.id}`], sql` AND `)})`;
+  const idBranch = sql`(${sql.join([...equalParts, sql`${rowId} > ${cursor.id}`], sql` AND `)})`;
   branches.push(idBranch);
 
   return sql`(${sql.join(branches, sql` OR `)})`;

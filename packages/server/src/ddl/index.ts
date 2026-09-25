@@ -15,3 +15,5 @@ export {
   type GeneratedColumnOptions,
 } from "./generated-columns";
 export { diffIndexedColumns } from "./diff-indexes";
+export { type CreateGridSchemasTableDDLOptions, createGridSchemasTableDDL } from "./schema-store-ddl";
+export { type CreateExtensionCellsTableDDLOptions, createExtensionCellsTableDDL } from "./extension-ddl";
