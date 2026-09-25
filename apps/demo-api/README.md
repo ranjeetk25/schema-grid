@@ -34,16 +34,23 @@ CORS allows any origin and exposes `content-disposition`.
 
 ## Routes
 
+`POST /grid/:op` is the wire contract ([`docs/wire-contract.md`](../../docs/wire-contract.md)),
+served by `createGridRouterAdapter` from `@masai/schema-grid-server/http`: the JSON body **is**
+the op input, the answer is `200 { data }` or `<status> { error: { code, message, details? } }`.
+The headers above become the adapter context (`{ user, now }`) that builds the per-request
+Drizzle data source. The browser side is `createHttpDataSource({ baseUrl: ".../grid" })` from
+`@masai/schema-grid-ag-grid`.
+
 | Route | Body / query | 200 response |
 |---|---|---|
-| `POST /grid/fetch` | `{ query }` | `QueryResult` |
-| `POST /grid/applyChanges` | `{ batch }` | `ChangeResult` |
-| `POST /grid/createRows` | `{ partials }` | `GridRow[]` |
-| `POST /grid/deleteRows` | `{ ids }` | `{ ok: true }` |
-| `POST /grid/getChanges` | `{ since }` (`""` = current cursor) | `ChangeFeedEntry` |
-| `POST /grid/getOptions` | `{ columnId, search? }` | `Option[]` |
-| `POST /grid/createOption` | `{ columnId, label }` | `Option` (schemaVersion bumped) |
-| `POST /grid/lookup` | `{ columnId, search }` | `LinkRef[]` |
+| `POST /grid/fetch` | `GridQuery` | `{ data: QueryResult }` |
+| `POST /grid/applyChanges` | `ChangeBatch` | `{ data: ChangeResult }` |
+| `POST /grid/createRows` | `{ partials }` | `{ data: GridRow[] }` |
+| `POST /grid/deleteRows` | `{ ids }` | `{ data: null }` |
+| `POST /grid/getChanges` | `{ since }` (`""` = current cursor) | `{ data: ChangeFeedEntry }` |
+| `POST /grid/getOptions` | `{ columnId, search? }` | `{ data: Option[] }` |
+| `POST /grid/createOption` | `{ columnId, label }` | `{ data: Option }` (schemaVersion bumped) |
+| `POST /grid/lookup` | `{ columnId, search }` | `{ data: LinkRef[] }` |
 | `GET /schema` | | `GridSchema` |
 | `PUT /schema` | `GridSchema` | new `GridSchema` (409 if `schemaVersion` is stale) |
 | `POST /import` | multipart `file`, `mapping?` (JSON header→columnId), `mode?` (`create`/`upsert`), `keyColumnId?` | 202 `{ jobId }` |
@@ -53,5 +60,7 @@ CORS allows any origin and exposes `content-disposition`.
 | `POST /__reset` | | `{ ok: true }` |
 | `GET /health` | | `{ ok: true }` |
 
-Errors: `{ error: { name, message, details? } }` — 400 bad input / invalid filter, cursor,
-schema or row; 403 `PermissionError`; 404 unknown op or job; 409 stale schema; 500 otherwise.
+Grid errors use the wire codes (`INPUT_INVALID` 400, `FILTER_INVALID` 400, `PERMISSION_DENIED` 403,
+`UNKNOWN_OPERATION` 404, `UNSUPPORTED_OPERATION` 501, `INTERNAL` 500, ...). The other routes answer
+`{ error: { name, message, details? } }` — 400 bad input / invalid filter, cursor, schema or row;
+403 `PermissionError`; 404 unknown job; 409 stale schema; 500 otherwise.

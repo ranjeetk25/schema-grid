@@ -85,18 +85,17 @@ test("§8 at the API level: same filter, both clocks", async ({ request }) => {
         "content-type": "application/json",
         ...(now ? { "x-now": now } : {}),
       },
+      // Wire contract: the body is the GridQuery; the answer is `{ data }`.
       data: {
-        query: {
-          filter: SECTION_8_AST,
-          sort: [],
-          page: { offset: 0, limit: 100 },
-        },
+        filter: SECTION_8_AST,
+        sort: [],
+        page: { offset: 0, limit: 100 },
       },
     });
     expect(res.ok()).toBe(true);
-    return ((await res.json()) as { rows: { id: string }[] }).rows.map(
-      (r) => r.id,
-    );
+    return (
+      (await res.json()) as { data: { rows: { id: string }[] } }
+    ).data.rows.map((r) => r.id);
   };
   expect(await fetchIds()).toEqual(["r2", "r3"]);
   expect(await fetchIds(NEXT_DAY)).toEqual([]);
@@ -158,20 +157,24 @@ test("§9 two browser contexts: B saves first, A's stale edit conflicts; keepThe
   await popover(a).getByRole("button", { name: "Overwrite" }).click();
   await expect(cell(a, "r1", "col_name")).toHaveText("Asha (A wins)");
 
-  const res = await request.post(`${API}/grid/fetch`, {
-    headers: { "content-type": "application/json" },
-    data: {
-      query: {
+  // The cell shows the overwrite optimistically; poll until the write has landed.
+  const storedName = async () => {
+    const res = await request.post(`${API}/grid/fetch`, {
+      headers: { "content-type": "application/json" },
+      data: {
         filter: { columnId: "col_name", operator: "startsWith", value: "Asha" },
         sort: [],
         page: { offset: 0, limit: 5 },
       },
-    },
-  });
-  const rows = (
-    (await res.json()) as { rows: { id: string; cells: { name: string } }[] }
-  ).rows;
-  expect(rows.find((r) => r.id === "r1")?.cells.name).toBe("Asha (A wins)");
+    });
+    const rows = (
+      (await res.json()) as {
+        data: { rows: { id: string; cells: { name: string } }[] };
+      }
+    ).data.rows;
+    return rows.find((r) => r.id === "r1")?.cells.name;
+  };
+  await expect.poll(storedName).toBe("Asha (A wins)");
   await a.context().close();
   await b.context().close();
 });
@@ -219,7 +222,7 @@ test("§14 server-mode 'Export CSV' pages the current view through the data sour
   expect(lines[0]).toContain("Name");
   // Every fixture row, not just the loaded block: the export re-queried the view.
   expect(lines.slice(1).filter(Boolean)).toHaveLength(5);
-  expect(csv).toContain("Asha Verma");
+  expect(csv).toContain("Bhavesh Rao"); // r1's name is edited by the §9 test above
   const exportFetches = (await calls(page, "fetch")).slice(before);
   expect(exportFetches.length).toBeGreaterThan(0);
 });

@@ -71,15 +71,25 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
         headers: res.headers,
       };
     };
-    const op = <T>(name: string, body: unknown, headers: Headers = {}) =>
-      call<T>("POST", `/grid/${name}`, body, headers);
+    /** Wire contract: the body IS the op input; `200 { data }` / `<status> { error }`. */
+    const op = async <T>(name: string, body: unknown, headers: Headers = {}) => {
+      const res = await call<{
+        data?: T;
+        error?: { code: string; message: string; details?: unknown };
+      } | null>("POST", `/grid/${name}`, body, headers);
+      return {
+        status: res.status,
+        json: res.json?.data as T,
+        error: res.json?.error,
+      };
+    };
     const fetchIds = async (
       filter: FilterNode | null,
       headers: Headers = {},
     ) => {
       const res = await op<QueryResult<GridRow>>(
         "fetch",
-        { query: { filter, sort: [], page: { offset: 0, limit: 100 } } },
+        { filter, sort: [], page: { offset: 0, limit: 100 } },
         headers,
       );
       expect(res.status).toBe(200);
@@ -88,7 +98,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
     const row = async (id: string, headers: Headers = {}) => {
       const res = await op<QueryResult<GridRow>>(
         "fetch",
-        { query: { filter: null, sort: [], page: { offset: 0, limit: 100 } } },
+        { filter: null, sort: [], page: { offset: 0, limit: 100 } },
         headers,
       );
       return res.json.rows.find((r) => r.id === id) as GridRow;
@@ -134,19 +144,17 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       const rb = await op<ChangeResult>(
         "applyChanges",
         {
-          batch: {
-            id: "it-b",
-            changes: [
-              {
-                rowId: "r1",
-                columnId: "col_name",
-                prev: "Asha Verma",
-                next: "Asha (B)",
-              },
-            ],
-            baseVersions: { r1: v },
-            source: "edit",
-          },
+          id: "it-b",
+          changes: [
+            {
+              rowId: "r1",
+              columnId: "col_name",
+              prev: "Asha Verma",
+              next: "Asha (B)",
+            },
+          ],
+          baseVersions: { r1: v },
+          source: "edit",
         },
         B,
       );
@@ -155,19 +163,17 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       const ra = await op<ChangeResult>(
         "applyChanges",
         {
-          batch: {
-            id: "it-a",
-            changes: [
-              {
-                rowId: "r1",
-                columnId: "col_name",
-                prev: "Asha Verma",
-                next: "Asha (A)",
-              },
-            ],
-            baseVersions: { r1: v },
-            source: "edit",
-          },
+          id: "it-a",
+          changes: [
+            {
+              rowId: "r1",
+              columnId: "col_name",
+              prev: "Asha Verma",
+              next: "Asha (A)",
+            },
+          ],
+          baseVersions: { r1: v },
+          source: "edit",
         },
         A,
       );
@@ -186,19 +192,17 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       const overwrite = await op<ChangeResult>(
         "applyChanges",
         {
-          batch: {
-            id: "it-a2",
-            changes: [
-              {
-                rowId: "r1",
-                columnId: "col_name",
-                prev: "Asha (B)",
-                next: "Asha (A)",
-              },
-            ],
-            baseVersions: { r1: conflict.serverVersion },
-            source: "edit",
-          },
+          id: "it-a2",
+          changes: [
+            {
+              rowId: "r1",
+              columnId: "col_name",
+              prev: "Asha (B)",
+              next: "Asha (A)",
+            },
+          ],
+          baseVersions: { r1: conflict.serverVersion },
+          source: "edit",
         },
         A,
       );
@@ -216,29 +220,27 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       expect(Number(feed.json.cursor)).toBeGreaterThan(Number(cursor));
     });
 
-    it("counsellor: filtering on hidden col_notes → 403 PermissionError; fetched rows lack notes", async () => {
+    it("counsellor: filtering on hidden col_notes → 403 PERMISSION_DENIED; fetched rows lack notes", async () => {
       const counsellor = { "x-user": "u2", "x-roles": "counsellor" };
-      const res = await op<{
-        error: { name: string; details: { columnIds: string[] } };
-      }>(
+      const res = await op(
         "fetch",
         {
-          query: {
-            filter: { columnId: "col_notes", operator: "isNotEmpty" },
-            sort: [],
-            page: { offset: 0, limit: 10 },
-          },
+          filter: { columnId: "col_notes", operator: "isNotEmpty" },
+          sort: [],
+          page: { offset: 0, limit: 10 },
         },
         counsellor,
       );
       expect(res.status).toBe(403);
-      expect(res.json.error.name).toBe("PermissionError");
-      expect(res.json.error.details.columnIds).toEqual(["col_notes"]);
+      expect(res.error?.code).toBe("PERMISSION_DENIED");
+      expect(
+        (res.error?.details as { columnIds: string[] }).columnIds,
+      ).toEqual(["col_notes"]);
 
       const rows = (
         await op<QueryResult<GridRow>>(
           "fetch",
-          { query: { filter: null, sort: [], page: { offset: 0, limit: 10 } } },
+          { filter: null, sort: [], page: { offset: 0, limit: 10 } },
           counsellor,
         )
       ).json.rows;

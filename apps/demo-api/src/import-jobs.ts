@@ -17,7 +17,7 @@ import {
   PermissionError,
   runImportJob,
 } from "@masai/schema-grid-server";
-import { HttpError } from "./handle-op";
+import { HttpError } from "./http-error";
 
 /** Mirrors ui-mantine's `ImportJobStatus` (plus the final report). */
 export interface ImportJobStatus {

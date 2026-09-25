@@ -1,11 +1,13 @@
 /**
- * Minimal fetch adapter for apps/demo-api's `POST /grid/:op` contract
- * (one JSON body per DataSource method, raw result JSON back, errors as
- * `{ error: { name, message } }` with a 4xx/5xx status).
- *
- * TODO(wire): replace with the shared client from `@masai/schema-grid-core/wire`
- * once that branch lands.
+ * apps/demo-api client helpers. The grid itself talks to `POST /grid/:op`
+ * through `createHttpDataSource` from `@masai/schema-grid-ag-grid` (the wire
+ * contract, docs/wire-contract.md); this file only builds its options (the
+ * demo's fake-auth headers) and wraps the non-grid REST routes (`/schema`).
  */
+import {
+  type HttpDataSourceOptions,
+  createHttpDataSource,
+} from "@masai/schema-grid-ag-grid";
 import type {
   DataSource,
   GridRow,
@@ -17,7 +19,7 @@ export const DEMO_API_URL =
   (import.meta as unknown as { env?: Record<string, string | undefined> }).env
     ?.STORYBOOK_DEMO_API_URL ?? "http://localhost:3001";
 
-export class HttpDataSourceError extends Error {
+export class DemoApiError extends Error {
   constructor(
     readonly status: number,
     readonly errorName: string,
@@ -49,7 +51,7 @@ async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = (body as { error?: { name?: string; message?: string } } | null)
       ?.error;
-    throw new HttpDataSourceError(
+    throw new DemoApiError(
       res.status,
       err?.name ?? "HttpError",
       err?.message ?? `HTTP ${res.status}`,
@@ -58,31 +60,15 @@ async function readJson<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export function createHttpDataSource(
+/** The grid's data source: the wire-contract endpoint mounted at `${baseUrl}/grid`. */
+export function createDemoDataSource(
   options: HttpClientOptions,
 ): DataSource<GridRow> {
-  const base = options.baseUrl ?? DEMO_API_URL;
-  const call = async <T>(op: string, body: unknown): Promise<T> =>
-    readJson<T>(
-      await fetch(`${base}/grid/${op}`, {
-        method: "POST",
-        headers: headers(options),
-        body: JSON.stringify(body),
-      }),
-    );
-  return {
-    fetch: (query) => call("fetch", { query }),
-    applyChanges: (batch) => call("applyChanges", { batch }),
-    createRows: (partials) => call("createRows", { partials }),
-    deleteRows: async (ids) => {
-      await call("deleteRows", { ids });
-    },
-    getChanges: (since) => call("getChanges", { since }),
-    getOptions: (columnId, search) => call("getOptions", { columnId, search }),
-    createOption: (columnId, label) =>
-      call("createOption", { columnId, label }),
-    lookup: (columnId, search) => call("lookup", { columnId, search }),
+  const http: HttpDataSourceOptions = {
+    baseUrl: `${options.baseUrl ?? DEMO_API_URL}/grid`,
+    headers: () => headers(options),
   };
+  return createHttpDataSource(http);
 }
 
 export async function fetchSchema(

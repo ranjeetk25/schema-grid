@@ -30,12 +30,17 @@ import {
   createDrizzleDataSource,
   formulaTranslatability,
 } from "@masai/schema-grid-server/drizzle";
+import {
+  createGridRouterAdapter,
+  parseJsonBody,
+  toHttpResponse,
+} from "@masai/schema-grid-server/http";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { type GridEnv, applyGeneratedColumns, resetGrid } from "./bootstrap";
 import { buildExportResponse } from "./export";
-import { HttpError, handleOp, toErrorResponse } from "./handle-op";
+import { HttpError, toErrorResponse } from "./http-error";
 import { ImportJobs, startImport } from "./import-jobs";
 import type { SchemaStore } from "./schema-store";
 
@@ -51,6 +56,14 @@ export interface AppDeps {
   jobs?: ImportJobs;
   registry?: FieldTypeRegistry;
   resolver?: PermissionResolver;
+  /** Override the per-request grid data source (tests). Default: Drizzle over MySQL. */
+  dataSource?: (ctx: GridRequestContext) => DataSource<GridRow>;
+}
+
+/** Per-request identity + clock, read from `x-user` / `x-roles` / `x-now`. */
+export interface GridRequestContext {
+  user: PermissionUser;
+  now: () => Date;
 }
 
 export interface CreatedApp {
@@ -221,6 +234,36 @@ export function createApp(deps: AppDeps): CreatedApp {
       : [...userOptions];
   };
 
+  const drizzleDataSource = (ctx: GridRequestContext): DataSource<GridRow> =>
+    createDrizzleDataSource({
+      db: deps.db,
+      gridId: deps.gridId,
+      schema: deps.store.get(),
+      registry,
+      resolver,
+      user: ctx.user,
+      tz: deps.tz,
+      now: ctx.now,
+      tables: deps.tables,
+      onCreateOption: createOption,
+      linkLookup,
+      userDirectory,
+    });
+  const dataSourceFor = deps.dataSource ?? drizzleDataSource;
+
+  /** The adapter's `context(req)`: fake auth + clock from the request headers. */
+  const context = (c: Context): GridRequestContext => ({
+    user: userOf(c),
+    now: nowOf(c),
+  });
+
+  /** Wire-contract endpoint (docs/wire-contract.md): `200 { data }` / `<status> { error: WireError }`. */
+  const grid = createGridRouterAdapter<GridRequestContext>(dataSourceFor, {
+    onError: (err, info) => {
+      if (info.status >= 500) console.error(err);
+    },
+  });
+
   /** Per-request data source + the matching column access map. */
   const requestScope = (
     c: Context,
@@ -231,33 +274,19 @@ export function createApp(deps: AppDeps): CreatedApp {
     now: () => Date;
   } => {
     const schema = deps.store.get();
-    const user = userOf(c);
-    const now = nowOf(c);
-    const ds = createDrizzleDataSource({
-      db: deps.db,
-      gridId: deps.gridId,
-      schema,
-      registry,
-      resolver,
-      user,
-      tz: deps.tz,
-      now,
-      tables: deps.tables,
-      onCreateOption: createOption,
-      linkLookup,
-      userDirectory,
-    });
+    const ctx = context(c);
+    const ds = dataSourceFor(ctx);
     const access = resolveAccess(
       createServerContext({
         schema,
         registry,
         resolver,
-        user,
+        user: ctx.user,
         tz: deps.tz,
-        now,
+        now: ctx.now,
       }),
     );
-    return { ds, access, schema, now };
+    return { ds, access, schema, now: ctx.now };
   };
 
   const app = new Hono();
@@ -294,9 +323,18 @@ export function createApp(deps: AppDeps): CreatedApp {
 
   app.post("/grid/:op", async (c) => {
     const op = c.req.param("op");
-    const body = await readJson(c);
-    const { ds } = requestScope(c);
-    return c.json((await handleOp(ds, op, body)) ?? null);
+    let result: Awaited<ReturnType<typeof grid.handle>>;
+    try {
+      const body = parseJsonBody(await c.req.text());
+      result = body.ok
+        ? await grid.handle(op, body.value, context(c))
+        : { ok: false, error: body.error, status: 400 };
+    } catch (err) {
+      // Context resolution (e.g. a malformed x-now) fails the same way `handle` would.
+      result = grid.failure(err, op);
+    }
+    const { status, body } = toHttpResponse(result);
+    return c.json(body, status as ContentfulStatusCode);
   });
 
   app.get("/schema", (c) => c.json(deps.store.get()));

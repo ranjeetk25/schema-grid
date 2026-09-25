@@ -1,0 +1,257 @@
+import type { DataSource, GridRow } from "@masai/schema-grid-core";
+import { createFixtureSchema } from "@masai/schema-grid-core/testing";
+import {
+  CursorError,
+  FilterValidationError,
+  PermissionError,
+  RowValidationError,
+  SchemaValidationError,
+} from "@masai/schema-grid-server";
+import type { GridDb } from "@masai/schema-grid-server/drizzle";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { type GridRequestContext, createApp } from "../src/app";
+import { gridTables } from "../src/db";
+import { HttpError, toErrorResponse } from "../src/http-error";
+import { SchemaStore } from "../src/schema-store";
+
+function fakeDs(error?: unknown): DataSource<GridRow> & { calls: unknown[][] } {
+  const calls: unknown[][] = [];
+  const run = async <T>(
+    name: string,
+    args: unknown[],
+    value: T,
+  ): Promise<T> => {
+    calls.push([name, ...args]);
+    if (error) throw error;
+    return value;
+  };
+  return {
+    calls,
+    fetch: (q) => run("fetch", [q], { rows: [] }),
+    applyChanges: (b) =>
+      run("applyChanges", [b], { applied: [], conflicts: [], errors: [] }),
+    createRows: (p) => run("createRows", [p], []),
+    deleteRows: (ids) => run("deleteRows", [ids], undefined),
+    getChanges: (since) =>
+      run("getChanges", [since], {
+        cursor: "1",
+        rows: [],
+        deletedRowIds: [],
+        schemaVersion: 1,
+      }),
+    getOptions: (columnId, search) =>
+      run("getOptions", [columnId, search], [{ id: "a", label: "A" }]),
+    lookup: (columnId, search) => run("lookup", [columnId, search], []),
+  };
+}
+
+describe("toErrorResponse", () => {
+  it.each([
+    ["PermissionError", new PermissionError(["col_notes"], "filter"), 403],
+    [
+      "FilterValidationError",
+      new FilterValidationError([
+        { code: "unknownColumn", path: [], message: "bad" },
+      ]),
+      400,
+    ],
+    ["CursorError", new CursorError(), 400],
+    [
+      "SchemaValidationError",
+      new SchemaValidationError([{ code: "x", path: [], message: "bad" }]),
+      400,
+    ],
+    ["RowValidationError", new RowValidationError(0, "col_fee", "bad"), 400],
+    ["HttpError", new HttpError(409, "Conflict", "stale"), 409],
+    ["plain Error", new Error("boom"), 500],
+  ])("%s → %i", (_name, error, status) => {
+    expect(toErrorResponse(error).status).toBe(status);
+  });
+
+  it("serialises name, message and details", () => {
+    expect(
+      toErrorResponse(new PermissionError(["col_notes"], "filter")).body,
+    ).toEqual({
+      error: {
+        name: "PermissionError",
+        message: "Permission denied for filter on 1 column(s)",
+        details: { columnIds: ["col_notes"], usage: "filter" },
+      },
+    });
+    expect(toErrorResponse("weird").body).toEqual({
+      error: { name: "Error", message: "weird" },
+    });
+  });
+});
+
+describe("app routes that need no database", () => {
+  const { app } = createApp({
+    db: {} as GridDb,
+    tables: gridTables(),
+    gridId: "admissions",
+    store: new SchemaStore(null, createFixtureSchema),
+    tz: "Asia/Kolkata",
+    clock: "2026-09-24T21:00:00.000Z",
+  });
+
+  it("GET /health", async () => {
+    const res = await app.request("/health");
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("CORS preflight allows the fake-auth headers and exposes content-disposition", async () => {
+    const res = await app.request("/grid/fetch", {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://localhost:6006",
+        "access-control-request-method": "POST",
+      },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-headers")).toBe(
+      "content-type,x-user,x-roles,x-now",
+    );
+    const get = await app.request("/health", {
+      headers: { origin: "http://localhost:6006" },
+    });
+    expect(get.headers.get("access-control-expose-headers")).toBe(
+      "content-disposition",
+    );
+  });
+
+  it("GET /schema returns the fixture schema", async () => {
+    const res = await app.request("/schema");
+    expect(((await res.json()) as { id: string }).id).toBe("admissions");
+  });
+
+  it("grid route speaks the wire contract: unknown op 404, bad x-now / non-JSON / bad input 400", async () => {
+    const unknown = await app.request("/grid/nope", {
+      method: "POST",
+      body: "{}",
+    });
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toMatchObject({
+      error: { code: "UNKNOWN_OPERATION" },
+    });
+    const badNow = await app.request("/grid/fetch", {
+      method: "POST",
+      body: JSON.stringify({ filter: null, sort: [], page: { offset: 0, limit: 1 } }),
+      headers: { "x-now": "tomorrow-ish" },
+    });
+    expect(badNow.status).toBe(400);
+    expect(await badNow.json()).toEqual({
+      error: { code: "INPUT_INVALID", message: "x-now must be an ISO instant" },
+    });
+    const badJson = await app.request("/grid/fetch", {
+      method: "POST",
+      body: "{",
+    });
+    expect(badJson.status).toBe(400);
+    expect(await badJson.json()).toMatchObject({
+      error: { code: "INPUT_INVALID" },
+    });
+    const badInput = await app.request("/grid/deleteRows", {
+      method: "POST",
+      body: JSON.stringify({ ids: "r1" }),
+    });
+    expect(badInput.status).toBe(400);
+    expect(await badInput.json()).toMatchObject({
+      error: { code: "INPUT_INVALID" },
+    });
+  });
+
+  it("PUT /schema with a stale schemaVersion → 409", async () => {
+    const res = await app.request("/schema", {
+      method: "PUT",
+      body: JSON.stringify({ ...createFixtureSchema(), schemaVersion: 0 }),
+    });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe("grid route over createGridRouterAdapter (fake data source)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+  const setup = (error?: unknown, omit: string[] = []) => {
+    const ds = fakeDs(error);
+    for (const op of omit) delete (ds as unknown as Record<string, unknown>)[op];
+    const contexts: GridRequestContext[] = [];
+    const { app } = createApp({
+      db: {} as GridDb,
+      tables: gridTables(),
+      gridId: "admissions",
+      store: new SchemaStore(null, createFixtureSchema),
+      tz: "Asia/Kolkata",
+      clock: "2026-09-24T21:00:00.000Z",
+      dataSource: (ctx) => {
+        contexts.push(ctx);
+        return ds;
+      },
+    });
+    const post = (op: string, body: unknown, headers: Record<string, string> = {}) =>
+      app.request(`/grid/${op}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+    return { ds, contexts, post };
+  };
+  const query = { filter: null, sort: [], page: { offset: 0, limit: 10 } };
+
+  it("fetch takes the GridQuery itself and answers 200 { data }", async () => {
+    const { ds, post } = setup();
+    const res = await post("fetch", query);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { rows: [] } });
+    expect(ds.calls[0]?.[0]).toBe("fetch");
+    expect(ds.calls[0]?.[1]).toMatchObject(query);
+  });
+
+  it("deleteRows answers { data: null }; lookup/getOptions forward their args", async () => {
+    const { ds, post } = setup();
+    expect(await (await post("deleteRows", { ids: ["r1"] })).json()).toEqual({ data: null });
+    expect(await (await post("getOptions", { columnId: "c", search: "x" })).json()).toEqual({
+      data: [{ id: "a", label: "A" }],
+    });
+    await post("lookup", { columnId: "c", search: "" });
+    expect(ds.calls.map((c) => c[0])).toEqual(["deleteRows", "getOptions", "lookup"]);
+    expect(ds.calls[2]).toEqual(["lookup", "c", ""]);
+  });
+
+  it("an optional op the source lacks → 501 UNSUPPORTED_OPERATION", async () => {
+    const { post } = setup(undefined, ["createOption"]);
+    const res = await post("createOption", { columnId: "c", label: "x" });
+    expect(res.status).toBe(501);
+    expect(await res.json()).toMatchObject({ error: { code: "UNSUPPORTED_OPERATION" } });
+  });
+
+  it.each([
+    [new PermissionError(["col_notes"], "filter"), 403, "PERMISSION_DENIED"],
+    [new FilterValidationError([{ code: "unknownColumn", path: [], message: "bad" }]), 400, "FILTER_INVALID"],
+    [new CursorError(), 400, "INVALID_CURSOR"],
+    [new HttpError(400, "InputValidationError", "no options"), 400, "INPUT_INVALID"],
+    [new Error("boom"), 500, "INTERNAL"],
+  ])("%s → %i %s", async (error, status, code) => {
+    // 5xx failures are logged by the app's onError; keep the test output clean.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { post } = setup(error);
+    const res = await post("fetch", query);
+    expect(res.status).toBe(status);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(code);
+  });
+
+  it("x-user / x-roles / x-now reach the data source context", async () => {
+    const { contexts, post } = setup();
+    await post("fetch", query, {
+      "x-user": "u2",
+      "x-roles": "counsellor, viewer",
+      "x-now": "2026-09-26T00:00:00.000Z",
+    });
+    await post("fetch", query);
+    expect(contexts[0]?.user).toEqual({ id: "u2", roles: ["counsellor", "viewer"] });
+    expect(contexts[0]?.now().toISOString()).toBe("2026-09-26T00:00:00.000Z");
+    expect(contexts[1]?.user).toEqual({ id: "admin", roles: ["admin"] });
+    expect(contexts[1]?.now().toISOString()).toBe("2026-09-24T21:00:00.000Z");
+  });
+});

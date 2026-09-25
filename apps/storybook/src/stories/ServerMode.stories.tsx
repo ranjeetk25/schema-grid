@@ -13,10 +13,10 @@ import { Workbench } from "../support/Workbench";
 import { USERS, type UserKey, instrument } from "../support/data";
 import {
   DEMO_API_URL,
-  createHttpDataSource,
+  createDemoDataSource,
   fetchSchema,
   putSchema,
-} from "../support/httpDataSource";
+} from "../support/demoApi";
 
 /**
  * Story 4 — server (infinite) mode against apps/demo-api (Drizzle + MySQL).
@@ -57,7 +57,7 @@ function ServerGrid() {
       live = false;
     };
   }, [client]);
-  const ds = useMemo(() => instrument(createHttpDataSource(client)), [client]);
+  const ds = useMemo(() => instrument(createDemoDataSource(client)), [client]);
 
   if (error) {
     return (
