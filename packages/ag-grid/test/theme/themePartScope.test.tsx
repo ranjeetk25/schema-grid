@@ -28,7 +28,10 @@ import { renderGrid } from "../renderGrid";
 
 /** Top-level rule selectors of a stylesheet string (keyframe steps and at-rules skipped). */
 function ruleSelectors(css: string): string[] {
-  const withoutKeyframes = css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  const withoutKeyframes = css.replace(
+    /@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g,
+    "",
+  );
   return (withoutKeyframes.match(/[^{}]+(?=\{)/g) ?? [])
     .flatMap((s) => s.split(","))
     .map((s) => s.trim())
@@ -42,10 +45,16 @@ describe("schemaGrid theme part CSS scope", () => {
     const css = partCss.find((c) => c.includes(SG_CLASSES.range));
     expect(css, "the schemaGrid part was created with our CSS").toBeDefined();
 
-    const themed = container.querySelector<HTMLElement>('[class*="ag-theme-schemaGrid"]');
+    const themed = container.querySelector<HTMLElement>(
+      '[class*="ag-theme-schemaGrid"]',
+    );
     expect(themed, "AG Grid applied the part's scope class").not.toBeNull();
-    expect(container.querySelector(`.${SG_CLASSES.root}`)?.contains(themed)).toBe(true);
-    const scopeClass = [...(themed as HTMLElement).classList].find((c) => c.startsWith("ag-theme-schemaGrid"));
+    expect(
+      container.querySelector(`.${SG_CLASSES.root}`)?.contains(themed),
+    ).toBe(true);
+    const scopeClass = [...(themed as HTMLElement).classList].find((c) =>
+      c.startsWith("ag-theme-schemaGrid"),
+    );
 
     const cell = container.querySelector<HTMLElement>(".ag-row .ag-cell");
     expect(cell).not.toBeNull();
@@ -56,7 +65,10 @@ describe("schemaGrid theme part CSS scope", () => {
       probe.className = target;
       (cell as HTMLElement).append(probe);
       // AG Grid emits the part as `:where(.<scope>) { & <selector> }`.
-      expect(probe.matches(`:where(.${scopeClass}) ${selector}`), `"${selector}" must match under .${scopeClass}`).toBe(true);
+      expect(
+        probe.matches(`:where(.${scopeClass}) ${selector}`),
+        `"${selector}" must match under .${scopeClass}`,
+      ).toBe(true);
       probe.remove();
     }
   });
@@ -66,7 +78,9 @@ describe("schemaGrid theme part CSS scope", () => {
     await waitForRows();
     const css = partCss.find((c) => c.includes(SG_CLASSES.range)) as string;
     expect(css).not.toMatch(/@keyframes/);
-    const global = [...container.querySelectorAll("style")].map((s) => s.textContent ?? "").join("\n");
+    const global = [...container.querySelectorAll("style")]
+      .map((s) => s.textContent ?? "")
+      .join("\n");
     expect(global).toMatch(/@keyframes sg-remote-flash/);
   });
 });

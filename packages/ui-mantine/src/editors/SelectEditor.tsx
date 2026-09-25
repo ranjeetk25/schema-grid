@@ -75,7 +75,9 @@ export function SelectEditor({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Enter") return;
       const activeId = input.getAttribute("aria-activedescendant");
-      const picked = activeId ? input.ownerDocument.getElementById(activeId)?.getAttribute("value") : null;
+      const picked = activeId
+        ? input.ownerDocument.getElementById(activeId)?.getAttribute("value")
+        : null;
       if (!picked) return;
       event.preventDefault();
       event.stopPropagation();
