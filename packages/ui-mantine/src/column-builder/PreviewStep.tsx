@@ -46,7 +46,7 @@ export function sampleValueFor(type: FieldTypeId, config: unknown, registry: Fie
     case "user":
       return { id: "u_sample", name: "Asha Rao" };
     case "link":
-      return { id: "r_sample", label: "Record 1" };
+      return [{ id: "r_sample", label: "Record 1" }];
     default: {
       const fieldType = registry.get(type);
       const d = fieldType?.defaultValue(fieldType.configSchema.safeParse(config).data ?? fieldType.defaultConfig);

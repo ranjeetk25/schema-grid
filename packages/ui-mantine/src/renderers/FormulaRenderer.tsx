@@ -1,25 +1,27 @@
 import { Text } from "@mantine/core";
+import { createDefaultRegistry, isFormulaError } from "../internal/core-contracts";
 import type { UiRendererProps } from "../internal/grid-contracts";
 
-interface FormulaErrorValue {
-  kind: "error";
-  message: string;
-}
+let formulaType: ReturnType<ReturnType<typeof createDefaultRegistry>["get"]> | undefined;
+const getFormulaType = () => {
+  formulaType ??= createDefaultRegistry().get("formula");
+  return formulaType;
+};
 
-const isFormulaErrorValue = (v: unknown): v is FormulaErrorValue =>
-  !!v && typeof v === "object" && (v as { kind?: unknown }).kind === "error";
-
-/** Read-only formula result: plain text for numbers/booleans/strings, a muted marker on `{kind:"error"}`. Never an input. */
-export function FormulaRenderer({ value }: UiRendererProps<unknown, unknown>) {
+/**
+ * Read-only formula result, formatted by core's formula field type (which
+ * delegates to `config.resultType`). A core `FormulaError` value renders a
+ * muted `#ERROR` marker with the message as its title. Never an input.
+ */
+export function FormulaRenderer({ value, config }: UiRendererProps<unknown, unknown>) {
   if (value === null || value === undefined || value === "") return null;
-  if (isFormulaErrorValue(value)) {
+  if (isFormulaError(value)) {
     return (
       <Text c="dimmed" span title={value.message}>
         #ERROR
       </Text>
     );
   }
-  if (typeof value === "boolean") return <span>{value ? "Yes" : "No"}</span>;
-  if (typeof value === "number") return <span>{String(Math.round(value * 1e6) / 1e6)}</span>;
-  return <span>{String(value)}</span>;
+  const text = getFormulaType()?.format(value, config) ?? String(value);
+  return <span>{text}</span>;
 }

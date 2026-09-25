@@ -106,7 +106,7 @@ describe("FormulaRenderer", () => {
   it("shows a muted error marker with the message as its title for a formula error", () => {
     const column = fixtureColumn(FIXTURE_IDS.total);
     const { getByTitle } = renderWithMantine(
-      <FormulaRenderer value={{ kind: "error", message: "Unknown column" }} column={column} config={column.config} fieldType="formula" />,
+      <FormulaRenderer value={{ kind: "formulaError", code: "unknownColumn", message: "Unknown column" }} column={column} config={column.config} fieldType="formula" />,
     );
     expect(getByTitle("Unknown column")).toBeInTheDocument();
   });
@@ -115,5 +115,13 @@ describe("FormulaRenderer", () => {
     const column = fixtureColumn(FIXTURE_IDS.total);
     const { getByText } = renderWithMantine(<FormulaRenderer value={84} column={column} config={column.config} fieldType="formula" />);
     expect(getByText("84")).toBeInTheDocument();
+  });
+
+  it("formats through config.resultType (boolean result → core boolean format)", () => {
+    const column = { ...fixtureColumn(FIXTURE_IDS.total), config: { resultType: "boolean" } };
+    const expected = createDefaultRegistry().get("boolean")?.format(true, {}) ?? "";
+    expect(expected).not.toBe("");
+    const { getByText } = renderWithMantine(<FormulaRenderer value={true} column={column} config={column.config} fieldType="formula" />);
+    expect(getByText(expected)).toBeInTheDocument();
   });
 });

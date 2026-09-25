@@ -11,7 +11,7 @@ const linkColumn = (allowMultiple: boolean): ColumnDef => ({
   key: "lead",
   label: "Lead",
   type: "link",
-  config: { targetSchemaId: "leads", allowMultiple },
+  config: { target: "leads", multiple: allowMultiple },
   order: 0,
   createdAt: FIXTURE_NOW,
   updatedAt: FIXTURE_NOW,
@@ -54,8 +54,8 @@ describe("LinkPickerEditor", () => {
   it("selecting emits the LinkRef and commits", async () => {
     const { user, props } = setup();
     await user.click(await screen.findByRole("option", { name: "Lead #2" }));
-    expect(props.onChange).toHaveBeenCalledWith(LEAD_2);
-    expect(props.onCommit).toHaveBeenCalledWith(LEAD_2);
+    expect(props.onChange).toHaveBeenCalledWith([LEAD_2]);
+    expect(props.onCommit).toHaveBeenCalledWith([LEAD_2]);
   });
 
   it("in multi mode accumulates picks as pills and Enter on empty search commits the array", async () => {

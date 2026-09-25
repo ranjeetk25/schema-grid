@@ -50,7 +50,7 @@ describe("CurrencyEditor", () => {
         onCommit={vi.fn()}
         onCancel={vi.fn()}
         column={fixtureColumn(FIXTURE_IDS.amount)}
-        config={{ currency: "INR", locale: "en-IN", decimalScale: 0, fixedDecimalScale: false }}
+        config={{ currencyCode: "INR", locale: "en-IN", precision: 0 }}
       />,
     );
     const input = getByRole("textbox") as HTMLInputElement;
@@ -65,7 +65,7 @@ describe("CurrencyEditor", () => {
         onCommit={vi.fn()}
         onCancel={vi.fn()}
         column={fixtureColumn(FIXTURE_IDS.amount)}
-        config={{ currency: "USD", locale: "en-US", decimalScale: 0, fixedDecimalScale: false }}
+        config={{ currencyCode: "USD", locale: "en-US", precision: 0 }}
       />,
     );
     const input = getByRole("textbox") as HTMLInputElement;

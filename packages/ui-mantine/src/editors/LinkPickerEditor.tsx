@@ -4,23 +4,25 @@ import type { LinkRef } from "../internal/core-contracts";
 import { type UiEditorProps, createPopupEditor } from "../internal/grid-contracts";
 import { AsyncCombobox } from "./AsyncCombobox";
 
-export type LinkValue = LinkRef | LinkRef[];
+/** Core link values are always `LinkRef[]`; a lone `LinkRef` is accepted on read. */
+export type LinkValue = LinkRef[] | LinkRef;
 export type LinkPickerEditorProps = UiEditorProps<LinkValue, unknown>;
 
 const isLinkRef = (v: unknown): v is LinkRef =>
   !!v && typeof v === "object" && typeof (v as LinkRef).id === "string" && typeof (v as LinkRef).label === "string";
 
+/** Core `LinkConfig.multiple` (defaults to true in core). */
 const allowsMultiple = (config: unknown): boolean =>
-  !!config && typeof config === "object" && (config as { allowMultiple?: unknown }).allowMultiple === true;
+  !(!!config && typeof config === "object" && (config as { multiple?: unknown }).multiple === false);
 
 const toList = (value: LinkValue | null): LinkRef[] =>
   Array.isArray(value) ? value.filter(isLinkRef) : isLinkRef(value) ? [value] : [];
 
 /**
  * Link-to-record picker over `dataSource.lookup(column.id, search)`.
- * Single mode emits and commits a `LinkRef`. With `config.allowMultiple`,
- * picks accumulate as removable pills and Enter on an empty search commits
- * the `LinkRef[]`.
+ * Always emits core's `LinkRef[]`. With `config.multiple === false` a pick
+ * emits and commits `[link]`; otherwise picks accumulate as removable pills
+ * and Enter on an empty search commits the list.
  */
 export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error }: LinkPickerEditorProps) {
   const multiple = allowsMultiple(config);
@@ -76,8 +78,8 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
       valueLabel={single?.label}
       onSelect={(link) => {
         if (!multiple) {
-          onChange(link);
-          onCommit(link);
+          onChange([link]);
+          onCommit([link]);
           return;
         }
         if (picked.some((p) => p.id === link.id)) return;
@@ -85,7 +87,7 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
       }}
       onSubmitEmpty={(search) => {
         if (search.trim() !== "") return;
-        onCommit(multiple ? picked : value);
+        onCommit(multiple ? picked : toList(value));
       }}
       onCancel={onCancel}
       placeholder="Search records…"
