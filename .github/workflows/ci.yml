@@ -80,3 +80,27 @@ jobs:
 
       - name: MySQL integration tests
         run: bun run test:integration
+
+  # Server against the ends of its drizzle-orm peer range (spec v0.2 §C9):
+  # pins each version into packages/server and runs typecheck + unit suite.
+  # `--in-place` rewrites package.json/bun.lock — fine on a throwaway checkout.
+  drizzle-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        drizzle: ["0.41.0", "0.45"]
+    name: drizzle-matrix (drizzle-orm@${{ matrix.drizzle }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Server typecheck + unit tests on drizzle-orm@${{ matrix.drizzle }}
+        run: bun scripts/drizzle-matrix.ts --in-place ${{ matrix.drizzle }}

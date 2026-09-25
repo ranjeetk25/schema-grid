@@ -75,7 +75,7 @@
     "@ranjeetk25/schema-grid-core": "workspace:*"
   },
   "peerDependencies": {
-    "drizzle-orm": "^0.45.0",
+    "drizzle-orm": ">=0.41.0 <1",
     "mysql2": "^3.0.0"
   },
   "peerDependenciesMeta": {
