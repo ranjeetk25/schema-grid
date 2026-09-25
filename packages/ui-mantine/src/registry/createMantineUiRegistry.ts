@@ -1,3 +1,4 @@
+import { mantineFilterComponentFor } from "../column-filters";
 import { BooleanEditor } from "../editors/BooleanEditor";
 import { EmailEditor, PhoneEditor, UrlEditor } from "../editors/ContactEditors";
 import { CreatableSelectEditor } from "../editors/CreatableSelectEditor";
@@ -10,7 +11,13 @@ import { NumberEditor } from "../editors/NumberEditor";
 import { SelectEditor } from "../editors/SelectEditor";
 import { TextEditor } from "../editors/TextEditor";
 import { UserPickerEditor } from "../editors/UserPickerEditor";
-import { type FieldTypeId, type FieldTypeRegistry, type GridRow, createDefaultRegistry } from "../internal/core-contracts";
+import {
+  BUILTIN_FIELD_TYPE_IDS,
+  type FieldTypeId,
+  type FieldTypeRegistry,
+  type GridRow,
+  createDefaultRegistry,
+} from "../internal/core-contracts";
 import {
   type AnyEditorWidget,
   type AnyRendererWidget,
@@ -26,8 +33,9 @@ import { MultiSelectRenderer } from "../renderers/MultiSelectRenderer";
 import { SelectRenderer } from "../renderers/SelectRenderer";
 import { UrlRenderer } from "../renderers/UrlRenderer";
 import { UserRenderer } from "../renderers/UserRenderer";
+import { BooleanRenderer } from "../renderers/BooleanRenderer";
 
-/** Types whose editor renders in AG Grid's popup layer (dropdown / picker / multi-line). */
+/** Types whose editor renders in AG Grid's popup layer (dropdown / picker / multi-line / validated contact). */
 export const POPUP_FIELD_TYPES: ReadonlySet<FieldTypeId> = new Set([
   "longText",
   "date",
@@ -37,6 +45,10 @@ export const POPUP_FIELD_TYPES: ReadonlySet<FieldTypeId> = new Set([
   "creatableSelect",
   "user",
   "link",
+  // Validated contact types: the popup card has room for the error message below the input.
+  "url",
+  "email",
+  "phone",
 ]);
 
 export interface CreateMantineUiRegistryOptions {
@@ -46,6 +58,18 @@ export interface CreateMantineUiRegistryOptions {
   widgets?: Partial<Record<FieldTypeId, WidgetEntry>>;
   /** Per-type raw AG Grid `UiFieldType` partials, applied last. */
   overrides?: Partial<Record<FieldTypeId, Partial<UiFieldType<GridRow>>>>;
+  /**
+   * `"mantine"` (default) registers ui-mantine column filters for every
+   * built-in type; `"ag-grid"` keeps ag-grid's framework-free defaults.
+   */
+  columnFilters?: "mantine" | "ag-grid";
+}
+
+/** Mantine `filterComponent`s for all built-in types (floating filters stay ag-grid's `FloatingFilter`). */
+export function mantineFilterEntries(): Partial<Record<FieldTypeId, Partial<UiFieldType<GridRow>>>> {
+  return Object.fromEntries(
+    BUILTIN_FIELD_TYPE_IDS.map((id) => [id, { filterComponent: mantineFilterComponentFor(id) as UiFieldType<GridRow>["filterComponent"] }]),
+  );
 }
 
 /** The built-in widget set, before adaptation. */
@@ -61,16 +85,16 @@ export function mantineWidgetEntries(fieldTypes: FieldTypeRegistry = createDefau
     longText: entry(LongTextEditor, Formatted, "longText"),
     number: entry(NumberEditor),
     currency: entry(CurrencyEditor),
-    boolean: entry(BooleanEditor),
+    boolean: entry(BooleanEditor, BooleanRenderer),
     date: entry(DateEditor, Formatted, "date"),
     datetime: entry(DateTimeEditor, Formatted, "datetime"),
     select: entry(SelectEditor, SelectRenderer, "select"),
     multiSelect: entry(MultiSelectEditor, MultiSelectRenderer, "multiSelect"),
     creatableSelect: entry(CreatableSelectEditor, SelectRenderer, "creatableSelect"),
     user: entry(UserPickerEditor, UserRenderer, "user"),
-    url: entry(UrlEditor, UrlRenderer),
-    email: entry(EmailEditor),
-    phone: entry(PhoneEditor),
+    url: entry(UrlEditor, UrlRenderer, "url"),
+    email: entry(EmailEditor, Formatted, "email"),
+    phone: entry(PhoneEditor, Formatted, "phone"),
     link: entry(LinkPickerEditor, Formatted, "link"),
     // Formula columns are read-only: renderer only.
     formula: { renderer: FormulaRenderer, editor: null },
@@ -83,16 +107,23 @@ export function mantineWidgetEntries(fieldTypes: FieldTypeRegistry = createDefau
  * with each widget adapted to AG Grid's cell renderer / editor props (popup
  * types through ag-grid's `createPopupEditor`).
  *
- * Column filters (`filterComponent` / `floatingFilter`) are left as
- * ag-grid's defaults: their model is a core `FilterCondition`, which
- * ag-grid's `ConditionFilter` already edits. The FilterBuilder derives its
- * value inputs from the editor widgets instead (`filterInputFor`).
+ * Column filters: every built-in type gets a Mantine `filterComponent`
+ * (model = core `FilterCondition`, same semantics as ag-grid's):
+ * `MantineSetFilter` (searchable checkbox list, applies on toggle) for
+ * select, multiSelect, user and boolean; `MantineConditionFilter` (operator
+ * picker + type-aware value + Clear/Apply) for the rest, formula included.
+ * Their dropdowns render inside the AG Grid popup (`withinPortal: false`).
+ * `floatingFilter` stays ag-grid's `FloatingFilter` (opt-in via the grid's
+ * `floatingFilters`). Pass `columnFilters: "ag-grid"` to keep ag-grid's
+ * framework-free filters. The FilterBuilder derives its value inputs from the
+ * editor widgets instead (`filterInputFor`).
  */
 export function createMantineUiRegistry(options: CreateMantineUiRegistryOptions = {}): UiFieldTypeRegistry<GridRow> {
   const widgets = mantineWidgetEntries(options.fieldTypes);
   for (const [id, entry] of Object.entries(options.widgets ?? {})) {
     if (entry) widgets[id] = { ...widgets[id], ...entry };
   }
-  const registry = extendWithWidgets(createDefaultUiRegistry<GridRow>(), widgets);
+  let registry = extendWithWidgets(createDefaultUiRegistry<GridRow>(), widgets);
+  if ((options.columnFilters ?? "mantine") === "mantine") registry = registry.extend(mantineFilterEntries());
   return options.overrides ? registry.extend(options.overrides) : registry;
 }

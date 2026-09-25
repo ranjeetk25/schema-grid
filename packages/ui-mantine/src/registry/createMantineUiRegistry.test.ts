@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MantineConditionFilter, MantineSetFilter } from "../column-filters";
 import { MultiSelectEditor } from "../editors/MultiSelectEditor";
 import { SelectEditor } from "../editors/SelectEditor";
 import { TextEditor } from "../editors/TextEditor";
@@ -33,7 +34,7 @@ describe("createMantineUiRegistry", () => {
 
   it("marks exactly the popup set as AG Grid popup editors", () => {
     expect([...POPUP_FIELD_TYPES].sort()).toEqual(
-      ["creatableSelect", "date", "datetime", "link", "longText", "multiSelect", "select", "user"].sort(),
+      ["creatableSelect", "date", "datetime", "email", "link", "longText", "multiSelect", "phone", "select", "url", "user"].sort(),
     );
     for (const id of ids) {
       if (id === "formula") continue;
@@ -41,12 +42,19 @@ describe("createMantineUiRegistry", () => {
     }
   });
 
-  it("keeps ag-grid's default column filters", () => {
+  it("registers Mantine column filters for every type; floating filters stay ag-grid's", () => {
     const defaults = createDefaultUiRegistry();
     for (const id of ids) {
-      expect(ui.get(id).filterComponent, id).toBe(defaults.get(id).filterComponent);
+      const expected = ["select", "multiSelect", "user", "boolean"].includes(id) ? MantineSetFilter : MantineConditionFilter;
+      expect(ui.get(id).filterComponent, id).toBe(expected);
       expect(ui.get(id).floatingFilter, id).toBe(defaults.get(id).floatingFilter);
     }
+  });
+
+  it("columnFilters: 'ag-grid' keeps ag-grid's default column filters", () => {
+    const defaults = createDefaultUiRegistry();
+    const plain = createMantineUiRegistry({ columnFilters: "ag-grid" });
+    for (const id of ids) expect(plain.get(id).filterComponent, id).toBe(defaults.get(id).filterComponent);
   });
 
   it("is built on the real registry: unknown ids fall back to text, extend returns a new registry", () => {

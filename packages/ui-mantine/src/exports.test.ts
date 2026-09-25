@@ -41,6 +41,13 @@ describe("subpath exports", () => {
       "useGridThemeFromMantine",
       "notifyClipboardReport",
       "useMantineConflictPrompt",
+      "MantineHeaderMenu",
+      "MantineConditionFilter",
+      "MantineSetFilter",
+      "schemaGridCssVariables",
+      "LiveFilterController",
+      "shouldApplyLive",
+      "ColumnTypeIcon",
     ]) {
       expect(m, name).toHaveProperty(name);
     }

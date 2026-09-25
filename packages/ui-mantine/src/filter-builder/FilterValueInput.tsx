@@ -1,4 +1,5 @@
-import { Group, MultiSelect, NumberInput, Select, Stack, TagsInput, Text, TextInput } from "@mantine/core";
+import { Group, type MantineSize, MultiSelect, NumberInput, Select, Stack, TagsInput, Text, TextInput } from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type ColumnDef,
@@ -27,6 +28,8 @@ export interface FilterValueInputProps {
   /** @deprecated Unused: formula columns resolve through `config.resultType`. */
   schema?: GridSchema;
   error?: string;
+  /** Control size. Default: the theme default (`sm`); the filter builder uses `xs` pills. */
+  size?: MantineSize;
 }
 
 /** Picker labels per relative-date kind (core `RELATIVE_DATE_PRESETS`). */
@@ -41,7 +44,8 @@ const OPTION_TYPES = new Set<FieldTypeId>(["select", "creatableSelect", "multiSe
 const NUMERIC_TYPES = new Set<FieldTypeId>(["number", "currency"]);
 const DATE_TYPES = new Set<FieldTypeId>(["date", "datetime"]);
 
-const COMBOBOX = { withinPortal: false } as const;
+const COMBOBOX = { withinPortal: false, offset: 4 } as const;
+const CHEVRON = <IconChevronDown size={12} stroke={1.75} aria-hidden />;
 
 /** The type a filter value is typed as: formula columns resolve through `config.resultType` (as core does). */
 export function effectiveFilterType(column: ColumnDef): FieldTypeId {
@@ -118,7 +122,7 @@ function useUserOptions(enabled: boolean, column: ColumnDef, dataSource?: DataSo
  * usually lives inside a Popover.
  */
 export function FilterValueInput(props: FilterValueInputProps) {
-  const { column, operator, value, onChange, registry, dataSource, schema, error } = props;
+  const { column, operator, value, onChange, registry, dataSource, schema, error, size } = props;
   const type = effectiveFilterType(column);
   const isOptionType = OPTION_TYPES.has(type);
   const userOptions = useUserOptions(operator.valueKind === "multi" && type === "user", column, dataSource);
@@ -142,7 +146,10 @@ export function FilterValueInput(props: FilterValueInputProps) {
           <Select
             aria-label="Value"
             placeholder="Value"
+            size={size}
             searchable
+            rightSection={CHEVRON}
+            rightSectionPointerEvents="none"
             data={data}
             value={typeof value === "string" ? value : null}
             onChange={(v) => onChange(v)}
@@ -165,6 +172,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
           <NumberInput
             aria-label="Value"
             placeholder="Value"
+            size={size}
             value={typeof value === "number" ? value : ""}
             onChange={(v) => onChange(numberOrNull(v))}
             error={error}
@@ -174,6 +182,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
       return (
         <TextInput
           aria-label="Value"
+          size={size}
           placeholder={DATE_TYPES.has(type) ? "YYYY-MM-DD" : "Value"}
           value={value == null ? "" : String(asPrimitive(value) ?? "")}
           onChange={(e) => onChange(e.currentTarget.value)}
@@ -190,7 +199,8 @@ export function FilterValueInput(props: FilterValueInputProps) {
         return (
           <MultiSelect
             aria-label="Values"
-            placeholder="Values"
+            placeholder={current.length > 0 ? undefined : "Values"}
+            size={size}
             searchable
             data={data}
             value={current}
@@ -203,7 +213,8 @@ export function FilterValueInput(props: FilterValueInputProps) {
       return (
         <TagsInput
           aria-label="Values"
-          placeholder="Type and press Enter"
+          size={size}
+          placeholder={current.length > 0 ? undefined : "Type and press Enter"}
           value={current}
           onChange={(v) => onChange(v)}
           error={error}
@@ -221,8 +232,10 @@ export function FilterValueInput(props: FilterValueInputProps) {
         if (NUMERIC_TYPES.has(type)) {
           return (
             <NumberInput
-              label={label}
-              size="xs"
+              aria-label={label}
+              placeholder={label}
+              size={size ?? "xs"}
+              style={{ flex: 1, minWidth: 0 }}
               value={typeof v === "number" ? v : ""}
               onChange={(n) => emit(part, numberOrNull(n))}
             />
@@ -232,20 +245,18 @@ export function FilterValueInput(props: FilterValueInputProps) {
           const custom = registryInput(v, (next) => emit(part, asPrimitive(next)));
           if (custom) {
             return (
-              <Stack gap={2}>
-                <Text size="xs" fw={500}>
-                  {label}
-                </Text>
+              <div style={{ flex: 1, minWidth: 0 }} title={label}>
                 {custom}
-              </Stack>
+              </div>
             );
           }
         }
         return (
           <TextInput
-            label={label}
-            size="xs"
-            placeholder={DATE_TYPES.has(type) ? "YYYY-MM-DD" : undefined}
+            aria-label={label}
+            size={size ?? "xs"}
+            style={{ flex: 1, minWidth: 0 }}
+            placeholder={DATE_TYPES.has(type) ? "YYYY-MM-DD" : label}
             value={v == null ? "" : String(v)}
             onChange={(e) => emit(part, e.currentTarget.value === "" ? null : e.currentTarget.value)}
           />
@@ -253,8 +264,11 @@ export function FilterValueInput(props: FilterValueInputProps) {
       };
       return (
         <Stack gap={2}>
-          <Group gap="xs" wrap="nowrap" align="flex-end">
+          <Group gap={6} wrap="nowrap" align="center">
             {side("from", "From")}
+            <Text size="xs" c="dimmed" style={{ flex: "none" }}>
+              and
+            </Text>
             {side("to", "To")}
           </Group>
           <ErrorText error={error} />
@@ -267,9 +281,13 @@ export function FilterValueInput(props: FilterValueInputProps) {
       const preset = rd?.relative ?? null;
       const needsN = preset !== null && N_PRESETS.includes(preset);
       return (
-        <Group gap="xs" wrap="nowrap" align="flex-start">
+        <Group gap={6} wrap="nowrap" align="flex-start">
           <Select
             aria-label="Relative date"
+            size={size}
+            style={{ flex: 1, minWidth: 0 }}
+            rightSection={CHEVRON}
+            rightSectionPointerEvents="none"
             data={RELATIVE_DATA}
             value={preset}
             allowDeselect={false}
@@ -286,9 +304,11 @@ export function FilterValueInput(props: FilterValueInputProps) {
             <NumberInput
               aria-label="N"
               placeholder="N"
+              size={size}
               min={1}
               allowDecimal={false}
-              w={80}
+              w={64}
+              hideControls={size === "xs"}
               value={typeof rd?.n === "number" ? rd.n : ""}
               onChange={(n) => {
                 const num = numberOrNull(n);

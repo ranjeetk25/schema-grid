@@ -50,7 +50,8 @@ function setup(c: ChangeConflict = conflict()) {
 describe("ConflictPopover", () => {
   it("describes who changed it, when, and their value via the type renderer", () => {
     setup();
-    expect(screen.getByText(/Changed by Asha 5 minutes ago/)).toBeInTheDocument();
+    expect(screen.getByText("Changed by Asha · 5 minutes ago")).toBeInTheDocument();
+    expect(screen.getByText("AS")).toBeInTheDocument();
     expect(screen.getByTestId("their-badge")).toHaveTextContent("Paid");
   });
 

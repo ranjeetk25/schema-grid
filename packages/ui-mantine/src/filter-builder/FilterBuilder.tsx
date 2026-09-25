@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Box, Button, Group, Stack, Text } from "@mantine/core";
+import { IconAlertCircle } from "@tabler/icons-react";
+import { type KeyboardEvent, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import { readableColumnIds } from "../internal/access";
 import {
@@ -10,12 +12,21 @@ import {
   type FilterValidationError,
   type GridSchema,
   MAX_FILTER_DEPTH,
-  isFilterGroup,
   validateFilter,
-  valueMatchesKind,
 } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { FilterGroupEditor } from "./FilterGroupEditor";
+import { FILTER_BUILDER_CSS } from "./filterBuilderStyles";
+import {
+  type ApplyModeInput,
+  DEFAULT_LIVE_FILTER_DEBOUNCE_MS,
+  type FilterApplyMode,
+  type FilterTimer,
+  LiveFilterController,
+  type LiveFilterState,
+  applicableFilter,
+  resolveApplyMode,
+} from "./liveFilter";
 import {
   type ConditionPatch,
   DEFAULT_MAX_DEPTH,
@@ -24,8 +35,8 @@ import {
   addCondition as addConditionTo,
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
+  countConditions,
   filterableColumns,
-  findOperator,
   fromDraftIndexed,
   operatorsFor,
   removeNode,
@@ -43,13 +54,31 @@ export interface RowErrors {
   value?: string;
 }
 
-export interface UseFilterDraftOptions {
+/** Live/explicit state of a builder, reported to hosts (the FilterButton badge uses it). */
+export interface FilterBuilderStatus {
+  mode: FilterApplyMode;
+  /** A live apply is scheduled (debouncing) or an apply is in flight. */
+  pending: boolean;
+  /** Explicit mode: the draft has changes that are not applied yet. */
+  dirty: boolean;
+  /** The last apply failed (or the host passed `error`). */
+  error: string | null;
+}
+
+export interface UseFilterDraftOptions extends ApplyModeInput {
   schema: GridSchema;
   registry: FieldTypeRegistry;
   access: AccessMap;
+  /** The APPLIED filter (controlled). */
   value: FilterNode | null;
-  onChange(node: FilterNode | null): void;
+  /** Applies a filter. May return a Promise: a rejection keeps the previous filter and shows the error. */
+  onChange(node: FilterNode | null): unknown;
   maxDepth?: number;
+  /** Live-mode debounce. Default 300ms; 0 applies synchronously. */
+  debounceMs?: number;
+  /** Injectable timer (tests). */
+  timer?: FilterTimer;
+  onStatusChange?(status: FilterBuilderStatus): void;
 }
 
 export interface FilterDraftApi {
@@ -66,9 +95,16 @@ export interface FilterDraftApi {
   updateCondition(id: string, patch: ConditionPatch): void;
   setGroupOp(groupId: string, op: "and" | "or"): void;
   canAddGroup(groupId: string): boolean;
+  /** Apply the draft now (explicit Apply / Enter; flushes a live debounce). */
+  apply(): void;
+  /** Live mode: apply a debouncing edit now (e.g. its popover closed). */
+  flush(): void;
+  /** Drop every condition and apply `null`. */
+  clear(): void;
+  status: FilterBuilderStatus;
+  /** Id of the condition added last (so its column picker can take focus). */
+  lastAddedId: string | null;
 }
-
-const serialize = (node: FilterNode | null | undefined) => JSON.stringify(node ?? null);
 
 function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, string>): Map<string, RowErrors> {
   const out = new Map<string, RowErrors>();
@@ -77,7 +113,6 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
     if (!id) continue;
     const row = out.get(id) ?? {};
     if (e.code === "depthExceeded") row.group ??= e.message;
-    else if (e.code === "valueKindMismatch") row.value ??= e.message;
     else if (e.code === "unknownOperator") row.operator ??= e.message;
     else row.column ??= e.message;
     out.set(id, row);
@@ -85,62 +120,73 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
   return out;
 }
 
-/**
- * Core validation plus the UI's stricter completeness rule: a blank string is
- * a valid single value for core, but an unfinished draft here.
- */
-function draftErrors(node: FilterNode, ctx: DraftContext, readable: ReadonlySet<string>): FilterValidationError[] {
-  const errors = validateFilter(node, ctx.schema, ctx.registry, readable);
-  const flagged = new Set(errors.map((e) => e.path.join(".")));
-  const walk = (n: FilterNode, path: number[]) => {
-    if (isFilterGroup(n)) {
-      n.children.forEach((c, i) => walk(c, [...path, i]));
-      return;
-    }
-    if (flagged.has(path.join("."))) return;
-    const def = findOperator(n.columnId, n.operator, ctx);
-    if (def && !valueMatchesKind(def.valueKind, n.value)) {
-      errors.push({ code: "valueKindMismatch", path, columnId: n.columnId, operator: n.operator, message: "A value is required" });
-    }
-  };
-  walk(node, []);
-  return errors;
-}
+const toStatus = (s: LiveFilterState, hostError: string | null | undefined): FilterBuilderStatus => ({
+  mode: s.mode,
+  pending: s.status === "scheduled" || s.status === "applying",
+  dirty: s.mode === "explicit" && s.dirty,
+  error: hostError || s.error,
+});
+
+const sameStatus = (a: FilterBuilderStatus, b: FilterBuilderStatus) =>
+  a.mode === b.mode && a.pending === b.pending && a.dirty === b.dirty && a.error === b.error;
 
 /**
- * Local draft state for a filter builder, bound to a controlled `value`.
+ * Local draft state for a filter builder, bound to a controlled (applied)
+ * `value`.
  *
- * Emission rule: on every edit the draft is converted with `fromDraft`, which
- * ignores rows that have no column/operator yet, and checked with core
- * `validateFilter` (readable columns only). `onChange` is called ONLY when that
- * effective AST validates cleanly, or with `null` when it holds no conditions
- * (so removing the last real condition applies even while a blank row
- * remains). Invalid drafts stay local; their errors are exposed per row/group
- * in `errors`. Identical ASTs are not re-emitted. A `value` change from
- * outside (anything other than what was last emitted) resets the draft.
- * `maxDepth` is capped at core's `MAX_FILTER_DEPTH`.
+ * Emission rule: on every edit the draft is converted with `fromDraft` and
+ * pruned with `pruneIncomplete` (rows without a column / operator / required
+ * value never reach `onChange`). A pruned filter that still fails core
+ * `validateFilter` (readable columns only) is not applied; its errors show on
+ * the offending rows. Applying is LIVE (debounced `debounceMs`) or EXPLICIT
+ * (Apply button / Enter) — see `resolveApplyMode` in `./liveFilter`.
+ * Identical filters are not re-emitted. A `value` change from outside
+ * (anything other than what was applied / is being applied) resets the draft.
+ * A pending live apply is flushed on unmount. `maxDepth` is capped at core's
+ * `MAX_FILTER_DEPTH`.
  */
-export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
+export function useFilterDraft(options: UseFilterDraftOptions & { error?: string | null }): FilterDraftApi {
   const { schema, registry, access, value, onChange } = options;
   const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
+  const mode = resolveApplyMode(options);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
   const draftRef = useRef(draft);
-  const lastEmitted = useRef(serialize(value));
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   const ctx: DraftContext = useMemo(() => ({ schema, registry }), [schema, registry]);
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
   const columns = useMemo(() => filterableColumns(schema, access), [schema, access]);
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const [liveState, setLiveState] = useState<LiveFilterState | null>(null);
+  const controllerRef = useRef<LiveFilterController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = new LiveFilterController({
+      value,
+      mode,
+      debounceMs: options.debounceMs ?? DEFAULT_LIVE_FILTER_DEBOUNCE_MS,
+      timer: options.timer,
+      apply: (node) => onChangeRef.current(node),
+      onState: setLiveState,
+    });
+  }
+  const controller = controllerRef.current;
+
   useEffect(() => {
-    const incoming = serialize(value);
-    if (incoming === lastEmitted.current) return;
-    lastEmitted.current = incoming;
-    const next = toDraft(value);
-    draftRef.current = next;
-    setDraft(next);
-  }, [value]);
+    controller.setMode(mode);
+  }, [controller, mode]);
+
+  // Flush a pending live apply when the builder goes away (e.g. its popover unmounts).
+  useEffect(() => () => controller.dispose({ flush: true }), [controller]);
+
+  useEffect(() => {
+    if (controller.setValue(value)) {
+      const next = toDraft(value);
+      draftRef.current = next;
+      setDraft(next);
+    }
+  }, [controller, value]);
 
   const commit = useCallback(
     (next: FilterDraft) => {
@@ -148,21 +194,17 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
       draftRef.current = next;
       setDraft(next);
       const { node } = fromDraftIndexed(next, ctx);
-      let out: FilterNode | null | undefined;
-      if (!node) out = null;
-      else if (draftErrors(node, ctx, readable).length === 0) out = node;
-      if (out === undefined) return;
-      const s = serialize(out);
-      if (s === lastEmitted.current) return;
-      lastEmitted.current = s;
-      onChangeRef.current(out);
+      controller.edit(applicableFilter(node, { ...ctx, readable }));
     },
-    [ctx, readable],
+    [ctx, readable, controller],
   );
 
   const errors = useMemo(() => {
     const { node, idByPath } = fromDraftIndexed(draft, ctx);
-    return node ? errorsToRows(draftErrors(node, ctx, readable), idByPath) : new Map<string, RowErrors>();
+    if (!node) return new Map<string, RowErrors>();
+    // Missing / mismatched values are "incomplete", not errors: those rows are simply not applied.
+    const found = validateFilter(node, ctx.schema, ctx.registry, readable).filter((e) => e.code !== "valueKindMismatch");
+    return errorsToRows(found, idByPath);
   }, [draft, ctx, readable]);
 
   const operatorsForColumnId = useCallback(
@@ -173,46 +215,198 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
     [schema, registry],
   );
 
+  const status = toStatus(liveState ?? controller.state, options.error);
+  const statusRef = useRef<FilterBuilderStatus | null>(null);
+  const onStatusChange = options.onStatusChange;
+  useEffect(() => {
+    if (statusRef.current && sameStatus(statusRef.current, status)) return;
+    statusRef.current = status;
+    onStatusChange?.(status);
+  });
+
   return {
     draft,
     errors,
     columns,
     maxDepth,
     operatorsForColumnId,
-    addCondition: (groupId) => commit(addConditionTo(draftRef.current, groupId)),
-    addGroup: (groupId) => commit(addGroupTo(draftRef.current, groupId, maxDepth)),
+    addCondition: (groupId) => {
+      const next = addConditionTo(draftRef.current, groupId);
+      const added = findLastCondition(next, groupId);
+      setLastAddedId(added);
+      commit(next);
+    },
+    addGroup: (groupId) => {
+      const next = addGroupTo(draftRef.current, groupId, maxDepth);
+      commit(next);
+    },
     remove: (id) => commit(removeNode(draftRef.current, id)),
     updateCondition: (id, patch) => commit(updateCondition(draftRef.current, id, patch, ctx)),
     setGroupOp: (groupId, op) => commit(setGroupOp(draftRef.current, groupId, op)),
     canAddGroup: (groupId) => canAddGroupTo(draft, groupId, maxDepth),
+    apply: () => controller.flush(),
+    flush: () => controller.flushScheduled(),
+    clear: () => {
+      const next = toDraft(null);
+      draftRef.current = next;
+      setDraft(next);
+      controller.clear();
+    },
+    status,
+    lastAddedId,
   };
 }
 
-export interface FilterBuilderProps {
+function findLastCondition(draft: FilterDraft, groupId: string): string | null {
+  const walk = (g: FilterDraft): string | null => {
+    if (g.id === groupId) {
+      const last = g.children.at(-1);
+      return last?.kind === "condition" ? last.id : null;
+    }
+    for (const c of g.children) {
+      if (c.kind === "group") {
+        const f = walk(c);
+        if (f) return f;
+      }
+    }
+    return null;
+  };
+  return walk(draft);
+}
+
+export interface FilterBuilderProps extends ApplyModeInput {
   schema: GridSchema;
   /** Core field-type registry (operators, validation). */
   registry: FieldTypeRegistry;
   /** UI registry (value `filterComponent`s). */
   uiRegistry: UiFieldTypeRegistry;
   access: AccessMap;
+  /** The APPLIED filter (controlled). Chips should render this, not the draft. */
   value: FilterNode | null;
-  onChange(node: FilterNode | null): void;
+  /**
+   * Applies a filter (complete conditions only). May return a Promise: while
+   * it is pending the FilterButton shows a spinner; a rejection keeps the
+   * previous filter and shows the error inline.
+   */
+  onChange(node: FilterNode | null): unknown;
   /** Maximum group nesting; the root group is depth 1. Default 2. */
   maxDepth?: number;
   dataSource?: DataSource;
+  /** Live-mode debounce in ms. Default 300; 0 applies synchronously. */
+  debounceMs?: number;
+  /** An apply error from the host (e.g. the server rejected the query). Shown inline. */
+  error?: string | null;
+  /** Reports live/explicit status (pending apply, unapplied changes, error). */
+  onStatusChange?(status: FilterBuilderStatus): void;
+  /** Focus the first control on mount / when this flips to true (e.g. its popover opened). */
+  autoFocus?: boolean;
+  /** Injectable timer (tests). */
+  timer?: FilterTimer;
+}
+
+const numberFormat = new Intl.NumberFormat("en-US");
+
+/** Imperative handle of a FilterBuilder (`ref`). */
+export interface FilterBuilderHandle {
+  /** Apply the current draft now (explicit Apply). */
+  apply(): void;
+  /** Live mode: apply a debouncing edit now; call it when the builder is hidden. */
+  flush(): void;
+  /** Drop every condition and apply `null`. */
+  clear(): void;
 }
 
 /**
- * AND/OR filter builder over the readable columns of a schema.
+ * Notion/Linear-style AND/OR filter builder over the readable columns of a
+ * schema: one line per condition (column · operator · value pills), nested
+ * groups on a subtle fill.
  *
- * `onChange` fires only with a complete, `validateFilter`-clean AST (or `null`
- * when no conditions remain); see `useFilterDraft` for the full emission rule.
- * Validation errors show inline on the offending row.
+ * Applying:
+ * - **Live** (default): edits apply automatically, debounced `debounceMs`.
+ * - **Explicit**: when `rowCount` exceeds the threshold (`liveFilterThreshold`,
+ *   default 5 000 in `mode="server"`, 10 000 in `mode="client"`) or `live={false}`.
+ *   Edits stay a local draft; the footer shows "Applies to N rows" with
+ *   Clear / "Apply filter", and Enter in any value input applies.
+ *
+ * Incomplete conditions are never applied. See `useFilterDraft`.
  */
-export function FilterBuilder(props: FilterBuilderProps) {
-  const { schema, registry, uiRegistry, access, value, onChange, maxDepth, dataSource } = props;
-  const api = useFilterDraft({ schema, registry, access, value, onChange, maxDepth });
-  return (
-    <FilterGroupEditor group={api.draft} depth={1} api={api} schema={schema} uiRegistry={uiRegistry} dataSource={dataSource} />
+export const FilterBuilder = forwardRef<FilterBuilderHandle, FilterBuilderProps>(function FilterBuilder(props, ref) {
+  const { schema, uiRegistry, dataSource, autoFocus, rowCount } = props;
+  const api = useFilterDraft(props);
+  const apiRef = useRef(api);
+  apiRef.current = api;
+  useImperativeHandle(
+    ref,
+    () => ({
+      apply: () => apiRef.current.apply(),
+      flush: () => apiRef.current.flush(),
+      clear: () => apiRef.current.clear(),
+    }),
+    [],
   );
-}
+  const rootRef = useRef<HTMLDivElement>(null);
+  const explicit = api.status.mode === "explicit";
+  const empty = api.draft.children.length === 0;
+
+  const emptyRef = useRef(empty);
+  emptyRef.current = empty;
+  useEffect(() => {
+    if (!autoFocus) return;
+    const root = rootRef.current;
+    const target = root?.querySelector<HTMLElement>(emptyRef.current ? "[data-sg-add-condition]" : "input[aria-label='Column']");
+    target?.focus();
+  }, [autoFocus]);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    const t = e.target as HTMLElement;
+    if (t.tagName !== "INPUT" || t.getAttribute("aria-expanded") === "true") return;
+    // Picker inputs (Column / Operator / relative preset) use Enter to pick an option.
+    const label = t.getAttribute("aria-label");
+    if (label === "Column" || label === "Operator") return;
+    e.preventDefault();
+    api.apply();
+  };
+
+  const draftCount = countConditions(fromDraftIndexed(api.draft).node);
+
+  return (
+    // Enter-to-apply is delegated from the inputs inside.
+    <Box ref={rootRef} className="sg-fb" onKeyDown={onKeyDown}>
+      <style>{FILTER_BUILDER_CSS}</style>
+      <Stack gap={8}>
+        {api.status.error ? (
+          <Alert
+            variant="light"
+            color="red"
+            radius="md"
+            p={8}
+            icon={<IconAlertCircle size={16} stroke={1.75} />}
+            styles={{ message: { fontSize: 13 }, icon: { marginInlineEnd: 8 } }}
+            role="alert"
+          >
+            {`Filter not applied: ${api.status.error}`}
+          </Alert>
+        ) : null}
+
+        <FilterGroupEditor group={api.draft} depth={1} api={api} schema={schema} uiRegistry={uiRegistry} dataSource={dataSource} />
+
+        {explicit ? (
+          <Group className="sg-fb-footer" justify="space-between" wrap="nowrap" gap="xs">
+            <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
+              {typeof rowCount === "number" ? `Applies to ${numberFormat.format(rowCount)} rows` : "Changes apply when you press Apply"}
+            </Text>
+            <Group gap={6} wrap="nowrap">
+              <Button size="xs" variant="subtle" color="gray" onClick={api.clear} disabled={empty && draftCount === 0 && !api.status.dirty}>
+                Clear
+              </Button>
+              <Button size="xs" onClick={api.apply} disabled={!api.status.dirty}>
+                Apply filter
+              </Button>
+            </Group>
+          </Group>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+});

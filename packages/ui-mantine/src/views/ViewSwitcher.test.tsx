@@ -56,17 +56,24 @@ describe("ViewSwitcher", () => {
     const { user, props } = setup();
     await user.click(screen.getByRole("button", { name: /All leads/ }));
     await user.click(screen.getByRole("menuitem", { name: "Save as new view" }));
-    const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByLabelText("View name"), "Yesterday calls");
-    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    const menu = screen.getByRole("menu");
+    const input = within(menu).getByLabelText("View name");
+    expect(input).toHaveFocus();
+    expect(within(menu).getByRole("button", { name: "Save" })).toBeDisabled();
+    await user.type(input, "Yesterday calls");
+    await user.click(within(menu).getByRole("button", { name: "Save" }));
     expect(props.onCreate).toHaveBeenCalledWith("Yesterday calls");
+    expect(screen.queryByRole("menu")).toBeNull();
+    // Reopening shows the view list again, not the name form.
+    await user.click(screen.getByRole("button", { name: /All leads/ }));
+    expect(screen.getByRole("menuitem", { name: "Save as new view" })).toBeInTheDocument();
   });
 
   it("rename prefills the current name", async () => {
     const { user, props } = setup();
     await user.click(screen.getByRole("button", { name: /All leads/ }));
     await user.click(screen.getByRole("menuitem", { name: "Rename" }));
-    const input = within(screen.getByRole("dialog")).getByLabelText("View name");
+    const input = within(screen.getByRole("menu")).getByLabelText("View name");
     expect(input).toHaveValue("All leads");
     await user.clear(input);
     await user.type(input, "Everyone{Enter}");
@@ -77,12 +84,23 @@ describe("ViewSwitcher", () => {
     const { user, props, unmount } = setup();
     await user.click(screen.getByRole("button", { name: /All leads/ }));
     await user.click(screen.getByRole("menuitem", { name: "Delete" }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    expect(screen.getByText('Delete "All leads"? This cannot be undone.')).toBeInTheDocument();
+    await user.click(within(screen.getByRole("menu")).getByRole("button", { name: "Delete" }));
     expect(props.onDelete).toHaveBeenCalledWith("v1");
     unmount();
 
     const single = setup({ views: [view("v1", "All leads")] });
     await single.user.click(screen.getByRole("button", { name: /All leads/ }));
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeDisabled();
+  });
+
+  it("marks the active view with a check and Cancel returns to the list", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: /All leads/ }));
+    expect(screen.getByRole("menuitem", { name: /All leads/ }).querySelector("svg")).not.toBeNull();
+    expect(screen.getByRole("menuitem", { name: /Unpaid/ }).querySelector("svg")).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("menuitem", { name: "Save as new view" })).toBeInTheDocument();
   });
 });

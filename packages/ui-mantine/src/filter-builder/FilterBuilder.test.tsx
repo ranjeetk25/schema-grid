@@ -1,10 +1,10 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { FilterNode } from "../internal/core-contracts";
 import { FIXTURE_IDS, buildFixtureAccess, buildFixtureRegistry, buildFixtureSchema, buildStubUiRegistry } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
-import { FilterBuilder } from "./FilterBuilder";
+import { FilterBuilder, type FilterBuilderProps } from "./FilterBuilder";
 
 const schema = buildFixtureSchema();
 
@@ -25,10 +25,11 @@ async function pick(user: UserEvent, field: string, option: string) {
   await user.click(await screen.findByRole("option", { name: option }));
 }
 
-function setup(value: FilterNode | null = null, maxDepth?: number) {
-  const onChange = vi.fn<(node: FilterNode | null) => void>();
+function setup(value: FilterNode | null = null, maxDepth?: number, extra: Partial<FilterBuilderProps> = {}) {
+  const onChange = vi.fn<(node: FilterNode | null) => unknown>();
   const r = renderWithMantine(
     <FilterBuilder
+      debounceMs={0}
       schema={schema}
       registry={buildFixtureRegistry()}
       uiRegistry={buildStubUiRegistry()}
@@ -36,6 +37,7 @@ function setup(value: FilterNode | null = null, maxDepth?: number) {
       value={value}
       onChange={onChange}
       maxDepth={maxDepth}
+      {...extra}
     />,
   );
   return { ...r, onChange };
@@ -134,13 +136,23 @@ describe("FilterBuilder", () => {
     expect(screen.queryByText("Secret")).toBeNull();
   });
 
-  it("shows the validation error inline for an empty single value", async () => {
-    const { user } = setup(null);
+  it("an incomplete row shows no error and is not applied; completing it applies", async () => {
+    const { user, onChange } = setup(null);
     await user.click(screen.getByRole("button", { name: "Add condition" }));
     await pick(user, "Column", "Payment status");
-    expect(screen.getByText("Expected a single value")).toBeInTheDocument();
-    await pick(user, "Value", "Paid");
     expect(screen.queryByText("Expected a single value")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    await pick(user, "Value", "Paid");
+    expect(onChange).toHaveBeenLastCalledWith({ op: "and", children: [{ columnId: FIXTURE_IDS.payment, operator: "is", value: "paid" }] });
+  });
+
+  it("strips incomplete rows from what is emitted", async () => {
+    const { user, onChange } = setup(S8 as FilterNode);
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Amount");
+    await user.click(screen.getByRole("radio", { name: "OR" }));
+    expect(onChange.mock.lastCall?.[0]).toStrictEqual({ ...S8, op: "or" });
   });
 
   it("toggling to OR updates the emitted op", async () => {
@@ -198,5 +210,96 @@ describe("FilterBuilder review follow-ups", () => {
     expect(addGroups).toHaveLength(2);
     expect(addGroups[0]).toBeDisabled(); // nested group (depth 2) renders first
     expect(addGroups[1]).toBeEnabled();
+  });
+});
+
+describe("FilterBuilder live / explicit apply", () => {
+  it("live: debounces edits into one apply", async () => {
+    // Manual timer: only the latest scheduled callback survives, and nothing fires until we run it.
+    const pending = new Map<number, () => void>();
+    let seq = 0;
+    const timer = {
+      set: (fn: () => void) => {
+        pending.set(++seq, fn);
+        return seq;
+      },
+      clear: (h: unknown) => pending.delete(h as number),
+    };
+    const { user, onChange } = setup(null, undefined, { debounceMs: 300, timer });
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Notes");
+    await pick(user, "Operator", "is empty");
+    await pick(user, "Operator", "is not empty");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(pending.size).toBe(1);
+    act(() => {
+      for (const fn of pending.values()) fn();
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isNotEmpty" }] });
+  });
+
+  it("live: a pending apply is flushed when the builder unmounts", async () => {
+    const { user, onChange, unmount } = setup(null, undefined, { debounceMs: 10_000 });
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Notes");
+    await pick(user, "Operator", "is empty");
+    expect(onChange).not.toHaveBeenCalled();
+    unmount();
+    expect(onChange).toHaveBeenCalledWith({ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] });
+  });
+
+  it("explicit above the threshold: edits stay a draft until Apply filter", async () => {
+    const { user, onChange } = setup(null, undefined, { mode: "server", rowCount: 12_480 });
+    expect(screen.getByText("Applies to 12,480 rows")).toBeInTheDocument();
+    const apply = screen.getByRole("button", { name: "Apply filter" });
+    expect(apply).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Notes");
+    await pick(user, "Operator", "is empty");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(apply).toBeEnabled();
+    await user.click(apply);
+    expect(onChange).toHaveBeenLastCalledWith({ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] });
+    expect(apply).toBeDisabled();
+  });
+
+  it("explicit: Enter in a value input applies; Clear applies null", async () => {
+    const { user, onChange } = setup(null, undefined, { live: false });
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Payment status");
+    await pick(user, "Value", "Paid");
+    expect(onChange).not.toHaveBeenCalled();
+    await user.click(lastInput("Value"));
+    await user.keyboard("{Escape}{Enter}");
+    expect(onChange).toHaveBeenLastCalledWith({ op: "and", children: [{ columnId: FIXTURE_IDS.payment, operator: "is", value: "paid" }] });
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    expect(screen.queryAllByLabelText("Column")).toHaveLength(0);
+  });
+
+  it("a rejected apply shows the error inline and keeps the draft", async () => {
+    const { user, onChange } = setup(null);
+    onChange.mockImplementation(() => Promise.reject(new Error("Query timed out")));
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Notes");
+    await pick(user, "Operator", "is empty");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Filter not applied: Query timed out");
+    expect(inputs("Column").map((i) => (i as HTMLInputElement).value)).toEqual(["Notes"]);
+  });
+
+  it("shows a host error", () => {
+    setup(null, undefined, { error: "Server rejected the filter" });
+    expect(screen.getByRole("alert")).toHaveTextContent("Server rejected the filter");
+  });
+
+  it("reports status: pending while debouncing, dirty in explicit mode", async () => {
+    const onStatusChange = vi.fn();
+    const { user, unmount } = setup(null, undefined, { debounceMs: 60_000, onStatusChange });
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await pick(user, "Column", "Notes");
+    await pick(user, "Operator", "is empty");
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "live", pending: true }));
+    unmount();
   });
 });

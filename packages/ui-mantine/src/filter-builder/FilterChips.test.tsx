@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { FilterCondition, FilterNode } from "../internal/core-contracts";
 import { FIXTURE_IDS, buildFixtureAccess, buildFixtureRegistry, buildFixtureSchema, buildStubUiRegistry } from "../test/fixtures";
@@ -48,8 +48,8 @@ describe("FilterChips", () => {
   it("renders one chip per top-level child and removes the first", async () => {
     const onChange = vi.fn();
     const { user } = renderWithMantine(<FilterChips schema={schema} registry={registry} value={S8} onChange={onChange} />);
-    expect(screen.getByText("Payment status is not Paid")).toBeInTheDocument();
-    expect(screen.getByText("Call status is within yesterday")).toBeInTheDocument();
+    expect(screen.getByTitle("Payment status is not Paid")).toHaveTextContent("Payment status is not Paid");
+    expect(screen.getByTitle("Call status is within yesterday")).toHaveTextContent("Call status is within yesterday");
     await user.click(screen.getByRole("button", { name: "Remove filter: Payment status is not Paid" }));
     expect(onChange).toHaveBeenLastCalledWith({ op: "and", children: [CALL] });
   });
@@ -152,5 +152,71 @@ describe("review follow-ups", () => {
     );
     expect(screen.getByText("Hidden column")).toBeInTheDocument();
     expect(screen.queryByText(/Secret/)).not.toBeInTheDocument();
+  });
+});
+
+describe("FilterChips / FilterButton redesign", () => {
+  it("Clear all removes every chip", async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithMantine(<FilterChips schema={schema} registry={registry} value={S8} onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("the Filter button's accessible name is exactly its label, with or without a count", () => {
+    renderButton(S8);
+    expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
+  });
+
+  it("shows a spinner in the badge while a live apply is pending, then the applied count", async () => {
+    const onChange = vi.fn();
+    const { user } = renderWithMantine(
+      <FilterButton
+        schema={schema}
+        registry={registry}
+        uiRegistry={buildStubUiRegistry()}
+        access={buildFixtureAccess(schema)}
+        value={null}
+        onChange={onChange}
+        debounceMs={60_000}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(await screen.findByRole("button", { name: "Add condition" }));
+    const field = (name: string) => screen.getAllByLabelText(name).find((e) => e.tagName === "INPUT") as HTMLElement;
+    await user.click(field("Column"));
+    await user.click(await screen.findByRole("option", { name: "Notes" }));
+    await user.click(field("Operator"));
+    await user.click(await screen.findByRole("option", { name: "is empty" }));
+    expect(screen.getByTestId("filter-count").querySelector(".mantine-Loader-root")).not.toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+    // Closing the popover lands the pending live edit right away.
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+  });
+
+  it("explicit mode marks unapplied changes with a dot", async () => {
+    const { user } = renderWithMantine(
+      <FilterButton
+        schema={schema}
+        registry={registry}
+        uiRegistry={buildStubUiRegistry()}
+        access={buildFixtureAccess(schema)}
+        value={null}
+        onChange={vi.fn()}
+        live={false}
+      />,
+    );
+    expect(screen.queryByTestId("filter-unapplied-dot")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(await screen.findByRole("button", { name: "Add condition" }));
+    const field = (name: string) => screen.getAllByLabelText(name).find((e) => e.tagName === "INPUT") as HTMLElement;
+    await user.click(field("Column"));
+    await user.click(await screen.findByRole("option", { name: "Notes" }));
+    await user.click(field("Operator"));
+    await user.click(await screen.findByRole("option", { name: "is empty" }));
+    expect(screen.getByTestId("filter-unapplied-dot")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Apply filter" }));
+    expect(screen.queryByTestId("filter-unapplied-dot")).toBeNull();
   });
 });

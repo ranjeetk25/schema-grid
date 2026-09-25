@@ -1,22 +1,34 @@
 import {
   type CSSVariablesResolver,
   type MantineTheme,
+  alpha,
   useComputedColorScheme,
   useMantineTheme,
 } from "@mantine/core";
 import { useMemo } from "react";
+import { schemaGridMantineVariables } from "./schemaGridMantineTheme";
 
 export type GridCssVariables = Record<`--ag-${string}`, string>;
+
+/** The `--sg-*` contract `@ranjeetk25/schema-grid-ag-grid`'s theme reads (docs/design/README.md). */
+export type SchemaGridCssVariables = Record<`--sg-${string}`, string>;
 
 export interface GridThemeParams {
   backgroundColor: string;
   foregroundColor: string;
+  /** Header labels, helper text, icons. */
+  mutedForegroundColor: string;
   borderColor: string;
   accentColor: string;
   headerBackgroundColor: string;
+  headerForegroundColor: string;
   rowHoverColor: string;
+  /** Accent at ~8% alpha. */
   selectedRowBackgroundColor: string;
+  /** Accent at ~10% alpha. */
+  rangeSelectionBackgroundColor: string;
   rangeSelectionBorderColor: string;
+  dangerColor: string;
   fontFamily: string;
   fontSize: number;
   browserColorScheme: "light" | "dark";
@@ -59,22 +71,61 @@ const pxNumber = (value: string | undefined, fallback: number): number => {
   return px?.[1] ? Number(px[1]) : fallback;
 };
 
+/** Danger per README (red-600 / red-400); not taken from Mantine's brighter `red`. */
+const DANGER = { light: "#dc2626", dark: "#f87171" } as const;
+/** Grid chrome is 13px regardless of the host's `fontSizes.sm`. */
+export const SG_GRID_FONT_SIZE = 13;
+
+const pick = (tuple: readonly string[] | undefined, i: number, fallback: string): string => tuple?.[i] ?? fallback;
+
+/**
+ * Resolved grid colours for one scheme. Neutrals come from the Mantine
+ * palette (`gray` light end, `dark` for dark mode — exactly the README zinc
+ * tokens under `schemaGridMantineTheme`); the accent is the primary colour at
+ * `primaryShade`; selection/range tints are the accent at 8% / 10% alpha.
+ */
 export function resolveGridThemeParams(theme: MantineTheme, scheme: "light" | "dark"): GridThemeParams {
   const primary = theme.colors[theme.primaryColor] ?? theme.colors.blue;
-  const accent = primary?.[shade(theme, scheme)] ?? "#228be6";
+  const accent = primary?.[shade(theme, scheme)] ?? "#5e6ad2";
   const dark = scheme === "dark";
+  const gray = theme.colors.gray;
+  const darks = theme.colors.dark;
+  const muted = dark ? pick(darks, 2, "#a1a1aa") : pick(gray, 5, "#71717a");
   return {
-    backgroundColor: dark ? (theme.colors.dark[7] as string) : theme.white,
-    foregroundColor: dark ? (theme.colors.dark[0] as string) : theme.black,
-    borderColor: dark ? (theme.colors.dark[4] as string) : (theme.colors.gray[3] as string),
+    backgroundColor: dark ? pick(darks, 7, "#18181b") : theme.white,
+    foregroundColor: dark ? pick(darks, 0, "#e4e4e7") : theme.black,
+    mutedForegroundColor: muted,
+    borderColor: dark ? pick(darks, 4, "#2e2e33") : pick(gray, 2, "#e4e4e7"),
     accentColor: accent,
-    headerBackgroundColor: dark ? (theme.colors.dark[6] as string) : (theme.colors.gray[0] as string),
-    rowHoverColor: dark ? (theme.colors.dark[5] as string) : (theme.colors.gray[1] as string),
-    selectedRowBackgroundColor: (primary?.[dark ? 9 : 0] as string) ?? accent,
+    headerBackgroundColor: dark ? pick(darks, 6, "#1f1f23") : pick(gray, 0, "#fafafa"),
+    headerForegroundColor: muted,
+    rowHoverColor: dark ? "rgba(255, 255, 255, 0.03)" : "rgba(9, 9, 11, 0.025)",
+    selectedRowBackgroundColor: alpha(accent, dark ? 0.14 : 0.08),
+    rangeSelectionBackgroundColor: alpha(accent, dark ? 0.16 : 0.1),
     rangeSelectionBorderColor: accent,
+    dangerColor: DANGER[scheme],
     fontFamily: theme.fontFamily ?? "sans-serif",
-    fontSize: pxNumber(theme.fontSizes.sm, 14),
+    fontSize: SG_GRID_FONT_SIZE,
     browserColorScheme: scheme,
+  };
+}
+
+/** The per-scheme `--sg-*` values (plus the scheme-independent font variables). */
+export function schemaGridCssVariables(params: GridThemeParams, scheme: "light" | "dark"): SchemaGridCssVariables {
+  return {
+    "--sg-accent-color": params.accentColor,
+    "--sg-background-color": params.backgroundColor,
+    "--sg-foreground-color": params.foregroundColor,
+    "--sg-muted-foreground-color": params.mutedForegroundColor,
+    "--sg-border-color": params.borderColor,
+    "--sg-header-background-color": params.headerBackgroundColor,
+    "--sg-header-foreground-color": params.headerForegroundColor,
+    "--sg-row-hover-color": params.rowHoverColor,
+    "--sg-selected-row-background-color": params.selectedRowBackgroundColor,
+    "--sg-range-bg": params.rangeSelectionBackgroundColor,
+    "--sg-range-border": params.rangeSelectionBorderColor,
+    "--sg-popup-shadow": `var(--sg-popup-shadow-${scheme})`,
+    "--sg-danger-color": params.dangerColor,
   };
 }
 
@@ -92,11 +143,19 @@ export function useGridThemeFromMantine(): GridThemeFromMantine {
   );
 }
 
-/** Provider-level resolver: `<MantineProvider cssVariablesResolver={mantineGridCssVariablesResolver}>`. */
+/**
+ * Provider-level resolver:
+ * `<MantineProvider theme={schemaGridMantineTheme} cssVariablesResolver={mantineGridCssVariablesResolver}>`.
+ *
+ * Emits (1) `schemaGridMantineVariables` (zinc retune of Mantine's own
+ * defaults + popup shadows), (2) the `--sg-*` grid contract per scheme with
+ * the accent = Mantine primary colour, and (3) the legacy `--ag-*` mappings.
+ */
 export const mantineGridCssVariablesResolver: CSSVariablesResolver = (theme) => {
   const light = resolveGridThemeParams(theme, "light");
   const dark = resolveGridThemeParams(theme, "dark");
-  const perScheme = (p: GridThemeParams) => ({
+  const perScheme = (p: GridThemeParams, scheme: "light" | "dark") => ({
+    ...schemaGridCssVariables(p, scheme),
     "--ag-header-background-color": p.headerBackgroundColor,
     "--ag-row-hover-color": p.rowHoverColor,
     "--ag-selected-row-background-color": p.selectedRowBackgroundColor,
@@ -106,7 +165,17 @@ export const mantineGridCssVariablesResolver: CSSVariablesResolver = (theme) => 
     "--ag-header-background-color": _h,
     "--ag-row-hover-color": _r,
     "--ag-selected-row-background-color": _s,
-    ...variables
+    ...agShared
   } = shared;
-  return { variables, light: perScheme(light), dark: perScheme(dark) };
+  const base = schemaGridMantineVariables;
+  return {
+    variables: {
+      ...base.variables,
+      ...agShared,
+      "--sg-font-family": "var(--mantine-font-family)",
+      "--sg-font-size": `${SG_GRID_FONT_SIZE}px`,
+    },
+    light: { ...base.light, ...perScheme(light, "light") },
+    dark: { ...base.dark, ...perScheme(dark, "dark") },
+  };
 };
