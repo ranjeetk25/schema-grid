@@ -358,3 +358,63 @@ export function filterInputFor(registry: UiFieldTypeRegistry<GridRow>, type: Fie
 }
 
 export type { GridEditor, GridRenderer };
+
+// ---------------------------------------------------------------------------
+// Column filters (registry lane): AG Grid filter hooks + ag-grid's filter helpers
+// ---------------------------------------------------------------------------
+
+export { useGridFilter, type CustomFilterProps } from "ag-grid-react";
+export {
+  RELATIVE_DATE_LABELS,
+  resolveFilterColumn,
+  type FilterOption,
+  type ResolvedFilterColumn,
+  type SchemaFilterProps,
+} from "@masai/schema-grid-ag-grid/filters";
+
+// ---------------------------------------------------------------------------
+// Boolean: toggle in place
+// ---------------------------------------------------------------------------
+
+/**
+ * Like `toInlineGridEditor`, for toggle widgets (the boolean checkbox): an
+ * edit started by Space or by the mouse (no key) passes `toggleOnMount`, so
+ * the widget flips the value and commits at once — the cell toggles in place,
+ * no popup, no second keystroke. Edits started by Enter / F2 / typing just
+ * focus the checkbox.
+ */
+export function toInlineToggleGridEditor(widget: ComponentType<UiEditorProps<boolean, unknown> & { toggleOnMount?: boolean }>): GridEditor {
+  function ShadcnToggleEditor(props: CustomCellEditorProps<GridRow> & SchemaExtras) {
+    const cancelled = useRef(false);
+    const propsRef = useRef(props);
+    propsRef.current = props;
+    const toggleOnMount = useRef(props.eventKey === " " || props.eventKey == null).current;
+    useGridCellEditor({ isCancelAfterEnd: () => cancelled.current });
+    const column = props.schemaColumn ?? FALLBACK_COLUMN;
+    const onChange = useCallback((v: unknown) => propsRef.current.onValueChange(v), []);
+    const onCommit = useCallback((v?: unknown) => {
+      if (v !== undefined) propsRef.current.onValueChange(v);
+      cancelled.current = false;
+      propsRef.current.stopEditing();
+    }, []);
+    const onCancel = useCallback(() => {
+      cancelled.current = true;
+      const p = propsRef.current;
+      p.onValueChange(p.initialValue);
+      p.api.stopEditing(true);
+    }, []);
+    return createElement(widget, {
+      value: props.value === true,
+      onChange,
+      onCommit,
+      onCancel,
+      column,
+      config: column.config,
+      autoFocus: true,
+      toggleOnMount,
+      ...contextExtras(props.context, props.schemaColumn),
+    });
+  }
+  ShadcnToggleEditor.displayName = `GridToggleEditor(${widget.displayName ?? widget.name ?? "Widget"})`;
+  return tag(ShadcnToggleEditor, widget as AnyEditorWidget);
+}
