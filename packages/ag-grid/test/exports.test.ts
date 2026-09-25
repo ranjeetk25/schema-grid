@@ -30,6 +30,9 @@ describe("public barrels", () => {
       "parseTsv",
       "serializeTsv",
       "createUndoStack",
+      "createHttpDataSource",
+      "createRemoteDataSource",
+      "RemoteDataSourceError",
     ]) {
       expect(mod, name).toHaveProperty(name);
       expect((mod as Record<string, unknown>)[name], name).toBeDefined();
