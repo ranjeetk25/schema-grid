@@ -280,7 +280,7 @@ describe("exportCurrentView", () => {
 
   it("loads io through a LITERAL import specifier bundlers can resolve", () => {
     const src = readFileSync(join(__dirname, "..", "..", "src", "export", "exportCurrentView.ts"), "utf8");
-    expect(src).toMatch(/import\(\s*["']@masai\/schema-grid-io\/export["']\s*\)/);
+    expect(src).toMatch(/import\(\s*["']@ranjeetk25\/schema-grid-io\/export["']\s*\)/);
     const core = readFileSync(join(__dirname, "..", "..", "src", "internal", "core.ts"), "utf8");
     expect(core).not.toMatch(/import\(\s*\/\*\s*@vite-ignore/);
   });
