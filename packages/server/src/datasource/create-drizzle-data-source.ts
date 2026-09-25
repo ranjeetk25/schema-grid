@@ -6,7 +6,7 @@ import { type ServerWarning, createServerContext } from "../context";
 import { PermissionError } from "../errors";
 import { getChanges } from "../feed/get-changes";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
-import { planFormulaColumns } from "../formula/formula-plan";
+import { formulaTranslatability, planFormulaColumns } from "../formula/formula-plan";
 import { buildGroupQuery, executeGroupQuery } from "../grouping/translate-grouping";
 import type {
   DataSource,
@@ -60,6 +60,7 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
   const tables = options.tables ?? defineGridTables({ rowsTable: "grid_rows", changeLogTable: "grid_change_log" });
   assertValidSchema(options.schema, options.registry, {
     physicalColumns: options.physicalColumns ?? Object.keys(tables.physical),
+    isFormulaTranslatable: formulaTranslatability(),
   });
   const ctx = createServerContext({
     schema: options.schema,

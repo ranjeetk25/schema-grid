@@ -1,11 +1,8 @@
-import { createServerContext } from "../context";
-import { planFormulaColumns } from "../formula/formula-plan";
 import {
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterNode,
   type GridSchema,
-  createRolePermissionResolver,
   dependencies,
   detectFormulaCycles,
   getColumnValueFieldType,
@@ -13,10 +10,8 @@ import {
   parseFormula,
   validateFilter,
 } from "../internal/core";
-import type { FormulaPlan } from "../sql/scope";
 import { storageKindOf } from "../sql/storage-kind";
 import { isSafeColumnKey } from "../storage/keys";
-import { defineGridTables } from "../storage/tables";
 import { type SchemaIssue, SchemaValidationError } from "../errors";
 
 export interface SchemaValidationResult {
@@ -27,30 +22,14 @@ export interface SchemaValidationResult {
 export interface ValidateSchemaOptions {
   /** Physical column names on the rows table (targets for `source.valueField`). */
   physicalColumns?: string[];
+  /**
+   * Whether an (indexed) formula column is SQL-translatable. Supplied by the
+   * `./drizzle` entry (`formulaTranslatability`); when omitted the
+   * "formulaNotTranslatable" check is skipped so `.` stays free of drizzle.
+   */
+  isFormulaTranslatable?: (column: ColumnDef, schema: GridSchema, registry: FieldTypeRegistry) => boolean;
 }
 
-/** Builds a throwaway scope so we can ask `planFormulaColumns` whether an indexed formula is SQL-translatable. */
-function computeFormulaPlans(schema: GridSchema, registry: FieldTypeRegistry): Map<string, FormulaPlan> | null {
-  try {
-    const ctx = createServerContext({
-      schema,
-      registry,
-      resolver: createRolePermissionResolver(),
-      user: { id: "__validate_schema__", roles: ["admin"] },
-    });
-    const tables = defineGridTables({ rowsTable: "validate_rows", changeLogTable: "validate_log" });
-    return planFormulaColumns({ ctx, tables, generatedColumns: "ignore" });
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Validates a `GridSchema` against the field type registry: uniqueness and
- * safety of ids/keys, config/default value shapes, formula parsing/cycles/
- * refs, index eligibility, and view filter/sort/groupBy column references.
- * Collects every issue found rather than stopping at the first.
- */
 export function validateSchema(
   schema: GridSchema,
   registry: FieldTypeRegistry,
@@ -69,11 +48,6 @@ export function validateSchema(
   const seenIds = new Map<string, number>();
   const seenKeys = new Map<string, number>();
   const valueFieldOwners = new Map<string, number[]>();
-  let formulaPlans: Map<string, FormulaPlan> | null | undefined;
-  const getFormulaPlans = (): Map<string, FormulaPlan> | null => {
-    if (formulaPlans === undefined) formulaPlans = computeFormulaPlans(schema, registry);
-    return formulaPlans;
-  };
 
   schema.columns.forEach((column: ColumnDef, i: number) => {
     const path = (...rest: (string | number)[]): (string | number)[] => ["columns", i, ...rest];
@@ -212,9 +186,15 @@ export function validateSchema(
           message: `Column "${column.id}" (${column.type}) cannot be indexed: ${reason}`,
         });
       } else if (column.type === "formula" && column.formula) {
-        const plans = getFormulaPlans();
-        const plan = plans?.get(column.id);
-        if (!plan || plan.mode === "fallback") {
+        let translatable = true;
+        if (options.isFormulaTranslatable) {
+          try {
+            translatable = options.isFormulaTranslatable(column, schema, registry);
+          } catch {
+            translatable = false;
+          }
+        }
+        if (!translatable) {
           issues.push({
             code: "formulaNotTranslatable",
             columnId: column.id,

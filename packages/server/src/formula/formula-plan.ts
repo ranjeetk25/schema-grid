@@ -1,3 +1,5 @@
+import { createServerContext } from "../context";
+import { defineGridTables } from "../storage/tables";
 import { type SQL, sql } from "drizzle-orm";
 import { type ColumnDef, type FormulaResultType, inferResultType, isFormulaError, parseFormula } from "../internal/core";
 import type { FormulaPlan, SqlScope } from "../sql/scope";
@@ -57,4 +59,33 @@ export function planFormulaColumns(scope: PlanScope): Map<string, FormulaPlan> {
  */
 export function formulaGeneratedSql(column: ColumnDef, scope: PlanScope): SQL | null {
   return translateColumn(column, scope, { inlineLiterals: true });
+}
+
+/**
+ * `ValidateSchemaOptions.isFormulaTranslatable` implementation: plans the
+ * schema's formulas once per (schema, registry) and reports whether a column
+ * is in the SQL-translatable subset.
+ */
+export function formulaTranslatability(): (
+  column: ColumnDef,
+  schema: import("../internal/core").GridSchema,
+  registry: import("../internal/core").FieldTypeRegistry,
+) => boolean {
+  const cache = new WeakMap<object, Map<string, FormulaPlan>>();
+  return (column, schema, registry) => {
+    let plans = cache.get(schema);
+    if (!plans) {
+      const ctx = createServerContext({
+        schema,
+        registry,
+        resolver: () => "read",
+        user: { id: "schema-validation", roles: [] },
+      });
+      const tables = defineGridTables({ rowsTable: "validate_rows", changeLogTable: "validate_log" });
+      plans = planFormulaColumns({ ctx, tables, generatedColumns: "ignore" });
+      cache.set(schema, plans);
+    }
+    const plan = plans.get(column.id);
+    return plan !== undefined && plan.mode !== "fallback";
+  };
 }

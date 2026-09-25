@@ -1,3 +1,4 @@
+import { formulaTranslatability } from "../../../src/formula/formula-plan";
 import { describe, expect, it } from "vitest";
 import { SchemaValidationError } from "../../../src/errors";
 import { assertValidSchema, validateSchema } from "../../../src/schema/validate-schema";
@@ -179,7 +180,9 @@ describe("validateSchema", () => {
         config: { resultType: "text" },
       }),
     ]);
-    const result = validateSchema(schema, registry);
+    // without the drizzle-side hook the check is skipped (root entry stays drizzle-free)
+    expect(validateSchema(schema, registry).issues.some((i) => i.code === "formulaNotTranslatable")).toBe(false);
+    const result = validateSchema(schema, registry, { isFormulaTranslatable: formulaTranslatability() });
     const issue = result.issues.find((i) => i.code === "formulaNotTranslatable");
     expect(issue).toBeDefined();
     expect(issue?.columnId).toBe("label");
@@ -195,7 +198,7 @@ describe("validateSchema", () => {
         config: { resultType: "number" },
       }),
     ]);
-    const result = validateSchema(schema, registry);
+    const result = validateSchema(schema, registry, { isFormulaTranslatable: formulaTranslatability() });
     expect(result.issues.filter((i) => i.columnId === "net")).toEqual([]);
   });
 

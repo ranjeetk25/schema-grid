@@ -1,7 +1,7 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { AnyMySqlColumn } from "drizzle-orm/mysql-core";
 import { SchemaValidationError } from "../errors";
-import type { GridRow, GridSchema } from "../internal/core";
+import type { GridSchema } from "../internal/core";
 import { assertSafeColumnKey, jsonPath } from "../storage/keys";
 import type { GridTables } from "../storage/tables";
 import { type AccessMap, isReadable } from "./query-access";
@@ -53,10 +53,4 @@ export function projectionSql(schema: GridSchema, access: AccessMap, tables: Gri
   };
 }
 
-/** Final JS guard: drops every cell whose column is not readable (or unknown). */
-export function projectRow<Row extends GridRow>(row: Row, schema: GridSchema, access: AccessMap): Row {
-  const readableKeys = new Set(schema.columns.filter((c) => isReadable(access, c.id)).map((c) => c.key));
-  const cells: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row.cells)) if (readableKeys.has(k)) cells[k] = v;
-  return { ...row, cells };
-}
+export { projectRow } from "./project-row";
