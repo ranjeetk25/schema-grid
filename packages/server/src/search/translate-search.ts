@@ -1,5 +1,5 @@
 import { type SQL, sql } from "drizzle-orm";
-import { resolveColumnExpr } from "../sql/column-expr";
+import { columnExprResolverOf, resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { storageKindOf } from "../sql/storage-kind";
 import { escapeLike, likeSql } from "../sql/like";
@@ -12,7 +12,7 @@ const SEARCHABLE_KINDS = new Set(["text", "choice", "ref"]);
  * Free-text search across readable, searchable columns: an OR of `typed LIKE '%term%'`.
  * Searchable kinds: text, choice, ref, and formula columns whose plan is
  * `inline`/`generated` with a `text` result kind. Number/date/datetime/boolean/multi/json
- * are excluded. A blank term or no searchable columns returns `undefined`.
+ * are excluded, unless the scope's resolver overrides it (`ColumnExprResolver.searchable`). A blank term or no searchable columns returns `undefined`.
  */
 export function translateSearch(
   search: string | undefined,
@@ -24,6 +24,7 @@ export function translateSearch(
 
   const pattern = `%${escapeLike(term)}%`;
   const branches: SQL[] = [];
+  const resolver = columnExprResolverOf(scope);
 
   for (const column of scope.ctx.schema.columns) {
     if (!isReadable(access, column.id)) continue;
@@ -34,8 +35,12 @@ export function translateSearch(
       if (plan.mode !== "inline" && plan.mode !== "generated") continue;
       if (plan.resultKind !== "text") continue;
     } else {
-      const kind = storageKindOf(column, scope.ctx.registry, scope.storageOverrides).kind;
-      if (!SEARCHABLE_KINDS.has(kind)) continue;
+      const override = resolver.searchable?.(column);
+      if (override === false) continue;
+      if (override === undefined) {
+        const kind = storageKindOf(column, scope.ctx.registry, scope.storageOverrides).kind;
+        if (!SEARCHABLE_KINDS.has(kind)) continue;
+      }
     }
 
     const expr = resolveColumnExpr(column, scope);

@@ -2,7 +2,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { UnsupportedOperatorError } from "../errors";
 import type { SortSpec } from "../internal/core";
 import { binaryText, choiceRank } from "../sql/choice-order";
-import { ident, resolveColumnExpr } from "../sql/column-expr";
+import { resolveColumnExpr, rowIdExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import type { StorageKind } from "../sql/storage-kind";
 
@@ -18,12 +18,10 @@ export interface SortKey {
   kind: StorageKind;
 }
 
-const ID_ASC = sql`${ident("id")} ASC`;
-
 /**
  * Builds ORDER BY from `SortSpec[]`: each spec contributes `nullFlag ASC, typed <dir>`
  * (nulls last in both directions) — for `choice` columns `nullFlag ASC, optionRank <dir>,
- * binary(value) <dir>` (two keys), matching core's option-order compare — and the list always ends with `id ASC` as a stable
+ * binary(value) <dir>` (two keys), matching core's option-order compare — and the list always ends with `<rowId> ASC` as a stable
  * tie-breaker. Throws `UnsupportedOperatorError` for an unknown column id or an
  * unsortable kind (multi, json).
  */
@@ -64,6 +62,6 @@ export function translateSort(sort: SortSpec[], scope: SqlScope): { orderBy: SQL
     keys.push({ columnId: column.id, dir: spec.dir, expr, nullFlag, kind: resolved.kind });
   }
 
-  orderBy.push(ID_ASC);
+  orderBy.push(sql`${rowIdExpr(scope)} ASC`);
   return { orderBy, keys };
 }

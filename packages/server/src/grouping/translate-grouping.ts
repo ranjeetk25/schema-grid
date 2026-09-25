@@ -1,4 +1,4 @@
-import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
+import { type SQL, and, sql } from "drizzle-orm";
 import { type AccessMap, assertQueryAccess, resolveAccess } from "../access/query-access";
 import { CursorError, GroupingError, UnsupportedOperatorError } from "../errors";
 import { translateFilter } from "../filter/translate-filter";
@@ -17,6 +17,7 @@ import {
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
 import { offsetClause, trimPage } from "../pagination/offset";
 import type { GridSqlScope, SelectCapableDb, SelectStatement } from "../query/build-query";
+import { rowSourceOf } from "../query/row-source";
 import { translateSearch } from "../search/translate-search";
 import { binaryText, choiceRank } from "../sql/choice-order";
 import { type ColumnExpr, resolveColumnExpr } from "../sql/column-expr";
@@ -155,7 +156,7 @@ function aggregateSql(
  * lazily with `pinGroupFilter`).
  *
  * - Permissions/filter validity are checked FIRST (`assertQueryAccess`).
- * - WHERE: `grid_id`, `deleted_at IS NULL`, filter, search.
+ * - WHERE: the row source's base predicates (`grid_id`, `deleted_at IS NULL` for the grid rows table), filter, search.
  * - The group key is `CASE WHEN <empty> THEN NULL ELSE <typed> END`, so every
  *   empty form (absent, JSON null, `''`) collapses into ONE group with value
  *   `null` (key `"∅"`, as in core), which always sorts last. Date keys are formatted `YYYY-MM-DD`.
@@ -217,10 +218,9 @@ export function buildGroupQuery(
   const fingerprint = queryFingerprint(query, scope.ctx.schema.schemaVersion);
   const paging = resolvePaging(query, fingerprint);
 
-  const rows = planned.tables.rows;
+  const source = rowSourceOf(planned);
   const where = and(
-    eq(rows.gridId, planned.gridId),
-    isNull(rows.deletedAt),
+    ...source.where,
     translateFilter(query.filter, planned),
     translateSearch(query.search, resolvedAccess, planned),
   );
@@ -228,7 +228,7 @@ export function buildGroupQuery(
 
   let select = db
     .select(fields)
-    .from(rows)
+    .from(source.from)
     .where(where)
     .groupBy(sql`${sql.identifier(KEY)}`)
     .orderBy(
@@ -253,7 +253,7 @@ export function buildGroupQuery(
       .select({
         total: sql<number>`COUNT(DISTINCT ${keyExpr}) + COALESCE(MAX(CASE WHEN ${expr.empty} THEN 1 ELSE 0 END), 0)`,
       })
-      .from(rows)
+      .from(source.from)
       .where(where) as SelectStatement<{ total: number | string }>;
   }
   return built;
