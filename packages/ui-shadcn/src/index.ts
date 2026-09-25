@@ -1,0 +1,1 @@
+export const SCHEMA_GRID_UI_SHADCN_VERSION = "0.0.1";

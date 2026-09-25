@@ -7,6 +7,7 @@ export default defineConfig({
       "packages/server",
       "packages/ag-grid",
       "packages/ui-mantine",
+      "packages/ui-shadcn",
       "packages/import-export",
       "apps/demo-api",
     ],
