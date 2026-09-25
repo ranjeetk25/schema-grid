@@ -51,6 +51,9 @@ export {
 };
 export type { ClipboardReport, SchemaGridEvents } from "@masai/schema-grid-ag-grid";
 
+// Theme (used by theme/useGridThemeFromShadcn)
+export { createSchemaGridTheme, type SchemaGridThemeOverrides } from "@masai/schema-grid-ag-grid";
+
 // ---------------------------------------------------------------------------
 // Widget contracts (owned by ui-shadcn)
 // ---------------------------------------------------------------------------
@@ -66,6 +69,11 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
   dataSource?: DataSource;
   /** `false` = form/filter mode: don't grab focus or auto-open dropdowns. */
   autoFocus?: boolean;
+  /**
+   * Width (px) of the grid cell being edited, when there is one. Popup editor
+   * cards use it as their min-width (never narrower than the cell).
+   */
+  cellWidth?: number;
   error?: string;
   onOptionCreate?(option: Option): void;
 }
@@ -238,6 +246,7 @@ function popupInner(widget: AnyEditorWidget): ComponentType<PopupEditorInnerProp
       [onChange],
     );
     const handleCommit = useCallback((v?: unknown) => commit(v !== undefined ? v : (latest.current ?? null)), [commit]);
+    const gridColumn = props.editorProps.column as { getActualWidth?: () => number } | undefined;
     return createElement(widget, {
       value: props.value,
       onChange: handleChange,
@@ -246,6 +255,7 @@ function popupInner(widget: AnyEditorWidget): ComponentType<PopupEditorInnerProp
       column,
       config: column.config,
       autoFocus: true,
+      cellWidth: gridColumn?.getActualWidth?.(),
       ...contextExtras(props.editorProps.context, props.schemaColumn),
     });
   }

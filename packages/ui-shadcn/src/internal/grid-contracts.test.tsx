@@ -29,6 +29,7 @@ function ProbeEditor(props: UiEditorProps<string>) {
   return (
     <div>
       <span data-testid="editor-props">{`${String(props.value)}|${props.column.key}|${String(props.autoFocus)}|${props.dataSource ? "ds" : "no-ds"}`}</span>
+      <span data-testid="cell-width">{String(props.cellWidth)}</span>
       <button type="button" onClick={() => props.onChange("typed")}>
         change
       </button>
@@ -128,6 +129,12 @@ describe("popup editor adapter", () => {
     fireEvent.click(screen.getByText("commit-latest"));
     expect(props.onValueChange).toHaveBeenLastCalledWith("typed");
     expect(props.stopEditing).toHaveBeenCalled();
+  });
+
+  it("passes the edited cell's width so the card can be at least as wide as the cell", () => {
+    const { props } = gridEditorProps({ column: { getActualWidth: () => 312 } });
+    renderAny(toPopupGridEditor(ProbeEditor).component, props);
+    expect(screen.getByTestId("cell-width")).toHaveTextContent("312");
   });
 
   it("cancel restores the initial value and cancels through the grid api", () => {
