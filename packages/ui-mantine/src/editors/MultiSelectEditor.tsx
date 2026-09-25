@@ -68,6 +68,9 @@ export function MultiSelectEditor({
       error={error}
       searchable
       comboboxProps={{ withinPortal: false }}
+      // Grid mode: focus the input so arrow keys / typing reach the combobox
+      // (otherwise the popup wrapper keeps focus and the list is mouse-only).
+      autoFocus={autoFocus !== false}
       defaultDropdownOpened={autoFocus !== false}
       renderOption={({ option }) => {
         const match = options.find((o) => o.id === option.value);
