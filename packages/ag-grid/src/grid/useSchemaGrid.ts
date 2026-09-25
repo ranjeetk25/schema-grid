@@ -47,8 +47,8 @@
  *
  * Seams for later tasks: `UseSchemaGridSeams` (renderer wrapping for the
  * range/fill `CellShell`, extra cell/row class rules, full-width group
- * renderers, announcer), `rowModelKey` (T27 switches server + groupBy to the
- * client-side model; `<SchemaGrid>` keys `AgGridReact` on it). `poll` is
+ * renderers, announcer, `onApplied` after a successful batch), `rowModelKey`
+ * (T27 switches server + groupBy to the client-side model; `<SchemaGrid>` keys `AgGridReact` on it). `poll` is
  * accepted and stored for T28.
  *
  * `schema`, `dataSource`, `resolver`, `registry`, `uiRegistry` and `theme` are
@@ -198,6 +198,12 @@ export interface UseSchemaGridSeams<Row extends GridRow = GridRow> {
   fullWidthCellRenderer?: ComponentType<CustomCellRendererProps<Row>>;
   /** Live-region announcer (T21/T30). */
   announce?(message: string, politeness?: "polite" | "assertive"): void;
+  /**
+   * Called after the edit controller applied a batch (after undo recording),
+   * e.g. `<SchemaGrid>` announces "Saved N cells". Read through a ref, so it
+   * need not be stable.
+   */
+  onApplied?(info: AppliedInfo<Row>): void;
 }
 
 export interface SchemaGridUndo {
@@ -407,6 +413,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
 ): UseSchemaGridResult<Row> {
   const latest = useRef(props);
   latest.current = props;
+  const latestSeams = useRef(seams);
+  latestSeams.current = seams;
 
   const { schema, dataSource, user } = props;
   const mode: SchemaGridMode = props.mode ?? "client";
@@ -906,6 +914,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
             pendingRefresh.current.push(...info.formulaDependents);
             scheduleRowSync();
           }
+          latestSeams.current.onApplied?.(info);
         },
         // No fetch-by-id on DataSource: refetch everything under the version/pending guards.
         onRowStale: () => {
