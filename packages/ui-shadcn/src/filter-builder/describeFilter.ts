@@ -41,6 +41,51 @@ function formatter(column: ColumnDef | undefined, registry: FieldTypeRegistry): 
   return (v) => type.format(v, config);
 }
 
+/** A condition split for display: column label, operator label, formatted value (`null` when it takes none). */
+export interface ConditionParts {
+  /** The column is hidden to this user: show "Hidden column" and nothing else. */
+  hidden: boolean;
+  column: string;
+  operator: string;
+  value: string | null;
+}
+
+export function describeConditionParts(
+  cond: FilterCondition,
+  schema: GridSchema,
+  registry: FieldTypeRegistry,
+  access?: AccessMap,
+): ConditionParts {
+  // Never reveal a hidden column's label or values (e.g. from a shared saved view).
+  if (access && !isReadable(access, cond.columnId)) return { hidden: true, column: "Hidden column", operator: "", value: null };
+  const column = schema.columns.find((c) => c.id === cond.columnId);
+  const label = column?.label ?? cond.columnId;
+  const operator = column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined;
+  const opLabel = operator?.label ?? cond.operator;
+  const parts = (value: string | null): ConditionParts => ({ hidden: false, column: label, operator: opLabel, value });
+  const fmt = formatter(column, registry);
+  const v = cond.value;
+
+  switch (operator?.valueKind) {
+    case "none":
+    case "me":
+      return parts(null);
+    case "multi":
+      return parts((Array.isArray(v) ? v : []).map(fmt).join(", "));
+    case "range": {
+      const r = v && typeof v === "object" && "from" in v ? v : { from: null, to: null };
+      return parts(`${fmt(r.from)} and ${fmt(r.to)}`);
+    }
+    case "relativeDate":
+      return parts(v && typeof v === "object" && "relative" in v ? humanizeRelativeDate(v) : null);
+    default:
+      if (v === undefined || v === null) return parts(null);
+      if (Array.isArray(v)) return parts(v.map(fmt).join(", "));
+      if (typeof v === "object") return parts(JSON.stringify(v));
+      return parts(fmt(v));
+  }
+}
+
 /** Human label for a condition, e.g. "Payment status is not Paid". */
 export function describeCondition(
   cond: FilterCondition,
@@ -48,34 +93,10 @@ export function describeCondition(
   registry: FieldTypeRegistry,
   access?: AccessMap,
 ): string {
-  // Never reveal a hidden column's label or values (e.g. from a shared saved view).
-  if (access && !isReadable(access, cond.columnId)) return "Hidden column";
-  const column = schema.columns.find((c) => c.id === cond.columnId);
-  const label = column?.label ?? cond.columnId;
-  const operator = column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined;
-  const opLabel = operator?.label ?? cond.operator;
-  const head = `${label} ${opLabel}`;
-  const fmt = formatter(column, registry);
-  const v = cond.value;
-
-  switch (operator?.valueKind) {
-    case "none":
-    case "me":
-      return head;
-    case "multi":
-      return `${head} ${(Array.isArray(v) ? v : []).map(fmt).join(", ")}`;
-    case "range": {
-      const r = v && typeof v === "object" && "from" in v ? v : { from: null, to: null };
-      return `${head} ${fmt(r.from)} and ${fmt(r.to)}`;
-    }
-    case "relativeDate":
-      return v && typeof v === "object" && "relative" in v ? `${head} ${humanizeRelativeDate(v)}` : head;
-    default:
-      if (v === undefined || v === null) return head;
-      if (Array.isArray(v)) return `${head} ${v.map(fmt).join(", ")}`;
-      if (typeof v === "object") return `${head} ${JSON.stringify(v)}`;
-      return `${head} ${fmt(v)}`;
-  }
+  const p = describeConditionParts(cond, schema, registry, access);
+  if (p.hidden) return p.column;
+  const head = `${p.column} ${p.operator}`;
+  return p.value === null ? head : `${head} ${p.value}`;
 }
 
 /** A condition's label, or a group summary like "(2 conditions, OR)". */
