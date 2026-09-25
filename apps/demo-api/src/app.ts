@@ -260,7 +260,7 @@ export function createApp(deps: AppDeps): CreatedApp {
   /** Wire-contract endpoint (docs/wire-contract.md): `200 { data }` / `<status> { error: WireError }`. */
   const grid = createGridRouterAdapter<GridRequestContext>(dataSourceFor, {
     onError: (err, info) => {
-      if (info.status >= 500) console.error(err);
+      if (info.status === 500) console.error(err);
     },
   });
 

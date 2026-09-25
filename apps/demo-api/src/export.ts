@@ -1,6 +1,5 @@
 import type {
   Access,
-  ColumnDef,
   ColumnState,
   DataSource,
   FieldTypeRegistry,
@@ -20,60 +19,21 @@ import {
   streamExport,
 } from "@masai/schema-grid-server";
 
-const EPOCH = "1970-01-01T00:00:00.000Z";
-
 /**
- * Adapts io's `buildExportStream` (which takes typed `GridRow`s + `ColumnDef`s)
- * to the server's `ExportWriter` (formatted `string[]` rows): every exported
- * column becomes a `text` column holding the already-formatted value, so the
- * cells are written verbatim (CSV still gets io's formula-injection guard).
- * Trade-off: XLSX cells are text, not typed numbers/dates.
+ * Adapts io's `buildExportStream` to the server's `ExportWriter`: the server
+ * hands over the exported ColumnDefs, RAW rows, registry and access, and io
+ * types the cells itself (XLSX numbers/dates/hyperlinks, guarded CSV text).
  */
 export function ioExportWriter(options: {
-  schema: GridSchema;
   tz: string;
   fileName: string;
-  registry: FieldTypeRegistry;
 }): ExportWriter {
-  const widthById = new Map(options.schema.columns.map((c) => [c.id, c.width]));
-  return ({ columns, rows, format }) => {
-    const textColumns: ColumnDef[] = columns.map((c, order) => {
-      const width = widthById.get(c.id);
-      return {
-        id: c.id,
-        key: c.key,
-        label: c.label,
-        type: "text",
-        config: {},
-        order,
-        createdAt: EPOCH,
-        updatedAt: EPOCH,
-        ...(width === undefined ? {} : { width }),
-      };
-    });
-    const access = new Map<string, Access>(
-      textColumns.map((c) => [c.id, "read"]),
-    );
-    async function* gridRows(): AsyncIterable<GridRow> {
-      let i = 0;
-      for await (const values of rows) {
-        const cells: Record<string, unknown> = {};
-        columns.forEach((c, j) => {
-          cells[c.key] = values[j] ?? "";
-        });
-        i += 1;
-        yield { id: String(i), version: 1, updatedAt: EPOCH, cells };
-      }
-    }
-    return (async function* bytes(): AsyncIterable<Uint8Array> {
+  return (input) =>
+    (async function* bytes(): AsyncIterable<Uint8Array> {
       const readable = await buildExportStream({
-        columns: textColumns,
-        registry: options.registry,
-        rows: gridRows(),
-        format,
+        ...input,
         tz: options.tz,
         fileName: options.fileName,
-        access,
       });
       for await (const chunk of readable) {
         yield typeof chunk === "string"
@@ -81,7 +41,6 @@ export function ioExportWriter(options: {
           : (chunk as Uint8Array);
       }
     })();
-  };
 }
 
 export interface ExportRequest {
@@ -132,12 +91,7 @@ export async function buildExportResponse(
     registry: deps.registry,
     access: deps.access,
     format: req.format,
-    writer: ioExportWriter({
-      schema: deps.schema,
-      tz: deps.tz,
-      fileName,
-      registry: deps.registry,
-    }),
+    writer: ioExportWriter({ tz: deps.tz, fileName }),
     ...(req.columns ? { columns: req.columns } : {}),
   })[Symbol.asyncIterator]();
   const body = new ReadableStream<Uint8Array>({

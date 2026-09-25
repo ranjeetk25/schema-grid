@@ -37,7 +37,6 @@ export { type GroupPin, pinGroupFilter } from "./grouping/pin-group-filter";
 export { type CursorPayload, decodeCursor, encodeCursor, queryFingerprint } from "./pagination/cursor";
 export { type IterateQueryOptions, iterateQuery } from "./jobs/query-iterator";
 export {
-  type ExportColumn,
   type ExportWriter,
   type ExportWriterInput,
   type StreamExportOptions,

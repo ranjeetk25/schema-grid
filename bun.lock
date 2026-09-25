@@ -33,6 +33,7 @@
       },
       "devDependencies": {
         "@types/bun": "^1.2.4",
+        "exceljs": "^4.4.0",
       },
     },
     "apps/storybook": {

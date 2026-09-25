@@ -15,6 +15,7 @@ import {
   FIXTURE_NOW,
   createFixtureSchema,
 } from "@masai/schema-grid-core/testing";
+import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type CreatedApp, createApp } from "../src/app";
 import {
@@ -287,6 +288,39 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       );
       const header = (await res.text()).replace(/^�/, "").split("\r\n")[0];
       expect(header).toBe("Name,Email");
+    });
+
+    it("export XLSX writes typed cells: Fee is a number, Call date a date", async () => {
+      const res = await created.app.request(
+        `/export?format=xlsx&columns=${encodeURIComponent(
+          JSON.stringify([
+            { id: "col_name", hidden: false, order: 0 },
+            { id: "col_fee", hidden: false, order: 1 },
+            { id: "col_callDate", hidden: false, order: 2 },
+          ]),
+        )}&viewFilter=${encodeURIComponent(
+          JSON.stringify({
+            columnId: "col_name",
+            operator: "startsWith",
+            value: "Bhavesh",
+          }),
+        )}`,
+      );
+      expect(res.status).toBe(200);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await res.arrayBuffer());
+      const sheet = wb.worksheets[0];
+      expect(sheet?.getRow(1).values).toEqual([
+        undefined,
+        "Name",
+        "Fee",
+        "Call date",
+      ]);
+      const data = sheet?.getRow(2);
+      expect(data?.getCell(1).value).toBe("Bhavesh Rao");
+      expect(data?.getCell(2).value).toBe(60000);
+      expect(data?.getCell(2).type).toBe(ExcelJS.ValueType.Number);
+      expect(data?.getCell(3).value).toBeInstanceOf(Date);
     });
 
     it("import a small CSV → job reaches done with the right created count", async () => {
