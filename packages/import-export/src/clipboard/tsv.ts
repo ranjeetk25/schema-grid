@@ -49,15 +49,19 @@ export function parseClipboard(text: string): string[][] {
       field = unescapeQuoted(text.slice(i + 1, closeAt - 1));
       i = closeAt;
       // Lenient: append any trailing literal chars up to the next delimiter.
-      while (i < n && !isDelimiter(text[i]!)) {
-        field += text[i];
+      while (i < n) {
+        const ch = text[i];
+        if (ch === undefined || isDelimiter(ch)) break;
+        field += ch;
         i++;
       }
     } else {
       // Unquoted field (also covers an unclosed opening quote, which is
       // simply treated as a literal character here).
-      while (i < n && !isDelimiter(text[i]!)) {
-        field += text[i];
+      while (i < n) {
+        const ch = text[i];
+        if (ch === undefined || isDelimiter(ch)) break;
+        field += ch;
         i++;
       }
     }

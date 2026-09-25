@@ -151,7 +151,9 @@ describe("formatForClipboard", () => {
     const out = formatForClipboard([row], columns, registry);
     const lines = out.split("\r\n");
     expect(lines).toHaveLength(1);
-    const cells = lines[0]!.split("\t");
+    const firstLine = lines[0];
+    if (firstLine === undefined) throw new Error("expected at least one line");
+    const cells = firstLine.split("\t");
     const payIndex = columns.findIndex((c) => c.id === "c_pay");
     const activeIndex = columns.findIndex((c) => c.id === "c_active");
     expect(cells[payIndex]).toBe("Paid");

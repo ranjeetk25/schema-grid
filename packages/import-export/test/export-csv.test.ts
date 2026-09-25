@@ -55,7 +55,8 @@ describe("buildCsvBlob", () => {
 
   it("quotes a cell with a newline and round-trips via parseCsvText", async () => {
     const columns = visibleColumns();
-    const noteColumn = columns.find((c) => c.id === "c_note")!;
+    const noteColumn = columns.find((c) => c.id === "c_note");
+    if (!noteColumn) throw new Error("expected c_note column");
     const cells = sampleCells(0);
     cells.note = "line one\nline two";
     const row = makeRow(cells);
@@ -71,7 +72,8 @@ describe("buildCsvBlob", () => {
 
     // Every visible column's exported text matches toCsvCell for this row.
     for (let i = 0; i < columns.length; i++) {
-      const col = columns[i]!;
+      const col = columns[i];
+      if (!col) throw new Error(`expected column at index ${i}`);
       const expected = toCsvCell(cells[col.key], col, registry);
       expect(table.rows[0]?.[i]).toBe(expected);
     }
@@ -93,12 +95,14 @@ describe("buildCsvBlob", () => {
       },
     };
     const allColumns = [...visibleColumns()];
+    const firstColumn = allColumns[0];
+    if (!firstColumn) throw new Error("expected at least one column");
     // Sneak in the hidden column by reading from makeColumns via access map's own hidden entry.
     const access = makeAccess(); // c_secret is "hidden"
     const opts = {
       columns: [
         ...allColumns,
-        { ...allColumns[0]!, id: "c_secret", key: "secret", label: "Secret" },
+        { ...firstColumn, id: "c_secret", key: "secret", label: "Secret" },
       ],
       registry,
       rows,
