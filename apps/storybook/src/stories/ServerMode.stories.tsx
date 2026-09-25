@@ -6,11 +6,13 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
+import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
 import type { GridSchema } from "@ranjeetk25/schema-grid-core";
+import { SchemaGridWorkbench, createMemoryViewStore } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useMemo, useState } from "react";
-import { Workbench } from "../support/Workbench";
-import { USERS, type UserKey, instrument } from "../support/data";
+import { GRID_OPTIONS, Workbench, uiRegistry } from "../support/Workbench";
+import { USERS, type UserKey, instrument, registry, resolver } from "../support/data";
 import {
   DEMO_API_URL,
   createDemoDataSource,
@@ -87,7 +89,8 @@ function ServerGrid() {
       poll={{ intervalMs: 3000, enabled: pollEnabled }}
       persistViewsKey="schema-grid-demo-api-views"
       onSchemaChange={async (next) => {
-        const saved = await putSchema(client, next);
+        // PUT /schema is the registry's updateSchema: send the CURRENT version, the API bumps it.
+        const saved = await putSchema(client, { ...next, schemaVersion: schema.schemaVersion });
         setSchema(saved);
         return saved;
       }}
@@ -98,4 +101,45 @@ function ServerGrid() {
 export const DemoApi: StoryObj = {
   name: "demo-api",
   render: () => <ServerGrid />,
+};
+
+/**
+ * The demo-api's `leads` grid: `defineGrid` + `createSqlViewDataSource` over a
+ * plain MySQL table (1,200 rows, `maxPageSize` 200), rendered as the spec's
+ * one-liner page: `<SchemaGridWorkbench client={createGridClient(...)} />`.
+ * "+" columns persist in the API's schema store (values in the extension table).
+ */
+function LeadsGrid() {
+  const user = USERS.admin;
+  const client = useMemo(
+    () =>
+      createGridClient({
+        baseUrl: `${DEMO_API_URL}/grid`,
+        gridId: "leads",
+        headers: () => ({ "x-user": user.id, "x-roles": user.roles.join(",") }),
+      }),
+    [user],
+  );
+  const viewStore = useMemo(() => createMemoryViewStore(), []);
+  return (
+    <div style={{ height: "100dvh" }}>
+      <SchemaGridWorkbench
+        client={client}
+        user={user}
+        resolver={resolver}
+        registry={registry}
+        uiRegistry={uiRegistry}
+        title="Leads"
+        subtitle="Existing table · defineGrid + createSqlViewDataSource"
+        viewStore={viewStore}
+        gridProps={{ gridOptions: GRID_OPTIONS }}
+        testId="leads-workbench"
+      />
+    </div>
+  );
+}
+
+export const Leads: StoryObj = {
+  name: "leads (existing table)",
+  render: () => <LeadsGrid />,
 };

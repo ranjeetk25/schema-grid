@@ -18,6 +18,8 @@ import {
   buildSection8Filter,
   calls,
   cell,
+  pasteText,
+  politeText,
   renderedRowIds,
 } from "./helpers";
 
@@ -228,4 +230,96 @@ test("§14 server-mode 'Export CSV' pages the current view through the data sour
   expect(csv).toContain("Bhavesh Rao"); // r1's name is edited by the §9 test above
   const exportFetches = (await calls(page, "fetch")).slice(before);
   expect(exportFetches.length).toBeGreaterThan(0);
+});
+
+/**
+ * Spec v0.2 acceptance 1–3 on the `leads` grid (story "leads (existing
+ * table)"): a plain MySQL table exposed with `defineGrid` +
+ * `createSqlViewDataSource`, page = `<SchemaGridWorkbench client>`.
+ */
+test("v0.2 leads over an existing table: §8 filter, unsortable header, paste skips aiVerified, '+' column survives reload", async ({
+  page,
+  context,
+  request,
+}) => {
+  expect((await request.post(`${API}/__reset`)).ok()).toBe(true);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const fetchBodies: { filter?: unknown; sort?: unknown }[] = [];
+  const writes: { changes: { columnId: string }[] }[] = [];
+  page.on("request", (req) => {
+    if (req.method() !== "POST") return;
+    if (req.url().endsWith("/grid/leads/fetch")) fetchBodies.push(req.postDataJSON());
+    if (req.url().endsWith("/grid/leads/applyChanges")) writes.push(req.postDataJSON());
+  });
+  const openLeads = async () => {
+    await page.goto(`/iframe.html?id=${STORIES.leads}&viewMode=story`);
+    await page.locator(".ag-row[row-id]").first().waitFor();
+  };
+  await openLeads();
+
+  // 1. §8 over the plain table: ids with call_date = yesterday (IST) and status not Paid (NULL included).
+  // Seed rule (apps/demo-api leads/table.ts): status = [null, paid, pending, failed][i % 4], call date = now - (i % 7) days.
+  const expected = Array.from({ length: 1200 }, (_, k) => k + 1)
+    .filter((i) => i % 7 === 1 && i % 4 !== 1)
+    .map(String);
+  await buildSection8Filter(page);
+  await expect
+    .poll(() => fetchBodies.at(-1)?.filter)
+    .toEqual({
+      op: "and",
+      children: [
+        { columnId: "paymentStatus", operator: "isNot", value: "paid" },
+        { columnId: "callDate", operator: "isWithin", value: { relative: "yesterday" } },
+      ],
+    });
+  await expect
+    .poll(async () => {
+      const ids = await renderedRowIds(page);
+      return ids.length > 0 && ids.every((id, i) => id === expected[i]);
+    })
+    .toBe(true);
+  await expect(cell(page, "8", "paymentStatus")).toHaveText(""); // NULL status is in
+  await page.getByRole("button", { name: /^Remove filter: / }).first().click();
+  await page.getByRole("button", { name: /^Remove filter: / }).first().click();
+  await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(0);
+
+  // 2a. aiVerified (sortable:false) has no sort affordance; name has one. Clicking it sends no sort.
+  const aiHeader = page.locator('.ag-header-cell[col-id="aiVerified"]');
+  await expect(page.locator('.ag-header-cell[col-id="name"]')).toHaveClass(/ag-header-cell-sortable/);
+  await expect(aiHeader).not.toHaveClass(/ag-header-cell-sortable/);
+  await expect(aiHeader).not.toHaveAttribute("aria-sort", /.+/);
+  const fetchesBefore = fetchBodies.length;
+  await aiHeader.locator(".ag-header-cell-label, .sg-header").first().click();
+  await page.waitForTimeout(300);
+  expect(
+    fetchBodies.slice(fetchesBefore).some((b) => JSON.stringify(b.sort ?? []).includes("aiVerified")),
+  ).toBe(false);
+
+  // 2b. Paste over aiVerified (settable:false): reported as skipped, never sent.
+  await cell(page, "1", "aiVerified").click();
+  await pasteText(page, "true");
+  await expect.poll(() => politeText(page)).toBe("Paste: 0 pasted, 1 skipped, 0 errors");
+  await page.waitForTimeout(300);
+  expect(writes.flatMap((w) => w.changes.map((c) => c.columnId))).not.toContain("aiVerified");
+
+  // 3. "+" adds a column → persisted in the API's schema store (MySQL) → still there after a reload, with its value.
+  await page.getByRole("button", { name: "Add column at end" }).click();
+  const dialog = page.getByRole("dialog", { name: "New column" });
+  await dialog.getByRole("textbox", { name: "Name" }).fill("Follow up");
+  await dialog.getByRole("button", { name: "Create column" }).click();
+  await expect(dialog).toHaveCount(0);
+  const header = page.locator(".ag-header-cell").filter({ hasText: "Follow up" });
+  await expect(header).toHaveCount(1);
+  const colId = (await header.getAttribute("col-id")) as string;
+  expect(colId).toBeTruthy();
+  await cell(page, "2", colId).dblclick();
+  await page.keyboard.type("call again");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => writes.flatMap((w) => w.changes.map((c) => c.columnId)))
+    .toContain(colId);
+
+  await openLeads();
+  await expect(page.locator(".ag-header-cell").filter({ hasText: "Follow up" })).toHaveCount(1);
+  await expect(cell(page, "2", colId)).toHaveText("call again");
 });

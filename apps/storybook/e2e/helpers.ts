@@ -9,6 +9,7 @@ export const STORIES = {
   client: "3-client-grid--full-toolbar",
   clientFixture: "3-client-grid--fixture-only",
   server: "4-server-mode-demo-api--demo-api",
+  leads: "4-server-mode-demo-api--leads",
   importExport: "5-import-and-export--import-and-export",
   conflict: "6-conflict-prompt--keep-theirs-or-overwrite",
   polling: "7-polling-sync--polling-highlight",
