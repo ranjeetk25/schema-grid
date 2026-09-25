@@ -13,8 +13,10 @@ Optional peer: `@mantine/notifications` ^8.
 filter + chips, group, search, undo/redo, import, export, "Add column" (side
 panel with a ghost-column preview), the conflict prompt, polling and a quiet
 status bar. Features follow the data source's capabilities (`groupBy:false`
-hides Group, `changeFeed:false` stops polling, `write.cells:false` makes the
-grid read-only with a banner); `features` can only switch things off.
+hides Group, `search:false` hides search, `changeFeed:false` stops polling,
+`"updates-only"` polls without removing rows, `write.cells:false` makes the
+grid read-only with a banner, `export.maxRows` caps the CSV export); the
+toolbar waits for them to load. `features` can only switch things off.
 
 ```tsx
 import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
@@ -40,7 +42,7 @@ persist column edits). Other props:
 | `resolver`, `registry`, `uiRegistry`, `mode` | defaults: role resolver, default registries, `"server"` with `client` else `"client"` |
 | `views` + `onViewsChange` / `viewStore` | controlled views, or a `WorkbenchViewStore` (`load(gridId)`/`save(gridId, views)`); default `createLocalStorageViewStore()` keyed by grid id |
 | `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling }>` — `false` turns one off |
-| `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities`, `openImport`, `openExport`, `openAddColumn`, `refetch` |
+| `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities` (raw, once loaded), `effectiveCapabilities` (core `mergeCapabilities`, `null` until loaded), `openImport`, `openExport`, `openAddColumn`, `refetch` |
 | `emptyState` | shown over the grid when there are no rows |
 | `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload) |
 | `pollIntervalMs`, `height` (`"fill"` default: give the parent a height), `pageSize`, `roles`, `gridProps` | |

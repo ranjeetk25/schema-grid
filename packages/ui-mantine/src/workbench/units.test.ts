@@ -1,24 +1,32 @@
-import type { ColumnDef, DataSource, GridSchema, ViewDef } from "@ranjeetk25/schema-grid-core";
-import { describe, expect, it, vi } from "vitest";
 import {
-  WORKBENCH_DEFAULT_CAPABILITIES,
-  deriveWorkbenchFeatures,
-  loadCapabilities,
+  type ColumnDef,
+  DEFAULT_CAPABILITIES,
+  type DataSource,
+  type DataSourceCapabilities,
+  type GridSchema,
+  type ViewDef,
+  mergeCapabilities,
   normalizeCapabilities,
-} from "./capabilities";
+} from "@ranjeetk25/schema-grid-core";
+import { createFixtureSchema } from "@ranjeetk25/schema-grid-core/testing";
+import { describe, expect, it, vi } from "vitest";
+import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { classifyError, tapDataSource } from "./errors";
 import { collectRows } from "./exportRows";
 import { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
-import type { WorkbenchCapabilities } from "./types";
 import { ALL_ROWS_VIEW, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
 
-const caps = (over: Partial<WorkbenchCapabilities> = {}) => normalizeCapabilities(over);
-const derive = (over: Partial<WorkbenchCapabilities> = {}, extra: Partial<Parameters<typeof deriveWorkbenchFeatures>[0]> = {}) =>
-  deriveWorkbenchFeatures({ capabilities: caps(over), hasChangeFeed: true, canChangeSchema: true, ...extra });
+/** The grid's effective matrix for the fixture schema under `over` (real core capability objects). */
+const effective = (over: Partial<DataSourceCapabilities> = {}, schema: GridSchema = createFixtureSchema()) =>
+  mergeCapabilities(schema, normalizeCapabilities(over));
+const derive = (
+  over: Partial<DataSourceCapabilities> = {},
+  extra: Partial<Parameters<typeof deriveWorkbenchFeatures>[0]> = {},
+) => deriveWorkbenchFeatures({ capabilities: effective(over), canChangeSchema: true, ...extra });
 
 describe("deriveWorkbenchFeatures", () => {
   it("turns everything on for a fully capable source", () => {
-    expect(derive()).toEqual({
+    expect(deriveWorkbenchFeatures({ capabilities: effective(DEFAULT_CAPABILITIES), canChangeSchema: true })).toEqual({
       filter: true,
       group: true,
       search: true,
@@ -31,25 +39,38 @@ describe("deriveWorkbenchFeatures", () => {
     });
   });
 
-  it("derives each feature from its capability", () => {
+  it("derives each feature from the effective matrix", () => {
     expect(derive({ groupBy: false }).group).toBe(false);
     expect(derive({ search: false }).search).toBe(false);
     expect(derive({ changeFeed: false }).polling).toBe(false);
     expect(derive({ changeFeed: "updates-only" }).polling).toBe(true);
     expect(derive({ filter: { columnIds: [] } }).filter).toBe(false);
-    expect(derive({ filter: { columnIds: ["a"] } }).filter).toBe(true);
+    const someColumn = createFixtureSchema().columns[0]?.id ?? "";
+    expect(derive({ filter: { columnIds: [someColumn] } }).filter).toBe(true);
     const ro = derive({ write: { cells: false, createRows: false, deleteRows: false } });
     expect(ro.undo).toBe(false);
     expect(ro.import).toBe(false);
-    expect(derive({}, { hasChangeFeed: false }).polling).toBe(false);
     expect(derive({}, { canChangeSchema: false }).addColumn).toBe(false);
+  });
+
+  it("filter is off when every column is unfilterable by column option", () => {
+    const schema = createFixtureSchema();
+    const locked = { ...schema, columns: schema.columns.map((c) => ({ ...c, filterable: false })) };
+    const f = deriveWorkbenchFeatures({ capabilities: effective({}, locked), canChangeSchema: true });
+    expect(f.filter).toBe(false);
+  });
+
+  it("keeps capability-gated features off until the capabilities load", () => {
+    const f = deriveWorkbenchFeatures({ capabilities: null, canChangeSchema: true });
+    expect(f).toMatchObject({ group: false, search: false, filter: false, import: false, undo: false, polling: false, export: false });
+    expect(f.views).toBe(true);
+    expect(f.addColumn).toBe(true);
   });
 
   it("host features only switch OFF", () => {
     const f = deriveWorkbenchFeatures({
-      capabilities: caps({ groupBy: false }),
+      capabilities: effective({ groupBy: false }),
       features: { group: true, search: false },
-      hasChangeFeed: true,
       canChangeSchema: true,
     });
     expect(f.group).toBe(false);
@@ -58,22 +79,11 @@ describe("deriveWorkbenchFeatures", () => {
   });
 });
 
-describe("loadCapabilities", () => {
-  const ds = {} as DataSource;
-  it("defaults when nothing reports", async () => {
-    expect(await loadCapabilities(null, ds)).toEqual(WORKBENCH_DEFAULT_CAPABILITIES);
-  });
-  it("reads a client function, a client object or the data source method", async () => {
-    expect((await loadCapabilities({ capabilities: () => caps({ groupBy: false }) }, ds)).groupBy).toBe(false);
-    expect((await loadCapabilities({ capabilities: { search: false } as WorkbenchCapabilities }, ds)).search).toBe(false);
-    const withMethod = { capabilities: async () => ({ changeFeed: false }) } as unknown as DataSource;
-    const c = await loadCapabilities(null, withMethod);
-    expect(c.changeFeed).toBe(false);
-    expect(c.write.cells).toBe(true);
-  });
-  it("falls back to the defaults when the call fails", async () => {
-    const failing = { capabilities: () => Promise.reject(new Error("501")) } as unknown as DataSource;
-    expect(await loadCapabilities(null, failing)).toEqual(WORKBENCH_DEFAULT_CAPABILITIES);
+describe("isReadOnly", () => {
+  it("is true only once loaded capabilities say write.cells:false", () => {
+    expect(isReadOnly(null)).toBe(false);
+    expect(isReadOnly(effective())).toBe(false);
+    expect(isReadOnly(effective({ write: { cells: false, createRows: true, deleteRows: true } }))).toBe(true);
   });
 });
 

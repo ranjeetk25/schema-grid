@@ -17,6 +17,8 @@ import {
   type ColumnDef,
   DEFAULT_TIME_ZONE,
   type DataSource,
+  type DataSourceCapabilities,
+  type EffectiveCapabilities,
   type FieldTypeRegistry,
   type FilterNode,
   type GridRow,
@@ -25,20 +27,21 @@ import {
   type Option,
   type PermissionResolver,
   type ViewDef,
+  applyEffectiveCapabilities,
   createRolePermissionResolver,
+  mergeCapabilities,
   resolveColumnAccess,
 } from "@ranjeetk25/schema-grid-core";
 import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 import { buildExportBlob, exportFileName } from "@ranjeetk25/schema-grid-io/export";
 import { toChangeBatches, validateRows } from "@ranjeetk25/schema-grid-io/import";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { WORKBENCH_DEFAULT_CAPABILITIES, deriveWorkbenchFeatures, loadCapabilities } from "./capabilities";
+import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { tapDataSource, toWorkbenchError } from "./errors";
 import { collectRows } from "./exportRows";
 import { type WorkbenchInsertPosition, addOptions, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
 import type {
   SchemaGridWorkbenchProps,
-  WorkbenchCapabilities,
   WorkbenchError,
   WorkbenchErrorKind,
   WorkbenchFeatures,
@@ -76,7 +79,7 @@ export interface WorkbenchBanner {
 
 export interface UseWorkbenchOptions {
   props: SchemaGridWorkbenchProps;
-  /** The kit's conflict prompt (`useShadcnConflictPrompt().onConflict`). */
+  /** The kit's conflict prompt (`useMantineConflictPrompt().onConflict`). */
   onConflict: NonNullable<SchemaGridEvents["onConflict"]>;
 }
 
@@ -120,7 +123,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   const { client, user, features: featureOverrides, onError } = props;
   const direct = client ? null : props;
   const registry: FieldTypeRegistry = useMemo(() => props.registry ?? createDefaultRegistry(), [props.registry]);
-  const baseResolver: PermissionResolver = useMemo(
+  const resolver: PermissionResolver = useMemo(
     () => props.resolver ?? createRolePermissionResolver(),
     [props.resolver],
   );
@@ -133,11 +136,16 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   const [, forceRender] = useState(0);
   const onHandleRef = useRef(props.onHandle);
   onHandleRef.current = props.onHandle;
+  // The grid's own load of `dataSource.capabilities()` (useSchemaGrid); undefined until loaded.
+  const [capabilities, setCapabilities] = useState<DataSourceCapabilities | undefined>(undefined);
   const setHandle = useCallback((h: SchemaGridHandle | null) => {
     if (handleRef.current === h) return;
     handleRef.current = h;
     onHandleRef.current?.(h);
-    if (h) forceRender((n) => n + 1);
+    if (h) {
+      setCapabilities(h.capabilities);
+      forceRender((n) => n + 1);
+    }
   }, []);
   const [, setTick] = useState(0);
   const bump = useCallback(() => setTick((n) => n + 1), []);
@@ -159,17 +167,30 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
 
   // ---- data source (tapped for banners) -----------------------------------
   const rawDataSource: DataSource = client ? client.dataSource : (direct as { dataSource: DataSource }).dataSource;
-  const dataSource = useMemo(
-    () =>
-      tapDataSource(rawDataSource, {
-        onError: report,
-        onReadOk: (op) => {
-          // A successful read proves we're back online / allowed again. Permission errors on writes stay.
-          clearKinds(op === "fetch" ? SEARCH_BANNER_KINDS : ["network"]);
-        },
-      }),
-    [rawDataSource, report, clearKinds],
-  );
+  const changeFeedRef = useRef<DataSourceCapabilities["changeFeed"] | undefined>(undefined);
+  changeFeedRef.current = capabilities?.changeFeed;
+  const dataSource = useMemo(() => {
+    const tapped = tapDataSource(rawDataSource, {
+      onError: report,
+      onReadOk: (op) => {
+        // A successful read proves we're back online / allowed again. Permission errors on writes stay.
+        clearKinds(op === "fetch" ? SEARCH_BANNER_KINDS : ["network"]);
+      },
+    });
+    const getChanges = tapped.getChanges;
+    if (!getChanges) return tapped;
+    // An "updates-only" feed (e.g. `updated_at`) never reports deletions: drop any, so no row is removed.
+    const updatesOnly: DataSource = {
+      ...tapped,
+      getChanges: async (since) => {
+        const entry = await getChanges(since);
+        return changeFeedRef.current === "updates-only" && entry.deletedRowIds.length > 0
+          ? { ...entry, deletedRowIds: [] }
+          : entry;
+      },
+    };
+    return updatesOnly;
+  }, [rawDataSource, report, clearKinds]);
 
   // ---- schema --------------------------------------------------------------
   const [schema, setSchema] = useState<GridSchema | null>(() => (direct ? (direct.schema as GridSchema) : null));
@@ -218,44 +239,29 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   );
 
   // ---- capabilities → features ------------------------------------------
-  const [capabilities, setCapabilities] = useState<WorkbenchCapabilities>(WORKBENCH_DEFAULT_CAPABILITIES);
-  const schemaVersion = schema?.schemaVersion;
-  useEffect(() => {
-    let live = true;
-    // Re-read after a schema change: column-level capabilities can move with it.
-    void schemaVersion;
-    void loadCapabilities(client, rawDataSource).then((c) => live && setCapabilities(c));
-    return () => {
-      live = false;
-    };
-  }, [client, rawDataSource, schemaVersion]);
+  // The grid's raw capabilities ∩ the workbench's schema (the same matrix `useSchemaGrid` computes).
+  const effectiveCapabilities: EffectiveCapabilities | null = useMemo(
+    () => (schema && capabilities ? mergeCapabilities(schema, capabilities) : null),
+    [schema, capabilities],
+  );
+  /** The schema with the source's restrictions on column options (filter / group pickers, access). */
+  const effectiveSchema: GridSchema | null = useMemo(
+    () => (schema && effectiveCapabilities ? applyEffectiveCapabilities(schema, effectiveCapabilities) : schema),
+    [schema, effectiveCapabilities],
+  );
   const features: WorkbenchFeatures = useMemo(
     () =>
       deriveWorkbenchFeatures({
-        capabilities,
+        capabilities: effectiveCapabilities,
         ...(featureOverrides ? { features: featureOverrides } : {}),
-        hasChangeFeed: typeof rawDataSource.getChanges === "function",
-        canChangeSchema: client ? typeof client.updateSchema === "function" : true,
+        canChangeSchema: true,
       }),
-    [capabilities, featureOverrides, rawDataSource, client],
+    [effectiveCapabilities, featureOverrides],
   );
 
-  // TODO(lane-a): useSchemaGrid makes cells read-only for write.cells:false and
-  // settable:false columns itself; until then the resolver downgrades edit → read.
-  const resolver: PermissionResolver = useMemo(() => {
-    const writable = capabilities.write.cells;
-    return (ctx) => {
-      const access = baseResolver(ctx);
-      if (access !== "edit") return access;
-      if (!writable) return "read";
-      if ((ctx.column as ColumnDef & { settable?: boolean }).settable === false) return "read";
-      return access;
-    };
-  }, [baseResolver, capabilities.write.cells]);
-
   const access: Map<string, Access> = useMemo(
-    () => (schema ? resolveColumnAccess(schema, resolver, user) : new Map()),
-    [schema, resolver, user],
+    () => (effectiveSchema ? resolveColumnAccess(effectiveSchema, resolver, user) : new Map()),
+    [effectiveSchema, resolver, user],
   );
 
   // ---- views ---------------------------------------------------------------
@@ -542,7 +548,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       message: errors["capability-denied"].message,
       dismiss: dismiss("capability-denied"),
     });
-  if (!capabilities.write.cells && !readOnlyDismissed)
+  if (isReadOnly(effectiveCapabilities) && !readOnlyDismissed)
     banners.push({
       kind: "read-only",
       message: "Read-only. This data source doesn't accept edits.",
@@ -582,8 +588,8 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
           filter: scope === "view" ? (q?.filter ?? null) : null,
           sort: scope === "view" ? (q?.sort ?? []) : [],
           ...(scope === "view" && q?.search ? { search: q.search } : {}),
-          pageSize: Math.min(capabilities.maxPageSize, 1000),
-          ...(capabilities.export.maxRows ? { maxRows: capabilities.export.maxRows } : {}),
+          pageSize: Math.min(effectiveCapabilities?.maxPageSize ?? 1000, 1000),
+          ...(effectiveCapabilities?.export.maxRows !== undefined ? { maxRows: effectiveCapabilities.export.maxRows } : {}),
         });
       }
       const base = (schemaRef.current?.id ?? "export").replace(/[^\w-]+/g, "-");
@@ -592,9 +598,20 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       setLastExport(`${fileName}: ${rows.length} rows, ${columns.length} columns`);
       download(blob, fileName);
     },
-    [visibleColumns, dataSource, capabilities, registry, tz, access],
+    [visibleColumns, dataSource, effectiveCapabilities, registry, tz, access],
   );
-  const exportCsv = useCallback(() => handleRef.current?.exportCsv("schema-grid.csv"), []);
+  const exportMaxRows = effectiveCapabilities?.export.maxRows;
+  const exportCsv = useCallback(() => {
+    const h = handleRef.current;
+    const name = "schema-grid.csv";
+    // The grid's client-mode CSV writes every loaded row; a capped source pages through the view instead.
+    if (exportMaxRows === undefined) h?.exportCsv(name);
+    else
+      void h
+        ?.exportCurrentView("csv", name)
+        .then((blob) => download(blob, name))
+        .catch(() => undefined);
+  }, [exportMaxRows]);
 
   const commitImport = useCallback(
     async (plan: WorkbenchImportPlan) => {
@@ -647,6 +664,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
         user,
         features,
         capabilities,
+        effectiveCapabilities,
         handle,
         openImport: () => setImportOpen(true),
         openExport: () => setExportOpen(true),
@@ -674,6 +692,8 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     user,
     mode,
     capabilities,
+    effectiveCapabilities,
+    effectiveSchema,
     features,
     roles,
     poll,

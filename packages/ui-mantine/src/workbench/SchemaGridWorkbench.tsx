@@ -355,7 +355,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                 <FilterButton
                   mode={wb.mode}
                   rowCount={wb.handle?.api()?.getDisplayedRowCount() ?? 0}
-                  schema={schema}
+                  schema={wb.effectiveSchema ?? schema}
                   registry={wb.registry}
                   uiRegistry={uiRegistry}
                   access={wb.access}
@@ -366,7 +366,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               ) : null}
               {features.group ? (
                 <GroupByBar
-                  schema={schema}
+                  schema={wb.effectiveSchema ?? schema}
                   registry={wb.registry}
                   access={wb.access}
                   value={wb.groupBy}
@@ -433,7 +433,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
         {schema && features.filter && wb.filter !== null ? (
           <Box px="md" pb={8} style={{ flex: "none" }}>
             <FilterChips
-              schema={schema}
+              schema={wb.effectiveSchema ?? schema}
               registry={wb.registry}
               value={wb.filter}
               onChange={wb.applyFilter}

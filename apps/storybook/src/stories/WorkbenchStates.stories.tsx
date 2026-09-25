@@ -1,10 +1,9 @@
-import type { DataSource } from "@ranjeetk25/schema-grid-core";
 import {
-  SchemaGridWorkbench,
-  type WorkbenchCapabilities,
-  createMemoryViewStore,
+  type DataSource,
+  type DataSourceCapabilities,
   normalizeCapabilities,
-} from "@ranjeetk25/schema-grid-ui-mantine";
+} from "@ranjeetk25/schema-grid-core";
+import { SchemaGridWorkbench, createMemoryViewStore } from "@ranjeetk25/schema-grid-ui-mantine";
 import type { Meta, StoryObj } from "@storybook/react";
 import { useMemo } from "react";
 import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";
@@ -31,7 +30,7 @@ function Demo({
   empty = false,
   subtitle,
 }: {
-  caps?: Partial<WorkbenchCapabilities>;
+  caps?: Partial<DataSourceCapabilities>;
   fail?: Failure;
   empty?: boolean;
   subtitle: string;
@@ -44,7 +43,7 @@ function Demo({
       ...(empty ? { rows: [] } : {}),
     });
     let failures = fail ? 1 : 0;
-    const source: DataSource & { capabilities?(): WorkbenchCapabilities } = {
+    const source: DataSource = {
       fetch: (q) => {
         if (failures > 0) {
           failures -= 1;
@@ -87,7 +86,7 @@ function Demo({
   );
 }
 
-const READ_ONLY: Partial<WorkbenchCapabilities> = {
+const READ_ONLY: Partial<DataSourceCapabilities> = {
   groupBy: false,
   write: { cells: false, createRows: false, deleteRows: false },
 };

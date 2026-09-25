@@ -1,11 +1,5 @@
 export { SchemaGridWorkbench } from "./SchemaGridWorkbench";
-export {
-  WORKBENCH_DEFAULT_CAPABILITIES,
-  deriveWorkbenchFeatures,
-  loadCapabilities,
-  normalizeCapabilities,
-  type DeriveFeaturesInput,
-} from "./capabilities";
+export { deriveWorkbenchFeatures, isReadOnly, type DeriveFeaturesInput } from "./capabilities";
 export { classifyError, describeError, tapDataSource, toWorkbenchError } from "./errors";
 export { collectRows, type CollectRowsOptions } from "./exportRows";
 export { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn, type WorkbenchInsertPosition } from "./schemaOps";
@@ -29,10 +23,8 @@ export {
   type WorkbenchImportPlan,
 } from "./useWorkbench";
 export type {
-  CapableDataSource,
   SchemaGridWorkbenchBaseProps,
   SchemaGridWorkbenchProps,
-  WorkbenchCapabilities,
   WorkbenchClientSource,
   WorkbenchDirectSource,
   WorkbenchError,

@@ -1,4 +1,12 @@
-import type { DataSource, GridSchema, ViewDef } from "@ranjeetk25/schema-grid-core";
+import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
+import {
+  type ChangeFeedEntry,
+  type DataSource,
+  type DataSourceCapabilities,
+  type GridSchema,
+  type ViewDef,
+  normalizeCapabilities,
+} from "@ranjeetk25/schema-grid-core";
 import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 import {
   FIXTURE_NOW,
@@ -7,12 +15,12 @@ import {
   createFixtureRows,
   createFixtureSchema,
 } from "@ranjeetk25/schema-grid-core/testing";
-import { act, configure, screen, waitFor } from "@testing-library/react";
+import { createDataSourceHandler } from "@ranjeetk25/schema-grid-core/wire";
+import { act, configure, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithMantine } from "../test/render";
 import { SchemaGridWorkbench } from "./SchemaGridWorkbench";
-import { normalizeCapabilities } from "./capabilities";
-import type { SchemaGridWorkbenchProps, WorkbenchCapabilities } from "./types";
+import type { SchemaGridWorkbenchProps } from "./types";
 import { ALL_ROWS_VIEW, createMemoryViewStore } from "./viewStore";
 
 // AG Grid renders slowly under a loaded CI box; 1s default waits flake.
@@ -30,10 +38,34 @@ function memory(schema: GridSchema = createFixtureSchema()) {
   });
 }
 
-/** The in-memory source, optionally reporting capabilities (C2). */
-function source(caps?: Partial<WorkbenchCapabilities>, base: DataSource = memory()): DataSource {
+/** The in-memory source, optionally reporting (real, normalised) capabilities (C2). */
+function source(caps?: Partial<DataSourceCapabilities>, base: DataSource = memory()): DataSource {
   if (!caps) return base;
   return Object.assign(Object.create(base) as DataSource, { capabilities: () => normalizeCapabilities(caps) });
+}
+
+const jsonResponse = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/**
+ * A real `createGridClient` over a fake `POST /grid/:gridId/:op` server backed
+ * by the in-memory source (the capabilities op is answered by the wire handler).
+ */
+function gridClient(caps?: Partial<DataSourceCapabilities>) {
+  let schema = createFixtureSchema();
+  const handle = createDataSourceHandler(source(caps, memory(schema)));
+  const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const op = String(url).split("/").pop() ?? "";
+    const input = JSON.parse(String(init?.body)) as unknown;
+    if (op === "getSchema") return jsonResponse(200, { data: schema });
+    if (op === "updateSchema") {
+      schema = { ...(input as GridSchema), schemaVersion: schema.schemaVersion + 1 };
+      return jsonResponse(200, { data: schema });
+    }
+    const result = await handle(op, input);
+    return result.ok ? jsonResponse(200, { data: result.data }) : jsonResponse(result.status, { error: result.error });
+  });
+  return { client: createGridClient({ baseUrl: "/grid", gridId: "leads", fetch: fetch as unknown as typeof globalThis.fetch }), fetch };
 }
 
 type Extra = Partial<SchemaGridWorkbenchProps> & Record<string, unknown>;
@@ -74,6 +106,28 @@ describe("<SchemaGridWorkbench>", () => {
     expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
   });
 
+  it("hides the search box when the source reports search:false", async () => {
+    const { container } = renderWorkbench({ dataSource: source({ search: false }) });
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    await screen.findByRole("button", { name: "Filter" });
+    expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  it("keeps Group and search hidden until the capabilities arrive", async () => {
+    let resolve: (c: DataSourceCapabilities) => void = () => undefined;
+    const pending = new Promise<DataSourceCapabilities>((r) => {
+      resolve = r;
+    });
+    const ds = Object.assign(Object.create(memory()) as DataSource, { capabilities: () => pending });
+    const { container } = renderWorkbench({ dataSource: ds });
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    expect(screen.queryByRole("button", { name: "Group" })).toBeNull();
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    await act(async () => resolve(normalizeCapabilities({})));
+    await screen.findByRole("button", { name: "Group" });
+    expect(screen.getByRole("searchbox", { name: "Search rows" })).toBeInTheDocument();
+  });
+
   it("features only switch off", async () => {
     renderWorkbench({ features: { search: false, import: false, addColumn: false } });
     await screen.findByRole("button", { name: "Filter" });
@@ -104,6 +158,23 @@ describe("<SchemaGridWorkbench>", () => {
       expect(getChanges).not.toHaveBeenCalled();
     });
 
+    it('"updates-only" keeps polling but ignores removed rows', async () => {
+      const base = memory();
+      const entry: ChangeFeedEntry = { cursor: "c", rows: [], deletedRowIds: ["r1"], schemaVersion: 1 };
+      const getChanges = vi.spyOn(base as Required<DataSource>, "getChanges").mockResolvedValue(entry);
+      const onRemoteChanges = vi.fn();
+      const { container } = renderWorkbench({
+        dataSource: source({ changeFeed: "updates-only" }, base),
+        pollIntervalMs: 20,
+        onRemoteChanges,
+      });
+      await waitFor(() => expect(getChanges).toHaveBeenCalled(), { timeout: 5000 });
+      await waitFor(() => expect(onRemoteChanges).toHaveBeenCalled(), { timeout: 5000 });
+      expect(onRemoteChanges.mock.calls[0]?.[0].deletedRowIds).toEqual([]);
+      expect(screen.getByTestId("workbench-status")).not.toHaveTextContent("remote update");
+      expect(rows(container).length).toBe(createFixtureRows().length);
+    });
+
     it("flags a newer schema version from the feed with a Reload banner", async () => {
       const ds = memory();
       vi.spyOn(ds as Required<DataSource>, "getChanges").mockResolvedValue({ cursor: "c", rows: [], deletedRowIds: [], schemaVersion: 999 });
@@ -120,6 +191,33 @@ describe("<SchemaGridWorkbench>", () => {
     expect(banner).toHaveTextContent("Read-only");
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Import…" })).toBeNull();
+  });
+
+  it("the quick CSV export respects export.maxRows", async () => {
+    const blobs: Blob[] = [];
+    const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
+    const create = vi.fn((b: Blob) => {
+      blobs.push(b);
+      return "blob:x";
+    });
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: () => undefined });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      const { container } = renderWorkbench({ dataSource: source({ export: { maxRows: 2 } }) });
+      await waitFor(() => expect(rows(container).length).toBe(createFixtureRows().length));
+      fireEvent.click(await screen.findByRole("button", { name: "Export CSV" }));
+      await waitFor(() => expect(create).toHaveBeenCalled());
+      const text = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsText(blobs[0] as Blob);
+      });
+      expect(text.trim().split(/\r?\n/)).toHaveLength(1 + 2);
+    } finally {
+      click.mockRestore();
+      // The helper revokes the URL a second later: keep a no-op revoke around for that.
+      Object.assign(URL, { createObjectURL: original.create, revokeObjectURL: original.revoke ?? (() => undefined) });
+    }
   });
 
   it("renders slots (nodes and render functions)", async () => {
@@ -194,29 +292,26 @@ describe("<SchemaGridWorkbench>", () => {
     expect(await screen.findByTestId("workbench-banner-network")).toHaveTextContent("Couldn't reach the server to load rows.");
   });
 
-  it("client mode loads the schema from the client; no updateSchema → no Add column", async () => {
-    const schema = createFixtureSchema();
-    const ds = memory(schema);
-    const client = { dataSource: ds, getSchema: vi.fn().mockResolvedValue(schema), gridId: "leads" };
+  it("client mode loads the schema from a real grid client", async () => {
+    const { client, fetch } = gridClient();
     const { container } = renderWithMantine(
       <SchemaGridWorkbench client={client} user={ADMIN} mode="client" viewStore={createMemoryViewStore()} height={400} gridProps={TEST_GRID} />,
     );
     await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
-    expect(client.getSchema).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "Add column" })).toBeNull();
+    const ops = fetch.mock.calls.map((c) => String(c[0]).split("/").pop());
+    expect(ops.filter((op) => op === "getSchema")).toHaveLength(1);
+    expect(ops).toContain("capabilities");
+    expect(await screen.findByRole("button", { name: "Add column" })).toBeInTheDocument();
   });
 
-  it("client capabilities drive features", async () => {
-    const schema = createFixtureSchema();
-    const client = {
-      dataSource: memory(schema),
-      getSchema: async () => schema,
-      updateSchema: async (s: GridSchema) => s,
-      capabilities: async () => normalizeCapabilities({ groupBy: false, search: false }),
-    };
-    renderWithMantine(<SchemaGridWorkbench client={client} user={ADMIN} mode="client" viewStore={createMemoryViewStore()} height={400} gridProps={TEST_GRID} />);
-    await screen.findByRole("button", { name: "Add column" });
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Group" })).toBeNull());
+  it("the client's wire capabilities drive features", async () => {
+    const { client } = gridClient({ groupBy: false, search: false });
+    const { container } = renderWithMantine(
+      <SchemaGridWorkbench client={client} user={ADMIN} mode="client" viewStore={createMemoryViewStore()} height={400} gridProps={TEST_GRID} />,
+    );
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    await screen.findByRole("button", { name: "Filter" });
+    expect(screen.queryByRole("button", { name: "Group" })).toBeNull();
     expect(screen.queryByRole("searchbox")).toBeNull();
   });
 });

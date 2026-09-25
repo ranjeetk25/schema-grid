@@ -2,9 +2,12 @@
  * `<SchemaGridWorkbench>` contracts. Framework-free; copied verbatim from ui-mantine so the
  * two kits share one contract.
  */
+import type { GridClient } from "@ranjeetk25/schema-grid-ag-grid";
 import type {
   ChangeFeedEntry,
   DataSource,
+  DataSourceCapabilities,
+  EffectiveCapabilities,
   FieldTypeRegistry,
   GridSchema,
   PermissionResolver,
@@ -14,51 +17,15 @@ import type {
 import type { ReactNode } from "react";
 
 // ---------------------------------------------------------------------------
-// Capabilities (spec C2)
-// ---------------------------------------------------------------------------
-
-/**
- * TODO(lane-a): replace with `DataSourceCapabilities` from
- * `@ranjeetk25/schema-grid-core` once C2 lands. Structural mirror of C2.
- */
-export interface WorkbenchCapabilities {
-  maxPageSize: number;
-  sort: "all" | { columnIds: string[] };
-  filter: "all" | { columnIds: string[] };
-  operators?: Record<string, string[]>;
-  groupBy: boolean;
-  search: boolean;
-  changeFeed: boolean | "updates-only";
-  write: { cells: boolean; createRows: boolean; deleteRows: boolean };
-  options: boolean;
-  lookup: boolean;
-  export: { maxRows?: number };
-}
-
-/** A data source that may report its capabilities (C2 `DataSource.capabilities?`). */
-export type CapableDataSource = DataSource & {
-  capabilities?(): Promise<WorkbenchCapabilities> | WorkbenchCapabilities;
-};
-
-// ---------------------------------------------------------------------------
 // Grid client (spec C5 `createGridClient`)
 // ---------------------------------------------------------------------------
 
 /**
- * TODO(lane-c): replace with the `GridClient` type from
- * `@ranjeetk25/schema-grid-ag-grid` once `createGridClient` lands. Structural:
- * anything with this shape works.
+ * What `client` takes: the ag-grid package's `GridClient` (`createGridClient`).
+ * Its `dataSource` reports capabilities through the wire `capabilities` op; the
+ * grid loads them and the workbench derives its features from the result.
  */
-export interface WorkbenchGridClient {
-  dataSource: DataSource;
-  getSchema(): Promise<GridSchema>;
-  /** Persists a schema change (add / edit / delete column). Absent → the add-column flow is off. */
-  updateSchema?(schema: GridSchema): Promise<GridSchema>;
-  /** Function (wire op #9) or an already-resolved object. */
-  capabilities?: (() => Promise<WorkbenchCapabilities> | WorkbenchCapabilities) | WorkbenchCapabilities;
-  /** Keys the default view store. */
-  gridId?: string;
-}
+export type WorkbenchGridClient = GridClient;
 
 // ---------------------------------------------------------------------------
 // Features
@@ -122,7 +89,10 @@ export interface WorkbenchSlotContext {
   schema: GridSchema;
   user: PermissionUser;
   features: WorkbenchFeatures;
-  capabilities: WorkbenchCapabilities;
+  /** The data source's capabilities as the grid loaded them; undefined until loaded. */
+  capabilities: DataSourceCapabilities | undefined;
+  /** Column options ∩ capabilities (`mergeCapabilities`); null until loaded. */
+  effectiveCapabilities: EffectiveCapabilities | null;
   /** The grid handle (null until the grid mounts). */
   handle: import("@ranjeetk25/schema-grid-ag-grid").SchemaGridHandle | null;
   openImport(): void;
@@ -184,7 +154,7 @@ export interface SchemaGridWorkbenchBaseProps {
 }
 
 export interface WorkbenchClientSource {
-  client: WorkbenchGridClient;
+  client: GridClient;
   dataSource?: never;
   schema?: never;
   onSchemaChange?: never;
