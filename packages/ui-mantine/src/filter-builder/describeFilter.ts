@@ -8,6 +8,7 @@ import {
   isFilterGroup,
   operatorsForColumn,
 } from "../internal/core-contracts";
+import { type AccessMap, isReadable } from "../internal/access";
 import { countConditions } from "./model";
 
 const RELATIVE_TEXT: Record<RelativeDate["relative"], string> = {
@@ -41,7 +42,14 @@ function formatter(column: ColumnDef | undefined, registry: FieldTypeRegistry): 
 }
 
 /** Human label for a condition, e.g. "Payment status is not Paid". */
-export function describeCondition(cond: FilterCondition, schema: GridSchema, registry: FieldTypeRegistry): string {
+export function describeCondition(
+  cond: FilterCondition,
+  schema: GridSchema,
+  registry: FieldTypeRegistry,
+  access?: AccessMap,
+): string {
+  // Never reveal a hidden column's label or values (e.g. from a shared saved view).
+  if (access && !isReadable(access, cond.columnId)) return "Hidden column";
   const column = schema.columns.find((c) => c.id === cond.columnId);
   const label = column?.label ?? cond.columnId;
   const operator = column ? operatorsForColumn(column, schema, registry).find((o) => o.id === cond.operator) : undefined;
@@ -71,8 +79,8 @@ export function describeCondition(cond: FilterCondition, schema: GridSchema, reg
 }
 
 /** A condition's label, or a group summary like "(2 conditions, OR)". */
-export function describeNode(node: FilterNode, schema: GridSchema, registry: FieldTypeRegistry): string {
-  if (!isFilterGroup(node)) return describeCondition(node, schema, registry);
+export function describeNode(node: FilterNode, schema: GridSchema, registry: FieldTypeRegistry, access?: AccessMap): string {
+  if (!isFilterGroup(node)) return describeCondition(node, schema, registry, access);
   const n = countConditions(node);
   return `(${n} ${n === 1 ? "condition" : "conditions"}, ${node.op.toUpperCase()})`;
 }

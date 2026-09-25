@@ -45,6 +45,12 @@ export function FilterGroupEditor({ group, depth, api, schema, uiRegistry, dataS
         ) : null}
       </Group>
 
+      {api.errors.get(group.id)?.group ? (
+        <Text size="xs" c="red" role="alert">
+          {api.errors.get(group.id)?.group}
+        </Text>
+      ) : null}
+
       {group.children.length === 0 ? (
         <Text size="sm" c="dimmed">
           No conditions

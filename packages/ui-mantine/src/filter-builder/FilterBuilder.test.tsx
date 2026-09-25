@@ -175,3 +175,28 @@ describe("FilterBuilder", () => {
     expect(inputs("Column").map((i) => (i as HTMLInputElement).value)).toEqual(["Notes"]);
   });
 });
+
+describe("FilterBuilder review follow-ups", () => {
+  it("removing the last real condition emits null even while a blank row remains", async () => {
+    const { user, onChange } = setup({ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] });
+    await user.click(screen.getByRole("button", { name: "Add condition" }));
+    await user.click(screen.getAllByRole("button", { name: "Remove condition" })[0] as HTMLElement);
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("shows a group-level error for an incoming AST nested too deep", () => {
+    setup({
+      op: "and",
+      children: [{ op: "or", children: [{ op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] }] }],
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/nest at most 2/);
+  });
+
+  it("caps maxDepth at the core limit", () => {
+    setup({ op: "and", children: [{ op: "or", children: [{ columnId: FIXTURE_IDS.notes, operator: "isEmpty" }] }] }, 5);
+    const addGroups = screen.getAllByRole("button", { name: "Add group" });
+    expect(addGroups).toHaveLength(2);
+    expect(addGroups[0]).toBeDisabled(); // nested group (depth 2) renders first
+    expect(addGroups[1]).toBeEnabled();
+  });
+});

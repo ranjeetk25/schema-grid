@@ -137,3 +137,20 @@ describe("FilterButton", () => {
     expect(screen.queryByRole("button", { name: "Add condition" })).toBeNull();
   });
 });
+
+describe("review follow-ups", () => {
+  it("chips do not leak hidden column labels when access is given", () => {
+    const schema = buildFixtureSchema();
+    renderWithMantine(
+      <FilterChips
+        schema={schema}
+        registry={buildFixtureRegistry()}
+        access={buildFixtureAccess(schema)}
+        value={{ op: "and", children: [{ columnId: FIXTURE_IDS.secret, operator: "is", value: "x" }] }}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByText("Hidden column")).toBeInTheDocument();
+    expect(screen.queryByText(/Secret/)).not.toBeInTheDocument();
+  });
+});

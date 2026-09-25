@@ -1,5 +1,6 @@
 import { Pill } from "@mantine/core";
 import { type FieldTypeRegistry, type FilterNode, type GridSchema, isFilterGroup } from "../internal/core-contracts";
+import type { AccessMap } from "../internal/access";
 import { describeNode } from "./describeFilter";
 
 export interface FilterChipsProps {
@@ -7,10 +8,12 @@ export interface FilterChipsProps {
   registry: FieldTypeRegistry;
   value: FilterNode | null;
   onChange(node: FilterNode | null): void;
+  /** When given, conditions on hidden columns read "Hidden column" instead of leaking the label. */
+  access?: AccessMap;
 }
 
 /** One removable pill per top-level child of the filter (nested groups are summarised). */
-export function FilterChips({ schema, registry, value, onChange }: FilterChipsProps) {
+export function FilterChips({ schema, registry, value, onChange, access }: FilterChipsProps) {
   if (!value) return null;
   const root = isFilterGroup(value) ? value : { op: "and" as const, children: [value] };
   if (root.children.length === 0) return null;
@@ -23,7 +26,7 @@ export function FilterChips({ schema, registry, value, onChange }: FilterChipsPr
   return (
     <Pill.Group>
       {root.children.map((child, i) => {
-        const label = describeNode(child, schema, registry);
+        const label = describeNode(child, schema, registry, access);
         return (
           <Pill
             key={`${i}:${label}`}

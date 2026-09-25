@@ -9,6 +9,7 @@ import {
   type FilterOperatorDef,
   type FilterValidationError,
   type GridSchema,
+  MAX_FILTER_DEPTH,
   validateFilter,
 } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
@@ -21,10 +22,8 @@ import {
   addCondition as addConditionTo,
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
-  countConditions,
   filterableColumns,
   fromDraftIndexed,
-  isDraftComplete,
   operatorsFor,
   removeNode,
   setGroupOp,
@@ -34,6 +33,8 @@ import {
 
 /** Inline errors of one condition row, by field. */
 export interface RowErrors {
+  /** Group-level error (e.g. nesting too deep); set on group ids. */
+  group?: string;
   column?: string;
   operator?: string;
   value?: string;
@@ -72,7 +73,8 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
     const id = idByPath.get(e.path.join("."));
     if (!id) continue;
     const row = out.get(id) ?? {};
-    if (e.code === "valueKindMismatch") row.value ??= e.message;
+    if (e.code === "depthExceeded") row.group ??= e.message;
+    else if (e.code === "valueKindMismatch") row.value ??= e.message;
     else if (e.code === "unknownOperator") row.operator ??= e.message;
     else row.column ??= e.message;
     out.set(id, row);
@@ -83,16 +85,19 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
 /**
  * Local draft state for a filter builder, bound to a controlled `value`.
  *
- * Emission rule: on every edit the draft is converted with `fromDraft` and
- * checked with core `validateFilter` (readable columns only). `onChange` is
- * called ONLY when the draft is complete (every condition has a column and an
- * operator) and validation returns no errors, or with `null` when the root
- * holds no conditions at all. Incomplete or invalid drafts stay local; their
- * validation errors are exposed per row in `errors`. A `value` change from
+ * Emission rule: on every edit the draft is converted with `fromDraft`, which
+ * ignores rows that have no column/operator yet, and checked with core
+ * `validateFilter` (readable columns only). `onChange` is called ONLY when that
+ * effective AST validates cleanly, or with `null` when it holds no conditions
+ * (so removing the last real condition applies even while a blank row
+ * remains). Invalid drafts stay local; their errors are exposed per row/group
+ * in `errors`. Identical ASTs are not re-emitted. A `value` change from
  * outside (anything other than what was last emitted) resets the draft.
+ * `maxDepth` is capped at core's `MAX_FILTER_DEPTH`.
  */
 export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
-  const { schema, registry, access, value, onChange, maxDepth = DEFAULT_MAX_DEPTH } = options;
+  const { schema, registry, access, value, onChange } = options;
+  const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
   const draftRef = useRef(draft);
   const lastEmitted = useRef(serialize(value));
@@ -119,8 +124,8 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
       setDraft(next);
       const { node } = fromDraftIndexed(next, ctx);
       let out: FilterNode | null | undefined;
-      if (countConditions(next) === 0) out = null;
-      else if (node && isDraftComplete(next) && validateFilter(node, schema, registry, readable).length === 0) out = node;
+      if (!node) out = null;
+      else if (validateFilter(node, schema, registry, readable).length === 0) out = node;
       if (out === undefined) return;
       const s = serialize(out);
       if (s === lastEmitted.current) return;
