@@ -71,3 +71,5 @@ export {
   indexColumns,
   type ColumnIndex,
 } from "./schema/lookup";
+export type { DataSource, RowPartial } from "./datasource/types";
+export type { GridEventName, GridEvents } from "./events/types";
