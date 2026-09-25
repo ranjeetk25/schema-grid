@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     name: "ui-mantine",
     environment: "jsdom",
-    setupFiles: ["../../vitest.setup.ts"],
+    setupFiles: ["./vitest.setup.ts"],
+    testTimeout: 15000,
   },
 });

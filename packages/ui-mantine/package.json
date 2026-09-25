@@ -12,9 +12,33 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./editors": {
+      "development": "./src/editors/index.ts",
+      "types": "./dist/editors/index.d.ts",
+      "import": "./dist/editors/index.js",
+      "require": "./dist/editors/index.cjs"
+    },
+    "./filter-builder": {
+      "development": "./src/filter-builder/index.ts",
+      "types": "./dist/filter-builder/index.d.ts",
+      "import": "./dist/filter-builder/index.js",
+      "require": "./dist/filter-builder/index.cjs"
+    },
+    "./column-builder": {
+      "development": "./src/column-builder/index.ts",
+      "types": "./dist/column-builder/index.d.ts",
+      "import": "./dist/column-builder/index.js",
+      "require": "./dist/column-builder/index.cjs"
+    },
+    "./import-export": {
+      "development": "./src/import-export/index.ts",
+      "types": "./dist/import-export/index.d.ts",
+      "import": "./dist/import-export/index.js",
+      "require": "./dist/import-export/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -27,17 +51,29 @@
   },
   "peerDependencies": {
     "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "@mantine/core": "^8.0.0",
     "@mantine/hooks": "^8.0.0",
     "@mantine/dates": "^8.0.0",
-    "dayjs": "^1.11.0"
+    "@mantine/notifications": "^8.0.0",
+    "dayjs": "^1.11.0",
+    "zod": "^3.25 || ^4"
+  },
+  "peerDependenciesMeta": {
+    "@mantine/notifications": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@mantine/core": "^8.3.18",
+    "@mantine/dates": "^8.3.18",
+    "@mantine/hooks": "^8.3.18",
+    "@testing-library/user-event": "^14.6.1",
+    "ag-grid-community": "^36.2.0",
+    "ag-grid-react": "^36.2.0",
+    "dayjs": "^1.11.23",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "@mantine/core": "^8.3.18",
-    "@mantine/hooks": "^8.3.18",
-    "@mantine/dates": "^8.3.18",
-    "dayjs": "^1.11.23"
+    "zod": "^3.25.76"
   }
 }

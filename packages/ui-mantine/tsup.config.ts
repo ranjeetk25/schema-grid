@@ -1,7 +1,13 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: {
+    index: "src/index.ts",
+    "editors/index": "src/editors/index.ts",
+    "filter-builder/index": "src/filter-builder/index.ts",
+    "column-builder/index": "src/column-builder/index.ts",
+    "import-export/index": "src/import-export/index.ts",
+  },
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
@@ -11,9 +17,13 @@ export default defineConfig({
     "@masai/schema-grid-ag-grid",
     "@masai/schema-grid-io",
     "react",
+    "react-dom",
+    "react/jsx-runtime",
     "@mantine/core",
     "@mantine/hooks",
     "@mantine/dates",
+    "@mantine/notifications",
     "dayjs",
+    "zod",
   ],
 });
