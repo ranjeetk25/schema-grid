@@ -90,7 +90,8 @@ describe("rangeCells", () => {
       COLS,
     );
     expect(n).not.toBeNull();
-    const cells = rangeCells(n!);
+    if (!n) throw new Error("expected a normalized range");
+    const cells = rangeCells(n);
     expect(cells).toEqual([
       { rowIndex: 0, colId: "a" },
       { rowIndex: 0, colId: "b" },
@@ -141,27 +142,28 @@ describe("isBottomRight / rangeContains / rangeEdges / rangeSize", () => {
     { anchor: { rowIndex: 0, colId: "a" }, focus: { rowIndex: 2, colId: "c" } },
     COLS,
   );
+  if (!n) throw new Error("expected a normalized range");
 
   it("isBottomRight identifies the bottom-right cell only", () => {
     expect(n).not.toBeNull();
     const bottomRight: CellPos = { rowIndex: 2, colId: "c" };
-    expect(isBottomRight(bottomRight, n!)).toBe(true);
-    expect(isBottomRight({ rowIndex: 0, colId: "a" }, n!)).toBe(false);
+    expect(isBottomRight(bottomRight, n)).toBe(true);
+    expect(isBottomRight({ rowIndex: 0, colId: "a" }, n)).toBe(false);
   });
 
   it("rangeContains checks membership", () => {
-    expect(rangeContains(n!, { rowIndex: 1, colId: "b" })).toBe(true);
-    expect(rangeContains(n!, { rowIndex: 1, colId: "d" })).toBe(false);
-    expect(rangeContains(n!, { rowIndex: 5, colId: "a" })).toBe(false);
+    expect(rangeContains(n, { rowIndex: 1, colId: "b" })).toBe(true);
+    expect(rangeContains(n, { rowIndex: 1, colId: "d" })).toBe(false);
+    expect(rangeContains(n, { rowIndex: 5, colId: "a" })).toBe(false);
   });
 
   it("rangeEdges reports border sides for a cell", () => {
-    expect(rangeEdges(n!, { rowIndex: 0, colId: "a" })).toEqual({ top: true, right: false, bottom: false, left: true });
-    expect(rangeEdges(n!, { rowIndex: 1, colId: "b" })).toEqual({ top: false, right: false, bottom: false, left: false });
-    expect(rangeEdges(n!, { rowIndex: 2, colId: "c" })).toEqual({ top: false, right: true, bottom: true, left: false });
+    expect(rangeEdges(n, { rowIndex: 0, colId: "a" })).toEqual({ top: true, right: false, bottom: false, left: true });
+    expect(rangeEdges(n, { rowIndex: 1, colId: "b" })).toEqual({ top: false, right: false, bottom: false, left: false });
+    expect(rangeEdges(n, { rowIndex: 2, colId: "c" })).toEqual({ top: false, right: true, bottom: true, left: false });
   });
 
   it("rangeSize reports rows and cols", () => {
-    expect(rangeSize(n!)).toEqual({ rows: 3, cols: 3 });
+    expect(rangeSize(n)).toEqual({ rows: 3, cols: 3 });
   });
 });

@@ -19,6 +19,22 @@ function accessAll(): Map<string, Access> {
   return access;
 }
 
+/** Grabs the first argument of the first call to the fake grid api's `exportDataAsCsv` spy. */
+function exportCsvParams(spies: Record<string, ReturnType<typeof vi.fn>>) {
+  const spy = spies.exportDataAsCsv;
+  if (!spy) throw new Error("expected an exportDataAsCsv spy");
+  const call = spy.mock.calls[0];
+  if (!call) throw new Error("expected exportDataAsCsv to have been called");
+  return call[0];
+}
+
+/** Grabs the first argument of the first call to a `writeCsv` mock. */
+function firstWriteCsvInput(writeCsv: { mock: { calls: unknown[][] } }): IoWriteInput {
+  const call = writeCsv.mock.calls[0];
+  if (!call) throw new Error("expected writeCsv to have been called");
+  return call[0] as IoWriteInput;
+}
+
 describe("exportCsv", () => {
   it("columnKeys exclude hidden and unknown-access columns", () => {
     const access = accessAll();
@@ -33,7 +49,7 @@ describe("exportCsv", () => {
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry });
 
     expect(spies.exportDataAsCsv).toHaveBeenCalledTimes(1);
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     expect(params.columnKeys).not.toContain("salary");
     expect(params.columnKeys).not.toContain("status");
     expect(params.columnKeys).toContain("name");
@@ -49,7 +65,7 @@ describe("exportCsv", () => {
 
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry });
 
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     expect(params.columnKeys).not.toContain("name");
   });
 
@@ -62,7 +78,7 @@ describe("exportCsv", () => {
 
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry, fileName: "leads.csv" });
 
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     expect(params.fileName).toBe("leads.csv");
     expect(params.skipColumnGroupHeaders).toBe(true);
 
@@ -85,7 +101,7 @@ describe("exportCsv", () => {
 
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry });
 
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     const activeColumn = fixtureSchema.columns.find((c) => c.id === "active");
     const fieldType = registry.get("boolean");
     const expected = fieldType?.format(true as never, activeColumn?.config as never);
@@ -108,7 +124,7 @@ describe("exportCsv", () => {
 
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry, getCellValue });
 
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     const result = params.processCellCallback({
       value: 999,
       column: { getColId: () => "score" },
@@ -127,7 +143,7 @@ describe("exportCsv", () => {
 
     exportCsv(api, { schema: fixtureSchema, access, registry, uiRegistry });
 
-    const params = spies.exportDataAsCsv!.mock.calls[0]![0];
+    const params = exportCsvParams(spies);
     const result = params.processCellCallback({
       value: "hi",
       column: { getColId: () => "not-a-real-column" },
@@ -161,7 +177,7 @@ describe("exportCurrentView", () => {
     expect(result).toBe("csv-content");
     expect(dataSource.calls.fetch).toHaveBeenCalledTimes(3); // 5 + 5 + 2
     expect(writeCsv).toHaveBeenCalledTimes(1);
-    const input = writeCsv.mock.calls[0]![0];
+    const input = firstWriteCsvInput(writeCsv);
     expect(input.rows).toHaveLength(12);
     expect(input.columns.map((c: { id: string }) => c.id)).toEqual(columns.map((c) => c.id));
   });
@@ -220,7 +236,7 @@ describe("exportCurrentView", () => {
       loadIo: async () => ({ writeCsv, writeXlsx: vi.fn() }),
     });
 
-    const input = writeCsv.mock.calls[0]![0];
+    const input = firstWriteCsvInput(writeCsv);
     expect(input.columns.map((c: { id: string }) => c.id)).not.toContain("salary");
   });
 
@@ -240,7 +256,7 @@ describe("exportCurrentView", () => {
       loadIo: async () => ({ writeCsv, writeXlsx: vi.fn() }),
     });
 
-    const input = writeCsv.mock.calls[0]![0];
+    const input = firstWriteCsvInput(writeCsv);
     expect(input.rows[0]).toEqual(["OVERRIDDEN"]);
   });
 

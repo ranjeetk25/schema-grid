@@ -28,6 +28,12 @@ import { col, fixtureRows, fixtureSchema, row } from "../fixtures/schema";
 
 const registry = createDefaultRegistry();
 const now = new Date("2026-09-25T06:00:00.000Z"); // 11:30 IST, Friday
+
+function getFieldType(id: string) {
+  const fieldType = registry.get(id);
+  if (!fieldType) throw new Error(`expected field type "${id}" in registry`);
+  return fieldType;
+}
 const tz = "Asia/Kolkata";
 const byId = new Map(fixtureSchema.columns.map((c) => [c.id, c]));
 const column = (id: string): ColumnDef => {
@@ -91,15 +97,15 @@ describe("operatorsFor / effectiveFieldType", () => {
     const total = column("total"); // resultType: number
     const ft = effectiveFieldType(registry, total);
     expect(ft?.id).toBe("number");
-    expect(operatorsFor(registry.get("formula")!, total).map((o) => o.id)).toEqual(NUMBER_OPERATORS.map((o) => o.id));
+    expect(operatorsFor(getFieldType("formula"), total).map((o) => o.id)).toEqual(NUMBER_OPERATORS.map((o) => o.id));
     const textFormula = col({ id: "t", type: "formula", formula: "{name}", config: { resultType: "text" } });
-    expect(operatorsFor(registry.get("formula")!, textFormula).map((o) => o.id)).toEqual(TEXT_OPERATORS.map((o) => o.id));
+    expect(operatorsFor(getFieldType("formula"), textFormula).map((o) => o.id)).toEqual(TEXT_OPERATORS.map((o) => o.id));
   });
 
   it("other columns use their own type", () => {
     const name = column("name");
     expect(effectiveFieldType(registry, name)?.id).toBe("text");
-    expect(operatorsFor(registry.get("text")!, name)).toBe(registry.get("text")!.operators);
+    expect(operatorsFor(getFieldType("text"), name)).toBe(getFieldType("text").operators);
   });
 });
 

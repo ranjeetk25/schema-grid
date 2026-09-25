@@ -124,7 +124,9 @@ describe("planPaste", () => {
       canEditCell: alwaysEditable,
     });
 
-    const coreError = registry.get("number")!.parse("not-a-number", {});
+    const numberType = registry.get("number");
+    if (!numberType) throw new Error('expected "number" field type in registry');
+    const coreError = numberType.parse("not-a-number", {});
     expect(coreError.ok).toBe(false);
     const message = coreError.ok ? "" : coreError.error;
     expect(plan.errors).toEqual([{ rowId: "r0", columnId: "score", message }]);

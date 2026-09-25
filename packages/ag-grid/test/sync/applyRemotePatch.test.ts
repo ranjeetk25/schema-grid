@@ -85,7 +85,11 @@ describe("applyRemotePatch — client mode", () => {
       ],
     });
     let run: (() => void) | undefined;
-    applyRemotePatch(fake.api, plan, "client", stores, { afterGridUpdate: (fn) => (run = fn) });
+    applyRemotePatch(fake.api, plan, "client", stores, {
+      afterGridUpdate: (fn) => {
+        run = fn;
+      },
+    });
     expect(fake.spies.flashCells).not.toHaveBeenCalled();
     run?.();
     expect(fake.spies.flashCells).toHaveBeenCalledTimes(2);

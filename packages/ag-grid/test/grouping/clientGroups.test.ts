@@ -26,8 +26,11 @@ describe("buildClientGroups", () => {
     expect(groups.every((g) => g.count === 1)).toBe(true);
 
     // each group (expanded by default) is followed by its one data row
-    const paidIdx = out.indexOf(groups[0]!);
-    expect(isDataRow(out[paidIdx + 1]!) && (out[paidIdx + 1] as GridRow).id === "r1").toBe(true);
+    const firstGroup = groups[0];
+    if (!firstGroup) throw new Error("expected at least one group");
+    const paidIdx = out.indexOf(firstGroup);
+    const nextRow = out[paidIdx + 1];
+    expect(!!nextRow && isDataRow(nextRow) && (nextRow as GridRow).id === "r1").toBe(true);
   });
 
   it("groups two levels and computes count/sum/avg aggregates", () => {
@@ -47,13 +50,14 @@ describe("buildClientGroups", () => {
     expect(topGroups.map((g) => g.key)).toEqual([true, false, null]);
     expect(topGroups.map((g) => g.count)).toEqual([2, 1, 1]);
 
-    const trueGroup = topGroups[0]!;
+    const trueGroup = topGroups[0];
+    if (!trueGroup) throw new Error("expected a top-level group");
     expect(trueGroup.aggregates["score:sum"]).toBe(30); // 10 + 20
     expect(trueGroup.aggregates["score:avg"]).toBe(15);
 
     const level1Groups = out.filter(isGroupRow).filter((g) => g.level === 1);
     // nested under active=true: payment paid (r1), payment failed (r4)
-    expect(level1Groups.filter((g) => g.groupPath[0]!.key === true).map((g) => g.key)).toEqual(["paid", "failed"]);
+    expect(level1Groups.filter((g) => g.groupPath[0]?.key === true).map((g) => g.key)).toEqual(["paid", "failed"]);
   });
 
   it("puts empty values into a null-key '(empty)' bucket", () => {
@@ -61,19 +65,22 @@ describe("buildClientGroups", () => {
     const out = buildClientGroups(fixtureRows, [{ columnId: "payment" }], expansion, ctx);
     const emptyGroup = out.filter(isGroupRow).find((g) => g.key === null);
     expect(emptyGroup).toBeDefined();
-    expect(emptyGroup!.label).toBe("(empty)");
-    expect(emptyGroup!.count).toBe(1);
+    if (!emptyGroup) throw new Error("expected an empty-key group");
+    expect(emptyGroup.label).toBe("(empty)");
+    expect(emptyGroup.count).toBe(1);
   });
 
   it("hides descendants of a collapsed group", () => {
     const expansion = createExpansionStore();
     const out = buildClientGroups(fixtureRows, [{ columnId: "payment" }], expansion, ctx);
-    const paidGroup = out.find((g) => isGroupRow(g) && g.key === "paid")!;
+    const paidGroup = out.find((g) => isGroupRow(g) && g.key === "paid");
+    if (!paidGroup) throw new Error("expected a paid group");
     expansion.setExpanded((paidGroup as { id: string }).id, false);
 
     const collapsedOut = buildClientGroups(fixtureRows, [{ columnId: "payment" }], expansion, ctx);
     const idx = collapsedOut.findIndex((g) => isGroupRow(g) && g.key === "paid");
-    expect(collapsedOut[idx + 1] && isGroupRow(collapsedOut[idx + 1]!)).toBe(true); // next is the "pending" group, not r1
+    const afterCollapsed = collapsedOut[idx + 1];
+    expect(!!afterCollapsed && isGroupRow(afterCollapsed)).toBe(true); // next is the "pending" group, not r1
     expect(collapsedOut.some((r) => isDataRow(r) && (r as GridRow).id === "r1")).toBe(false);
     // the group row itself is still present and reports expanded: false
     const group = collapsedOut[idx] as { expanded: boolean; count: number };
@@ -108,7 +115,8 @@ describe("buildClientGroups", () => {
     expect(labels).toContain("Hot");
     expect(labels).toContain("Warm, Cold");
     expect(labels).toContain("(empty)"); // r3 has [], r4 has undefined tags
-    const emptyGroup = groups.find((g) => g.label === "(empty)")!;
+    const emptyGroup = groups.find((g) => g.label === "(empty)");
+    if (!emptyGroup) throw new Error("expected an (empty) label group");
     expect(emptyGroup.count).toBe(2);
   });
 
@@ -124,7 +132,7 @@ describe("buildClientGroups", () => {
       ["Asha", 2],
       ["Ravi", 1],
     ]);
-    expect(groups[0]!.key).toEqual({ id: "u-1", name: "Asha" });
+    expect(groups[0]?.key).toEqual({ id: "u-1", name: "Asha" });
   });
 
   it("groups link (LinkRef[]) cells by their joined ids", () => {

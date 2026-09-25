@@ -542,7 +542,7 @@ describe("<SchemaGrid> range selection (integration)", () => {
     }
   });
   afterAll(() => {
-    if (addedPointerDown) delete (HTMLElement.prototype as { onpointerdown?: unknown }).onpointerdown;
+    if (addedPointerDown) (HTMLElement.prototype as { onpointerdown?: unknown }).onpointerdown = undefined;
   });
   /** Press, let AG Grid's queued callbacks run, then release. */
   const click = async (el: HTMLElement, init: MouseEventInit = {}) => {

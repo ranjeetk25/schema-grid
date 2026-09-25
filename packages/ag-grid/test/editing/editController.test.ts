@@ -673,7 +673,9 @@ describe("createEditRequestHandler", () => {
     const handler = createEditRequestHandler<GridRow>({ submit }, { schema: fixtureSchema, registry: createDefaultRegistry(), cellStatus });
     handler(makeEvent({ columnId: "score", oldValue: 10, newValue: "not a number" }));
     expect(submit).not.toHaveBeenCalled();
-    const core = createDefaultRegistry().get("number")!.parse("not a number", {});
+    const numberType = createDefaultRegistry().get("number");
+    if (!numberType) throw new Error('expected "number" field type in registry');
+    const core = numberType.parse("not a number", {});
     expect(cellStatus.get("r1", "score").error).toBe(core.ok ? "(parsed)" : core.error);
   });
 

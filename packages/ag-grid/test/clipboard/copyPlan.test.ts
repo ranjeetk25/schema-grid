@@ -53,7 +53,9 @@ describe("buildCopyMatrix / buildCopyText", () => {
       expanded: true,
       groupPath: [],
     };
-    const rows = [groupRow, fixtureRows[0]!];
+    const firstFixtureRow = fixtureRows[0];
+    if (!firstFixtureRow) throw new Error("expected at least one fixture row");
+    const rows = [groupRow, firstFixtureRow];
     const range = { rowStart: 0, rowEnd: 1, colIds: ["name"] };
     const matrix = buildCopyMatrix(range, getRowAt(rows as GridRow[]), columnsById, registry, accessAllEdit());
     expect(matrix).toEqual([["Asha"]]);
