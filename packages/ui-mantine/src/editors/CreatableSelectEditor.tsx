@@ -1,7 +1,7 @@
 import { Box, Combobox, Group, InputBase, Loader, useCombobox, useMantineTheme } from "@mantine/core";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
-import { type UiEditorProps, createPopupEditor } from "../internal/grid-contracts";
+import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 
 /**
@@ -187,4 +187,4 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   );
 }
 
-export const CreatableSelectPopupEditor = createPopupEditor(CreatableSelectEditor);
+export const CreatableSelectPopupEditor = toPopupGridEditor(CreatableSelectEditor);

@@ -1,7 +1,7 @@
 import { Card, Group, Stack, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 import type { FieldTypeId, FieldTypeRegistry } from "../internal/core-contracts";
-import { type UiFieldTypeRegistry, resolveEditorComponent } from "../internal/grid-contracts";
+import { type UiFieldTypeRegistry, resolveEditorComponent, resolveRendererWidget } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 import { draftAsColumn } from "./CommonFields";
 import type { ColumnDraft } from "./model";
@@ -65,8 +65,8 @@ export function PreviewStep({ draft, registry, uiRegistry }: PreviewStepProps) {
 
   const column = draftAsColumn(draft);
   const entry = uiRegistry.get(type);
-  const Editor = resolveEditorComponent(entry?.editor);
-  const Renderer = entry?.renderer;
+  const Editor = resolveEditorComponent(entry.editor);
+  const Renderer = resolveRendererWidget(entry.renderer);
   const fieldType = registry.get(type);
 
   return (

@@ -31,22 +31,29 @@ export { UrlRenderer } from "../renderers/UrlRenderer";
 export { FormattedRenderer, createFormattedRenderer } from "../renderers/FormattedRenderer";
 export { FormulaRenderer } from "../renderers/FormulaRenderer";
 
-// Registry + widget contracts
+// Registry (real @masai/schema-grid-ag-grid registry) + widget adapters
 export {
   POPUP_FIELD_TYPES,
   createMantineUiRegistry,
-  toFilterInput,
+  mantineWidgetEntries,
   type CreateMantineUiRegistryOptions,
 } from "../registry/createMantineUiRegistry";
 export {
-  createPopupEditor,
-  createUiFieldTypeRegistry,
-  isPopupEditor,
+  extendWithWidgets,
+  filterInputFor,
   resolveEditorComponent,
-  type PopupEditor,
+  resolveRendererWidget,
+  toFilterInput,
+  toGridRenderer,
+  toInlineGridEditor,
+  toPopupGridEditor,
+  widgetsToUiFieldType,
+  type AnyEditorWidget,
+  type AnyRendererWidget,
   type UiEditorProps,
-  type UiFieldTypeEntry,
+  type UiFieldType,
   type UiFieldTypeRegistry,
   type UiFilterInputProps,
   type UiRendererProps,
+  type WidgetEntry,
 } from "../internal/grid-contracts";

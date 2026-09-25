@@ -11,6 +11,7 @@ export { ViewSwitcher, type ViewSwitcherProps } from "./views/ViewSwitcher";
 export { GroupByBar, type GroupByBarProps } from "./views/GroupByBar";
 export { ConflictPopover, type ConflictPopoverProps } from "./conflict/ConflictPopover";
 export { RemoteChangedBadge, type RemoteChangedBadgeProps } from "./conflict/RemoteChangedBadge";
+export { useMantineConflictPrompt, type MantineConflictPrompt } from "./conflict/useMantineConflictPrompt";
 export {
   gridCssVariables,
   mantineGridCssVariablesResolver,
@@ -26,4 +27,4 @@ export {
   type ClipboardReportMessage,
   type NotifyClipboardReportOptions,
 } from "./notifications/notifyClipboardReport";
-export type { ClipboardReport, ConflictResolution } from "./internal/grid-contracts";
+export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./internal/grid-contracts";

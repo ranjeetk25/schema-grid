@@ -20,10 +20,28 @@ Optional peer: `@mantine/notifications` ^8.
 ```tsx
 import { createMantineUiRegistry } from "@masai/schema-grid-ui-mantine/editors";
 
+// The real @masai/schema-grid-ag-grid registry: createDefaultUiRegistry().extend(...)
 const uiRegistry = createMantineUiRegistry({
-  overrides: { select: { renderer: MyBadge } },
+  widgets: { select: { renderer: MyBadge } }, // ui-mantine widget props, adapted for you
+  overrides: { url: { editorPopup: false } }, // raw AG Grid UiFieldType partials
 });
 ```
+
+Widgets are written against small grid-agnostic props (`UiEditorProps`,
+`UiRendererProps`) and adapted to AG Grid (`toGridRenderer`,
+`toInlineGridEditor`, `toPopupGridEditor` via ag-grid's `createPopupEditor`).
+The same widgets power the column builder's default-value field, its preview
+and the filter builder's value inputs (`resolveEditorComponent`,
+`resolveRendererWidget`, `filterInputFor`).
+
+Column filters are ag-grid's defaults (`ConditionFilter`, whose model is a
+core `FilterCondition`); ui-mantine only overrides renderers and editors.
+
+Conflicts: `const prompt = useMantineConflictPrompt()`, pass
+`events={{ onConflict: prompt.onConflict }}` to the grid, and render
+`<ConflictPopover conflict={prompt.conflict} opened={prompt.opened}
+onResolve={prompt.resolve} onClose={prompt.dismiss} …>` when
+`prompt.conflict` is set.
 
 Hidden columns (access `"hidden"`, or missing from the access map) never
 appear in any picker. Formula columns are read-only: no editor, never an
@@ -62,6 +80,5 @@ never throws.
 ## Upstream contracts
 
 `@masai/schema-grid-core`, `-ag-grid` and `-io` are consumed only through
-`src/internal/{core,grid,io}-contracts.ts`. Core and io are real re-exports
-(plus a few local helpers for gaps); the ag-grid adapter still holds local
-fallbacks marked `TODO(ag-grid)` until that package lands.
+`src/internal/{core,grid,io}-contracts.ts`. All three are real re-exports
+plus a few local helpers for gaps (and, for ag-grid, the widget adapters).

@@ -1,7 +1,7 @@
 import { Group, Pill, Stack, Text } from "@mantine/core";
 import { useCallback, useState } from "react";
 import type { LinkRef } from "../internal/core-contracts";
-import { type UiEditorProps, createPopupEditor } from "../internal/grid-contracts";
+import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { AsyncCombobox } from "./AsyncCombobox";
 
 /** Core link values are always `LinkRef[]`; a lone `LinkRef` is accepted on read. */
@@ -99,4 +99,4 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
   );
 }
 
-export const LinkPickerPopupEditor = createPopupEditor(LinkPickerEditor);
+export const LinkPickerPopupEditor = toPopupGridEditor(LinkPickerEditor);

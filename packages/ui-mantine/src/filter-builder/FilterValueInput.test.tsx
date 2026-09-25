@@ -75,15 +75,15 @@ describe("FilterValueInput", () => {
     expect(onChange).toHaveBeenLastCalledWith("paid");
   });
 
-  it("single on other types uses the registry filterComponent", () => {
+  it("single on other types uses the registry editor widget as a filter input", () => {
     renderWithMantine(<Harness columnId={FIXTURE_IDS.call} opId="is" initial={null} onChange={vi.fn()} />);
-    expect(screen.getByTestId("stub-filter")).toBeInTheDocument();
+    expect(screen.getByTestId("stub-editor")).toBeInTheDocument();
   });
 
   it("single falls back to TextInput without a registry entry", async () => {
     const onChange = vi.fn();
     const bare = buildStubUiRegistry();
-    bare.register("longText", {});
+    bare.register("longText", { ...bare.get("longText"), editor: undefined });
     const { user } = renderWithMantine(
       <FilterValueInput
         column={fixtureColumn(FIXTURE_IDS.notes)}
@@ -95,7 +95,7 @@ describe("FilterValueInput", () => {
         error="A value is required"
       />,
     );
-    expect(screen.queryByTestId("stub-filter")).toBeNull();
+    expect(screen.queryByTestId("stub-editor")).toBeNull();
     expect(screen.getByText("A value is required")).toBeInTheDocument();
     await user.type(field("Value"), "x");
     expect(onChange).toHaveBeenLastCalledWith("x");
@@ -104,7 +104,7 @@ describe("FilterValueInput", () => {
   it("number single without a registry entry falls back to NumberInput", async () => {
     const onChange = vi.fn();
     const bare = buildStubUiRegistry();
-    bare.register("currency", {});
+    bare.register("currency", { ...bare.get("currency"), editor: undefined });
     const { user } = renderWithMantine(
       <FilterValueInput
         column={fixtureColumn(FIXTURE_IDS.amount)}
@@ -119,7 +119,7 @@ describe("FilterValueInput", () => {
     expect(onChange).toHaveBeenLastCalledWith(5);
   });
 
-  it("registry filterComponent shows the error below it", () => {
+  it("registry-derived filter input shows the error below it", () => {
     renderWithMantine(
       <FilterValueInput
         column={fixtureColumn(FIXTURE_IDS.call)}
@@ -167,7 +167,7 @@ describe("FilterValueInput", () => {
   it("date range without a registry entry uses YYYY-MM-DD text inputs", async () => {
     const onChange = vi.fn();
     const bare = buildStubUiRegistry();
-    bare.register("date", {});
+    bare.register("date", { ...bare.get("date"), editor: undefined });
     const { user } = renderWithMantine(
       <FilterValueInput
         column={fixtureColumn(FIXTURE_IDS.call)}

@@ -1,7 +1,7 @@
 import { Avatar, Group, Text } from "@mantine/core";
 import { useCallback } from "react";
 import type { UserOption, UserRef } from "../internal/core-contracts";
-import { type UiEditorProps, createPopupEditor } from "../internal/grid-contracts";
+import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { AsyncCombobox } from "./AsyncCombobox";
 
 /** Stored as a core `UserRef` `{id, name}`; a bare id string is accepted on read. */
@@ -51,4 +51,4 @@ export function UserPickerEditor({ value, onChange, onCommit, onCancel, column, 
   );
 }
 
-export const UserPickerPopupEditor = createPopupEditor(UserPickerEditor);
+export const UserPickerPopupEditor = toPopupGridEditor(UserPickerEditor);

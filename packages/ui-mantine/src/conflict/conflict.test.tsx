@@ -2,7 +2,7 @@ import { Badge } from "@mantine/core";
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChangeConflict } from "../internal/core-contracts";
-import type { UiRendererProps } from "../internal/grid-contracts";
+import { type UiRendererProps, extendWithWidgets } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 import { FIXTURE_IDS, buildFixtureRegistry, buildStubUiRegistry, fixtureColumn } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
@@ -35,7 +35,7 @@ function setup(c: ChangeConflict = conflict()) {
       conflict={c}
       column={fixtureColumn(FIXTURE_IDS.payment)}
       registry={buildFixtureRegistry()}
-      uiRegistry={buildStubUiRegistry().extend({ select: { renderer: BadgeRenderer } })}
+      uiRegistry={extendWithWidgets(buildStubUiRegistry(), { select: { renderer: BadgeRenderer } })}
       now={NOW}
       opened
       onResolve={onResolve}

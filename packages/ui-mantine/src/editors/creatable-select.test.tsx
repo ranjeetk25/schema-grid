@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ColumnDef, Option } from "../internal/core-contracts";
-import { isPopupEditor } from "../internal/grid-contracts";
+import { resolveEditorComponent } from "../internal/grid-contracts";
 import { FIXTURE_NOW, PAYMENT_OPTIONS, buildStubDataSource } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
 import { CreatableSelectEditor, CreatableSelectPopupEditor } from "./CreatableSelectEditor";
@@ -34,8 +34,8 @@ function setup(overrides: Partial<Parameters<typeof CreatableSelectEditor>[0]> =
 
 describe("CreatableSelectEditor", () => {
   it("is exported as a popup editor", () => {
-    expect(isPopupEditor(CreatableSelectPopupEditor)).toBe(true);
-    expect(CreatableSelectPopupEditor.component).toBe(CreatableSelectEditor);
+    expect(CreatableSelectPopupEditor.cellEditorPopup).toBe(true);
+    expect(resolveEditorComponent(CreatableSelectPopupEditor.component)).toBe(CreatableSelectEditor);
   });
 
   it("opens on mount in grid mode and lists the configured options", () => {

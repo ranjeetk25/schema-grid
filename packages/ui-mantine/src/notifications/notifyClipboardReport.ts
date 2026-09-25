@@ -8,7 +8,11 @@ export interface ClipboardReportMessage {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Pure: "Pasted 40 cells, 3 skipped (2 invalid, 1 read-only)" + a severity colour. */
+/**
+ * Pure: "Pasted 40 cells, 3 skipped (2 invalid, 1 read-only), 1 conflict" +
+ * a severity colour. Conflicts are cells the server reported as changed by
+ * someone else; they are resolved through `events.onConflict`.
+ */
 export function formatClipboardReport(report: ClipboardReport): ClipboardReportMessage {
   const invalid = report.errors.length;
   const readOnly = report.skippedReadOnly;
@@ -20,9 +24,10 @@ export function formatClipboardReport(report: ClipboardReport): ClipboardReportM
     if (readOnly > 0) parts.push(`${readOnly} read-only`);
     message += `, ${skipped} skipped (${parts.join(", ")})`;
   }
-  if (report.pastedCells === 0 && skipped === 0) return { title: "Nothing pasted", message, color: "gray" };
+  if (report.conflicts > 0) message += `, ${plural(report.conflicts, "conflict")}`;
+  if (report.pastedCells === 0 && skipped === 0 && report.conflicts === 0) return { title: "Nothing pasted", message, color: "gray" };
   if (report.pastedCells === 0) return { title: "Paste failed", message, color: "red" };
-  if (skipped > 0) return { title: "Paste partially applied", message, color: "yellow" };
+  if (skipped > 0 || report.conflicts > 0) return { title: "Paste partially applied", message, color: "yellow" };
   return { title: "Paste complete", message, color: "green" };
 }
 

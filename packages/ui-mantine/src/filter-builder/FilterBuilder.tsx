@@ -157,13 +157,13 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
       lastEmitted.current = s;
       onChangeRef.current(out);
     },
-    [ctx, schema, registry, readable],
+    [ctx, readable],
   );
 
   const errors = useMemo(() => {
     const { node, idByPath } = fromDraftIndexed(draft, ctx);
     return node ? errorsToRows(draftErrors(node, ctx, readable), idByPath) : new Map<string, RowErrors>();
-  }, [draft, ctx, schema, registry, readable]);
+  }, [draft, ctx, readable]);
 
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {

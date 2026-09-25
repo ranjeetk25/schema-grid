@@ -1,8 +1,7 @@
 import { screen } from "@testing-library/react";
 import { useReducer } from "react";
 import { describe, expect, it } from "vitest";
-import type { UiEditorProps } from "../internal/grid-contracts";
-import { createPopupEditor } from "../internal/grid-contracts";
+import { type UiEditorProps, extendWithWidgets } from "../internal/grid-contracts";
 import { buildFixtureRegistry, buildFixtureSchema, buildStubUiRegistry, fixtureColumn, FIXTURE_IDS } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
 import { CommonFields } from "./CommonFields";
@@ -18,7 +17,7 @@ function SelectMarker(props: UiEditorProps<string>) {
 function Harness({ initial, onDraft }: { initial: ColumnDraft; onDraft?: (d: ColumnDraft) => void }) {
   const [draft, dispatch] = useReducer(columnDraftReducer, initial);
   onDraft?.(draft);
-  const uiRegistry = buildStubUiRegistry().extend({ select: { editor: createPopupEditor(SelectMarker) } });
+  const uiRegistry = extendWithWidgets(buildStubUiRegistry(), { select: { editor: SelectMarker, popup: true } });
   return <CommonFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} errors={{}} />;
 }
 
@@ -28,7 +27,9 @@ const createDraft = (type: string) =>
 describe("CommonFields", () => {
   it("auto-slugs the key from the label until the key is edited", async () => {
     let latest: ColumnDraft | undefined;
-    const { user } = renderWithMantine(<Harness initial={createDraft("text")} onDraft={(d) => (latest = d)} />);
+    const { user } = renderWithMantine(<Harness initial={createDraft("text")} onDraft={(d) => {
+      latest = d;
+    }} />);
     await user.type(screen.getByRole("textbox", { name: /^Label/ }), "Lead Source");
     expect(screen.getByRole("textbox", { name: /^Key/ })).toHaveValue("lead_source");
     await user.clear(screen.getByRole("textbox", { name: /^Key/ }));
@@ -51,7 +52,9 @@ describe("CommonFields", () => {
 
   it("toggles required and indexed", async () => {
     let latest: ColumnDraft | undefined;
-    const { user } = renderWithMantine(<Harness initial={createDraft("text")} onDraft={(d) => (latest = d)} />);
+    const { user } = renderWithMantine(<Harness initial={createDraft("text")} onDraft={(d) => {
+      latest = d;
+    }} />);
     await user.click(screen.getByRole("switch", { name: "Required" }));
     await user.click(screen.getByRole("switch", { name: /^Indexed/ }));
     expect(latest?.required).toBe(true);

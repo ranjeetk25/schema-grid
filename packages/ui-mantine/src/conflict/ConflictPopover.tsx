@@ -1,7 +1,7 @@
 import { Box, Button, Group, Popover, Stack, Text } from "@mantine/core";
 import type { ReactNode } from "react";
 import type { ChangeConflict, ColumnDef, FieldTypeRegistry } from "../internal/core-contracts";
-import type { ConflictResolution, UiFieldTypeRegistry } from "../internal/grid-contracts";
+import { type ConflictResolution, type UiFieldTypeRegistry, resolveRendererWidget } from "../internal/grid-contracts";
 import { formatRelativeTime } from "../internal/relative-time";
 
 export interface ConflictPopoverProps {
@@ -11,7 +11,8 @@ export interface ConflictPopoverProps {
   uiRegistry: UiFieldTypeRegistry;
   now?: Date | string | number;
   opened: boolean;
-  onResolve(resolution: ConflictResolution): void;
+  /** Wire to ag-grid's `resolve` from `events.onConflict(conflict, resolve)` (see `useMantineConflictPrompt`). */
+  onResolve(resolution: ConflictResolution): void | Promise<void>;
   /** Escape / outside click: dismiss without resolving. */
   onClose?(): void;
   /** The cell anchor. */
@@ -35,7 +36,7 @@ export function ConflictPopover({
 }: ConflictPopoverProps) {
   const who = conflict.updatedBy?.name ?? "someone";
   const when = formatRelativeTime(conflict.updatedAt, now ?? new Date());
-  const Renderer = uiRegistry.get(column.type)?.renderer;
+  const Renderer = resolveRendererWidget(uiRegistry.get(column.type).renderer);
   const fieldType = registry.get(column.type);
   const theirs = Renderer ? (
     <Renderer value={conflict.serverValue} column={column} config={column.config} fieldType={column.type} />
@@ -60,10 +61,8 @@ export function ConflictPopover({
           {children}
         </Box>
       </Popover.Target>
-      <Popover.Dropdown
-        role="dialog"
-        aria-label="Edit conflict"
-      >
+      {/* Mantine gives the dropdown role="dialog" itself. */}
+      <Popover.Dropdown aria-label="Edit conflict">
         <Stack gap="xs" maw={280}>
           <Text size="sm">{`Changed by ${who} ${when}:`}</Text>
           <Box>{theirs}</Box>

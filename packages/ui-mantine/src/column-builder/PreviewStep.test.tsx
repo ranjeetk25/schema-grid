@@ -1,7 +1,7 @@
 import { Badge } from "@mantine/core";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { UiEditorProps, UiRendererProps } from "../internal/grid-contracts";
+import { type UiEditorProps, type UiRendererProps, extendWithWidgets } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 import { PAYMENT_OPTIONS, buildFixtureRegistry, buildFixtureSchema, buildStubUiRegistry } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
@@ -27,7 +27,7 @@ function OptionButtonsEditor({ config, onChange }: UiEditorProps<string>) {
   );
 }
 
-const uiRegistry = buildStubUiRegistry().extend({ select: { renderer: BadgeRenderer, editor: OptionButtonsEditor } });
+const uiRegistry = extendWithWidgets(buildStubUiRegistry(), { select: { renderer: BadgeRenderer, editor: OptionButtonsEditor } });
 
 const selectDraft = () => {
   let d = createColumnDraft({ schema: buildFixtureSchema(), registry });

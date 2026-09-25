@@ -1,7 +1,7 @@
 import { Select, useMantineTheme } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
-import { createPopupEditor } from "../internal/grid-contracts";
+import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
 import type { Option } from "../internal/core-contracts";
 
@@ -92,4 +92,4 @@ export function SelectEditor({
   );
 }
 
-export const SelectPopupEditor = createPopupEditor(SelectEditor);
+export const SelectPopupEditor = toPopupGridEditor(SelectEditor);

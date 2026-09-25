@@ -13,7 +13,7 @@ import {
   type RelativeDateKind,
   resolveFormulaOperandTypeId,
 } from "../internal/core-contracts";
-import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
+import { type UiFieldTypeRegistry, filterInputFor } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 
 export interface FilterValueInputProps {
@@ -21,7 +21,7 @@ export interface FilterValueInputProps {
   operator: FilterOperatorDef;
   value: FilterValue | null | undefined;
   onChange(value: FilterValue | null | undefined): void;
-  /** UI registry; its `filterComponent`s render `single` values for non-option types. */
+  /** ag-grid UI registry; its ui-mantine editor widgets render `single`/range values for non-option types. */
   registry: UiFieldTypeRegistry;
   dataSource?: DataSource;
   /** @deprecated Unused: formula columns resolve through `config.resultType`. */
@@ -131,7 +131,7 @@ export function FilterValueInput(props: FilterValueInputProps) {
   const userOptions = useUserOptions(operator.valueKind === "multi" && type === "user", column, dataSource);
 
   const registryInput = (v: FilterValue | null | undefined, emit: (v: FilterValue | null) => void): ReactNode => {
-    const Filter = registry.get(type)?.filterComponent ?? registry.get(column.type)?.filterComponent;
+    const Filter = filterInputFor(registry, type);
     return Filter ? <Filter column={column} operator={operator} value={v} onChange={emit} dataSource={dataSource} /> : null;
   };
 

@@ -12,7 +12,13 @@ export interface TypeStepProps {
 /** Grid of selectable field-type cards from `registry.list()`. */
 export function TypeStep({ registry, value, onChange, locked = false }: TypeStepProps) {
   return (
-    <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs" role="group" aria-label="Field type">
+    <SimpleGrid
+      component="fieldset"
+      cols={{ base: 2, sm: 4 }}
+      spacing="xs"
+      aria-label="Field type"
+      style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+    >
       {registry.list().map((t) => {
         const selected = t.id === value;
         return (

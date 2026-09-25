@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Option } from "../internal/core-contracts";
-import { isPopupEditor } from "../internal/grid-contracts";
+import { resolveEditorComponent } from "../internal/grid-contracts";
 import { FIXTURE_IDS, FIXTURE_USERS, buildStubDataSource, fixtureColumn } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
 import { AsyncCombobox } from "./AsyncCombobox";
@@ -53,8 +53,8 @@ afterEach(() => {
 
 describe("UserPickerEditor", () => {
   it("is exported as a popup editor", () => {
-    expect(isPopupEditor(UserPickerPopupEditor)).toBe(true);
-    expect(UserPickerPopupEditor.component).toBe(UserPickerEditor);
+    expect(UserPickerPopupEditor.cellEditorPopup).toBe(true);
+    expect(resolveEditorComponent(UserPickerPopupEditor.component)).toBe(UserPickerEditor);
   });
 
   it("opening calls getOptions once with an empty search", async () => {

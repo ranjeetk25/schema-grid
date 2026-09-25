@@ -1,7 +1,7 @@
 import { DatePickerInput, DateTimePicker } from "@mantine/dates";
 import dayjs from "dayjs";
 import { useEffect, useRef } from "react";
-import { createPopupEditor } from "../internal/grid-contracts";
+import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
 
 const DATETIME_PICKER_FORMAT = "YYYY-MM-DD HH:mm:ss";
@@ -15,8 +15,7 @@ export function DateEditor({ value, onChange, onCommit, onCancel, autoFocus, err
 
   useEffect(() => {
     if (autoFocus !== false) ref.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autoFocus]);
 
   return (
     <DatePickerInput
@@ -38,7 +37,7 @@ export function DateEditor({ value, onChange, onCommit, onCancel, autoFocus, err
   );
 }
 
-export const DatePopupEditor = createPopupEditor(DateEditor);
+export const DatePopupEditor = toPopupGridEditor(DateEditor);
 
 /**
  * Date & time editor. Stores an ISO string; converts to/from Mantine's
@@ -49,8 +48,7 @@ export function DateTimeEditor({ value, onChange, onCommit, onCancel, autoFocus,
 
   useEffect(() => {
     if (autoFocus !== false) ref.current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [autoFocus]);
 
   const pickerValue = value ? dayjs(value).format(DATETIME_PICKER_FORMAT) : null;
 
@@ -76,4 +74,4 @@ export function DateTimeEditor({ value, onChange, onCommit, onCancel, autoFocus,
   );
 }
 
-export const DateTimePopupEditor = createPopupEditor(DateTimeEditor);
+export const DateTimePopupEditor = toPopupGridEditor(DateTimeEditor);

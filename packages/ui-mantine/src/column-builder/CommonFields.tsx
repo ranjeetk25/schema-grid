@@ -31,7 +31,7 @@ export function draftAsColumn(draft: ColumnDraft): ColumnDef {
 
 export function CommonFields({ draft, dispatch, uiRegistry, errors = {}, dataSource }: CommonFieldsProps) {
   const isFormula = draft.type === "formula";
-  const DefaultEditor = draft.type && !isFormula ? resolveEditorComponent(uiRegistry.get(draft.type)?.editor) : undefined;
+  const DefaultEditor = draft.type && !isFormula ? resolveEditorComponent(uiRegistry.get(draft.type).editor) : undefined;
   const column = draftAsColumn(draft);
 
   return (

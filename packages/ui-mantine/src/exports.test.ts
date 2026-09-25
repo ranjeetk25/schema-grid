@@ -40,6 +40,7 @@ describe("subpath exports", () => {
       "RemoteChangedBadge",
       "useGridThemeFromMantine",
       "notifyClipboardReport",
+      "useMantineConflictPrompt",
     ]) {
       expect(m, name).toHaveProperty(name);
     }

@@ -181,8 +181,10 @@ export function buildColumnDef(
   const original = draft.mode === "edit" ? draft.original : null;
   const maxOrder = schema.columns.reduce((m, c) => Math.max(m, c.order), -1);
 
+  // Start from the original minus fields this builder owns, so dropped ones don't linger.
+  const { formula: _formula, defaultValue: _defaultValue, ...base } = original ?? ({} as Partial<ColumnDef>);
   const column: ColumnDef = {
-    ...(original ?? {}),
+    ...base,
     id: original?.id ?? generateId(),
     key: original?.key ?? draft.key,
     label: draft.label.trim(),
@@ -196,10 +198,8 @@ export function buildColumnDef(
     updatedAt: now,
   };
   if (isFormula) column.formula = draft.formula;
-  else delete column.formula;
   // A default that no longer fits the config (e.g. its option was removed) is dropped.
   const defaultFits = !isBlank(draft.defaultValue) && fieldType.valueSchema(config).safeParse(draft.defaultValue).success;
   if (!isFormula && defaultFits) column.defaultValue = draft.defaultValue;
-  else delete column.defaultValue;
   return column;
 }

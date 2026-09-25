@@ -25,7 +25,9 @@ function CloningParent({ onValue }: { onValue: (v: Record<string, unknown>) => v
 describe("OptionListField with a cloning parent", () => {
   it("keeps focus and auto-derives values when the parent echoes an equal copy", async () => {
     let latest: Record<string, unknown> = {};
-    const { user } = renderWithMantine(<CloningParent onValue={(v) => (latest = v)} />);
+    const { user } = renderWithMantine(<CloningParent onValue={(v) => {
+      latest = v;
+    }} />);
     await user.click(screen.getByRole("button", { name: "Add option" }));
     await user.type(screen.getAllByRole("textbox", { name: "Option label" })[0] as HTMLElement, "In Progress");
     expect(latest).toEqual({ options: [{ label: "In Progress", value: "in_progress" }] });

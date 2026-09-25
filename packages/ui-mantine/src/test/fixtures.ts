@@ -21,9 +21,10 @@ import {
 import {
   type UiEditorProps,
   type UiFieldTypeRegistry,
-  type UiFilterInputProps,
   type UiRendererProps,
-  createUiFieldTypeRegistry,
+  type WidgetEntry,
+  createDefaultUiRegistry,
+  extendWithWidgets,
 } from "../internal/grid-contracts";
 
 export const FIXTURE_NOW = "2026-09-25T10:00:00.000Z";
@@ -138,22 +139,14 @@ const StubEditor: ComponentType<UiEditorProps> = ({ value, onChange }) =>
     onChange: (e: { target: { value: string } }) => onChange(e.target.value),
   });
 
-const StubFilter: ComponentType<UiFilterInputProps> = ({ value, onChange }) =>
-  createElement("input", {
-    "data-testid": "stub-filter",
-    value: value == null ? "" : String(value),
-    onChange: (e: { target: { value: string } }) => onChange(e.target.value),
-  });
-
-/** Minimal UI registry: every built-in id gets a plain renderer/editor/filter. */
-export function buildStubUiRegistry(): UiFieldTypeRegistry {
-  const reg = createUiFieldTypeRegistry();
+/**
+ * A real ag-grid `UiFieldTypeRegistry` whose every built-in id has a plain
+ * stub renderer and inline stub editor widget (formula: renderer only).
+ */
+export function buildStubUiRegistry(): UiFieldTypeRegistry<GridRow> {
+  const widgets: Record<string, WidgetEntry> = {};
   for (const t of createDefaultRegistry().list()) {
-    reg.register(t.id, {
-      renderer: StubRenderer,
-      editor: t.id === "formula" ? undefined : StubEditor,
-      filterComponent: StubFilter,
-    });
+    widgets[t.id] = { renderer: StubRenderer, editor: t.id === "formula" ? null : StubEditor };
   }
-  return reg;
+  return extendWithWidgets(createDefaultUiRegistry<GridRow>(), widgets);
 }

@@ -82,7 +82,7 @@ describe("LongTextEditor", () => {
 
   it("exports LongTextPopupEditor wrapped as a popup editor", () => {
     expect(LongTextPopupEditor.cellEditorPopup).toBe(true);
-    expect(LongTextPopupEditor.isPopup).toBe(true);
+    expect(LongTextPopupEditor.cellEditorPopupPosition).toBe("over");
   });
 });
 

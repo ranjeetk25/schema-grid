@@ -1,7 +1,7 @@
 import { MultiSelect, useMantineTheme } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
 import type { Option } from "../internal/core-contracts";
-import { createPopupEditor } from "../internal/grid-contracts";
+import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
 import { getSelectOptions, resolveOptionColor } from "../internal/options";
 
@@ -95,4 +95,4 @@ export function MultiSelectEditor({
   );
 }
 
-export const MultiSelectPopupEditor = createPopupEditor(MultiSelectEditor);
+export const MultiSelectPopupEditor = toPopupGridEditor(MultiSelectEditor);

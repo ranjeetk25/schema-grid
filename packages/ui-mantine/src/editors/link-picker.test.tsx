@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ColumnDef, LinkRef } from "../internal/core-contracts";
-import { isPopupEditor } from "../internal/grid-contracts";
+import { resolveEditorComponent } from "../internal/grid-contracts";
 import { FIXTURE_LINKS, FIXTURE_NOW, buildStubDataSource } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
 import { LinkPickerEditor, LinkPickerPopupEditor } from "./LinkPickerEditor";
@@ -39,8 +39,8 @@ const LEAD_2 = FIXTURE_LINKS[1] as LinkRef;
 
 describe("LinkPickerEditor", () => {
   it("is exported as a popup editor", () => {
-    expect(isPopupEditor(LinkPickerPopupEditor)).toBe(true);
-    expect(LinkPickerPopupEditor.component).toBe(LinkPickerEditor);
+    expect(LinkPickerPopupEditor.cellEditorPopup).toBe(true);
+    expect(resolveEditorComponent(LinkPickerPopupEditor.component)).toBe(LinkPickerEditor);
   });
 
   it("calls lookup with an empty search on open, then with the typed search", async () => {

@@ -1,6 +1,6 @@
 import { Textarea } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
-import { createPopupEditor } from "../internal/grid-contracts";
+import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
 
 /** Multi-line text editor. Cmd/Ctrl+Enter commits, plain Enter inserts a newline, Escape cancels. */
@@ -36,4 +36,4 @@ export function LongTextEditor({ value, onChange, onCommit, onCancel, autoFocus,
   );
 }
 
-export const LongTextPopupEditor = createPopupEditor(LongTextEditor);
+export const LongTextPopupEditor = toPopupGridEditor(LongTextEditor);

@@ -17,10 +17,16 @@ interface ContactEditorSpec {
  * the core validation layer is the one that ultimately decides.
  */
 function createContactEditor({ fieldTypeId, type, inputMode }: ContactEditorSpec) {
+  // Resolved once per editor kind, lazily (no work at import time).
+  let fieldTypeCache: ReturnType<ReturnType<typeof createDefaultRegistry>["get"]> | null = null;
+  const getFieldType = () => {
+    fieldTypeCache ??= createDefaultRegistry().get(fieldTypeId);
+    return fieldTypeCache;
+  };
   return function ContactEditor({ value, onChange, onCommit, onCancel, autoFocus, error }: UiEditorProps<string, unknown>) {
     const [text, setText] = useState(value ?? "");
     const inputRef = useRef<HTMLInputElement>(null);
-    const fieldType = useMemo(() => createDefaultRegistry().get(fieldTypeId), []);
+    const fieldType = getFieldType();
 
     useEffect(() => {
       if (autoFocus !== false) inputRef.current?.focus();
