@@ -1,7 +1,9 @@
 # Playwright scenarios — `@masai/schema-grid-ag-grid`
 
-Status: **spec only**. Playwright is not installed in this repo yet; nothing here has been run. This is the
-hand-off for whoever wires up the storybook app + Playwright runner. Each scenario below is exercised against
+Status: **implemented in `apps/storybook/e2e`** (Playwright, chromium) against the stories in
+`apps/storybook/src/stories`, except where a scenario below says **Not implemented** (with the reason). Run with
+`bun run e2e` (builds the static Storybook; the demo-api spec skips itself unless `bun run db:up && bun run dev:api`
+is running). Each scenario carries an **Implemented:** line naming its spec file. Each scenario below is exercised against
 a real browser because it depends on native drag/mouse/clipboard/focus behaviour that jsdom cannot simulate;
 the logic behind each one is already tested in jsdom, listed under "Covered by."
 
@@ -20,6 +22,8 @@ Conventions used below:
 ---
 
 ## 1. Range drag with autoscroll
+
+**Implemented:** `range-clipboard.spec.ts` — drag selection with edge classes + Ctrl+C TSV content; drag toward the edge grows the range through every visible row. **Edge autoscroll: not implemented in the package** — kept as an expected-failure test (`test.fail`) that flips when autoscroll lands.
 
 **Preconditions:** a story with more rows than fit the viewport (so autoscroll near an edge triggers), client mode.
 
@@ -40,6 +44,8 @@ Conventions used below:
 
 ## 2. Shift+Arrow across pinned columns
 
+**Implemented:** `range-clipboard.spec.ts` (Name is pinned left in the story schema).
+
 **Preconditions:** a story with at least one pinned-left and one unpinned column, client mode.
 
 **Steps:**
@@ -57,6 +63,8 @@ Conventions used below:
 ---
 
 ## 3. Fill handle down and right with a series
+
+**Implemented:** `fill.spec.ts` — series down (20,000/60,000 → 1,00,000…), right into the adjacent column, Esc cancels, one `"fill"` batch, undo/redo as one step. Read-only skipping inside the drag path stays covered by jsdom only. (This scenario found the theme-part CSS bug: the handle rendered 0 px wide.)
 
 **Preconditions:** a story with a numeric or date column containing a short recognizable series (e.g. 1, 2 in
 two adjacent cells), client mode.
@@ -79,6 +87,8 @@ two adjacent cells), client mode.
 
 ## 4. Fill across virtualised rows
 
+**Not implemented:** the fill handle has no edge autoscroll (README: "Limitations: no edge autoscroll while dragging"), so a real mouse cannot drag past the viewport to reach virtualised rows.
+
 **Preconditions:** a story with enough rows that the middle of the fill range is virtualised (not rendered)
 when the drag starts, client mode.
 
@@ -97,6 +107,8 @@ when the drag starts, client mode.
 ---
 
 ## 5. OS clipboard round-trip (Google Sheets / Excel, quoted multiline cells)
+
+**Implemented (in-browser half):** `range-clipboard.spec.ts` — Sheets-formatted TSV (quoted multiline + comma cells) through the real OS clipboard (`navigator.clipboard` + Ctrl/Cmd+V), copied back out byte-exact. Pasting into an actual Google Sheets / Excel window is outside what Playwright can drive.
 
 **Preconditions:** a story with a long-text column, client or server mode.
 
@@ -120,6 +132,8 @@ when the drag starts, client mode.
 
 ## 6. Paste into a range containing read-only cells (report)
 
+**Implemented:** `range-clipboard.spec.ts` — report counts, polite "Paste: 3 pasted, 1 skipped, 1 errors", and the Mantine paste toast.
+
 **Preconditions:** a story whose schema mixes editable and read-only columns (permission variant from
 `test/fixtures/schema.ts`), client mode.
 
@@ -140,6 +154,8 @@ when the drag starts, client mode.
 ---
 
 ## 7. Focus stays in Mantine popup editors with `withinPortal={false}` (and is lost without it — negative test)
+
+**Implemented (positive):** `editors-keyboard.spec.ts`. **Negative variant not implemented:** there is no deliberately mis-configured (portal-enabled) editor story; it would only document the failure mode already explained in `createPopupEditor.tsx`.
 
 **Preconditions:** a story using a Mantine-backed popup editor (e.g. a select/combobox editor built with
 `createPopupEditor`) configured correctly (`withinPortal={false}` / `comboboxProps={{ withinPortal: false }}`).
@@ -170,6 +186,8 @@ to serve as the negative test.
 
 ## 8. Creatable select creating an option
 
+**Implemented:** `editors-keyboard.spec.ts` (create, then reuse on another row; one `createOption` call).
+
 **Preconditions:** a story with a select/combobox column configured as creatable (per T18's rich/creatable
 combobox editor), client mode.
 
@@ -189,6 +207,8 @@ combobox editor), client mode.
 ---
 
 ## 9. Conflict prompt: keepTheirs and overwrite with two browser contexts
+
+**Implemented:** `server-demo-api.spec.ts` (two real browser contexts against demo-api + MySQL, keepTheirs then overwrite) and `conflict-polling.spec.ts` (scripted remote user, in-memory; popover anchoring, assertive "Conflict on Name, row r1").
 
 **Preconditions:** two Playwright browser contexts (simulating two users/tabs) pointed at the same backing
 data source (a shared in-memory or mock server keyed by row id/version), client or server mode.
@@ -214,6 +234,8 @@ data source (a shared in-memory or mock server keyed by row id/version), client 
 
 ## 10. Polling highlight and remoteChanged marker while editing
 
+**Implemented:** `conflict-polling.spec.ts` — change applied on the next poll with AG's flash on exactly that cell; a remote change to the cell being edited is deferred, marked `sg-cell-remote-changed`, and the later commit conflicts; an unrelated remote change does not clobber or conflict with an in-progress edit. Note: by design (`planRemotePatch`) `sg-cell-remote-changed` marks only cells that were being edited/pending; ordinary remote changes use AG Grid's change flash.
+
 **Preconditions:** a story with `poll` enabled (`SchemaGridPollOptions`), and a way to inject a remote change
 into the underlying data source's change feed while the story is open (e.g. a debug button or a second
 context editing the same row).
@@ -237,6 +259,8 @@ context editing the same row).
 
 ## 11. `notInView` row styling
 
+**Implemented:** `conflict-polling.spec.ts` (row keeps its position with `sg-row-not-in-view` and computed opacity < 1).
+
 **Preconditions:** client mode, a story whose data source can simulate a row that no longer matches the
 current filter/sort after a remote patch (e.g. a status column driving the active filter).
 
@@ -256,6 +280,8 @@ current filter/sort after a remote patch (e.g. a status column driving the activ
 ---
 
 ## 12. Group expand and lazy load in server mode
+
+**Implemented (expand):** `server-demo-api.spec.ts` — collapsed group rows with counts, expanding fetches exactly that group's rows with the pinned condition. (This scenario found the one-group-only bug against the Drizzle source.) **Load-more row not implemented:** the fixture groups are far smaller than a page.
 
 **Preconditions:** server (infinite) mode, a story with `groupBy` set and a data source that returns groups
 with children loaded on demand.
@@ -280,6 +306,8 @@ with children loaded on demand.
 
 ## 13. Undo of paste and fill
 
+**Implemented:** `range-clipboard.spec.ts` (paste) and `fill.spec.ts` (fill), both one undo step, redo via Ctrl/Cmd+Shift+Z and Ctrl+Y.
+
 **Preconditions:** client mode, a story with an editable range of at least 2x2 cells.
 
 **Steps:**
@@ -301,6 +329,8 @@ with children loaded on demand.
 ---
 
 ## 14. CSV download contents
+
+**Implemented:** `filter-views-columns.spec.ts` (client `exportCsv` of the filtered view, formatted values) and `permissions-import-export.spec.ts` (ExportDialog CSV/XLSX via io). **Server-mode `exportCurrentView`: expected-failure test** in `server-demo-api.spec.ts` — it loads `@masai/schema-grid-io` with a non-static `import()` (unresolvable in a bundled browser app) and expects `writeCsv`/`writeXlsx`, which io does not export.
 
 **Preconditions:** both client and server mode stories, with a mix of hidden and read-only columns in the
 schema.
@@ -326,6 +356,8 @@ schema.
 
 ## 15. Keyboard-only Enter, Esc and Tab flows
 
+**Implemented:** `editors-keyboard.spec.ts` (all four steps; step 4 through the multiSelect popup editor). (This scenario found that Enter could not start editing.)
+
 **Preconditions:** client mode, a story with a mix of text, select and popup-editor columns.
 
 **Steps:**
@@ -348,6 +380,8 @@ schema.
 ---
 
 ## 16. Live-region output
+
+**Implemented (text + politeness):** Saved (`editors-keyboard.spec.ts`), Conflict (`conflict-polling.spec.ts`), Paste summary (`range-clipboard.spec.ts`), Undone. **Not implemented:** "Edit rejected"/"Edit cancelled" (no story vetoes or rejects edits) and real screen-reader speech (VoiceOver/NVDA cannot be driven from Playwright).
 
 **Preconditions:** any of the above stories; a Playwright accessibility snapshot or an `aria-live` text
 assertion on `.sg-root`'s live region element.
