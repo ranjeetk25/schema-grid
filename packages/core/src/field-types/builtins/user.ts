@@ -4,7 +4,6 @@ import { USER_OPERATORS } from "../../filter/operators";
 import { compareWithEmptyLast } from "../empty";
 import type { FieldType, ParseResult } from "../types";
 
-// biome-ignore lint/complexity/noBannedTypes: config is intentionally empty.
 export type UserConfig = Record<string, never>;
 
 const defaultConfig: UserConfig = {};

@@ -72,7 +72,7 @@ describe("createRolePermissionResolver — matrix", () => {
 
   it("a column without permissions resolves to edit", () => {
     const column = makeColumn();
-    delete column.permissions;
+    column.permissions = undefined;
     expect(resolver({ user: user([]), column })).toBe("edit");
   });
 
