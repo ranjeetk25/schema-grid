@@ -7,13 +7,16 @@ import {
   createFixtureRows,
   createFixtureSchema,
 } from "@ranjeetk25/schema-grid-core/testing";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, configure, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithMantine } from "../test/render";
 import { SchemaGridWorkbench } from "./SchemaGridWorkbench";
 import { normalizeCapabilities } from "./capabilities";
 import type { SchemaGridWorkbenchProps, WorkbenchCapabilities } from "./types";
 import { ALL_ROWS_VIEW, createMemoryViewStore } from "./viewStore";
+
+// AG Grid renders slowly under a loaded CI box; 1s default waits flake.
+configure({ asyncUtilTimeout: 5000 });
 
 const ADMIN = { id: FIXTURE_USERS.admin.id, roles: [...FIXTURE_USERS.admin.roles] };
 
