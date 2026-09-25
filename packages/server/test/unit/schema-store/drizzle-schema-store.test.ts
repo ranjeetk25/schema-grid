@@ -1,0 +1,89 @@
+import { describe, expect, it } from "vitest";
+import type { GridDb } from "../../../src/changes/db";
+import { SchemaGridServerError } from "../../../src/errors";
+import type { GridSchema } from "../../../src/internal/core";
+import { createDrizzleSchemaStore } from "../../../src/schema-store/drizzle-schema-store";
+import { asRows, createFakeMysql } from "../../helpers/fake-mysql";
+
+const NOW = new Date("2026-09-26T10:11:12.345Z");
+
+const schema: GridSchema = {
+  id: "leads",
+  schemaVersion: 3,
+  columns: [{ id: "c_name", key: "name", label: "Name", type: "text" }] as GridSchema["columns"],
+};
+
+function storeOver(responder?: Parameters<typeof createFakeMysql>[0]) {
+  const fake = createFakeMysql(responder);
+  const store = createDrizzleSchemaStore({ db: fake.db as unknown as GridDb, table: "grid_schemas", now: () => NOW });
+  return { ...fake, store };
+}
+
+describe("createDrizzleSchemaStore", () => {
+  it("get selects the schema by grid id", async () => {
+    const { store, calls } = storeOver(() => []);
+    await store.get("leads");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sql).toBe("select `schema` from `grid_schemas` where `grid_schemas`.`grid_id` = ? limit ?");
+    expect(calls[0]?.params).toEqual(["leads", 1]);
+  });
+
+  it("get returns null on a miss", async () => {
+    const { store } = storeOver(() => []);
+    await expect(store.get("nope")).resolves.toBeNull();
+  });
+
+  it("get parses a JSON string (driver without JSON typecast)", async () => {
+    const { store } = storeOver(() => asRows([{ schema: JSON.stringify(schema) }], ["schema"]));
+    await expect(store.get("leads")).resolves.toEqual(schema);
+  });
+
+  it("get returns an already-parsed JSON object as-is", async () => {
+    const { store } = storeOver(() => asRows([{ schema }], ["schema"]));
+    await expect(store.get("leads")).resolves.toEqual(schema);
+  });
+
+  it("put upserts schema JSON, schema_version and updated_at", async () => {
+    const { store, calls } = storeOver();
+    await store.put("leads", schema);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sql).toBe(
+      "insert into `grid_schemas` (`grid_id`, `schema`, `schema_version`, `updated_at`) values (?, ?, ?, ?) on duplicate key update `schema` = ?, `schema_version` = ?, `updated_at` = ?",
+    );
+    const json = JSON.stringify(schema);
+    const at = "2026-09-26 10:11:12.345";
+    expect(calls[0]?.params).toEqual(["leads", json, 3, at, json, 3, at]);
+  });
+
+  it("defaults now() to the current time", async () => {
+    const fake = createFakeMysql();
+    const store = createDrizzleSchemaStore({ db: fake.db as unknown as GridDb, table: "grid_schemas" });
+    const before = Date.now();
+    await store.put("leads", schema);
+    const at = Date.parse(`${String(fake.calls[0]?.params[3]).replace(" ", "T")}Z`);
+    expect(at).toBeGreaterThanOrEqual(before - 1);
+    expect(at).toBeLessThanOrEqual(Date.now() + 1);
+  });
+
+  it.each([
+    ["empty", ""],
+    ["longer than 64 chars", "g".repeat(65)],
+  ])("rejects a %s grid id without touching the db", async (_label, gridId) => {
+    const { store, calls } = storeOver();
+    await expect(store.put(gridId, schema)).rejects.toMatchObject({ code: "INVALID_GRID_ID" });
+    await expect(store.put(gridId, schema)).rejects.toBeInstanceOf(SchemaGridServerError);
+    await expect(store.get(gridId)).rejects.toMatchObject({ code: "INVALID_GRID_ID" });
+    expect(calls).toEqual([]);
+  });
+
+  it("accepts a 64-char grid id", async () => {
+    const { store, calls } = storeOver();
+    await store.put("g".repeat(64), schema);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("rejects an unsafe table name at construction", () => {
+    const fake = createFakeMysql();
+    expect(() => createDrizzleSchemaStore({ db: fake.db as unknown as GridDb, table: "bad-name" })).toThrow();
+  });
+});

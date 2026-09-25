@@ -53,6 +53,7 @@ export {
   type ColumnIndex,
 } from "./schema/lookup";
 export type { DataSource, RowPartial } from "./datasource/types";
+export type { SchemaStore } from "./schema/store";
 export type { GridEventName, GridEvents } from "./events/types";
 export type {
   Access,
