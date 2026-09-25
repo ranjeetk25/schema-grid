@@ -1,12 +1,4 @@
-import { ping as corePing } from "@masai/schema-grid-core";
-
+// Public barrel for `@masai/schema-grid-ag-grid` — filled in T32.
 export const SCHEMA_GRID_AG_GRID_VERSION = "0.0.1";
 
-/**
- * Placeholder export. Real ColDef compilation, custom editors/filters,
- * range selection, clipboard, and fill-handle APIs land in follow-up work
- * per docs/superpowers/specs/2026-09-25-schema-grid-v1-spec.md.
- */
-export function ping(): string {
-  return `ag-grid:${corePing()}`;
-}
+export { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "./agModules";

@@ -12,6 +12,24 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./editors": {
+      "development": "./src/editors/index.ts",
+      "types": "./dist/editors/index.d.ts",
+      "import": "./dist/editors/index.js",
+      "require": "./dist/editors/index.cjs"
+    },
+    "./filters": {
+      "development": "./src/filters/index.ts",
+      "types": "./dist/filters/index.d.ts",
+      "import": "./dist/filters/index.js",
+      "require": "./dist/filters/index.cjs"
+    },
+    "./sync": {
+      "development": "./src/sync/index.ts",
+      "types": "./dist/sync/index.d.ts",
+      "import": "./dist/sync/index.js",
+      "require": "./dist/sync/index.cjs"
     }
   },
   "files": ["dist"],
@@ -25,8 +43,15 @@
   },
   "peerDependencies": {
     "react": "^18.3.0",
+    "react-dom": "^18.3.0",
     "ag-grid-community": "^36.0.0",
-    "ag-grid-react": "^36.0.0"
+    "ag-grid-react": "^36.0.0",
+    "@masai/schema-grid-io": "*"
+  },
+  "peerDependenciesMeta": {
+    "@masai/schema-grid-io": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "react": "^18.3.0",
