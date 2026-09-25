@@ -42,13 +42,19 @@ function resolveSourceRow(
   return { sourceRow: 0, message: `[row ${rowId}] ${message}` };
 }
 
+/**
+ * Initial job state. `initialErrors` (the plan's `rejected`) count as failed
+ * and processed; `unchangedRows` (the plan's `unchangedSourceRows.length`)
+ * count as processed, so progress reaches `total` = number of file rows.
+ */
 export function createImportJobState(
   total: number,
   initialErrors: ImportRowError[] = [],
+  unchangedRows = 0,
 ): ImportJobState {
   const errors = [...initialErrors];
   const count = distinctSourceRowCount(errors);
-  return { total, processed: count, failed: count, errors };
+  return { total, processed: count + unchangedRows, failed: count, errors };
 }
 
 export function recordChunkResult(

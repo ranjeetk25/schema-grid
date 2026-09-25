@@ -315,3 +315,11 @@ describe("buildErrorReportCsv", () => {
     expect(result.rows[0]?.[3]).toBe("'=cmd|' /C calc'!A1");
   });
 });
+
+describe("createImportJobState with unchanged rows", () => {
+  it("counts elided no-op rows as processed but not failed", () => {
+    const state = createImportJobState(10, [{ sourceRow: 2, message: "x" }], 3);
+    expect(state.processed).toBe(4);
+    expect(state.failed).toBe(1);
+  });
+});

@@ -10,6 +10,7 @@ import {
   unwrapParse,
 } from "../internal/core";
 import { ImportConfigError } from "../internal/errors";
+import { keyOf } from "./change-batches";
 import { addNewOption, matchOption, splitMulti } from "./options";
 import type {
   CellValidation,
@@ -78,6 +79,8 @@ function parseMultiSelectCell(
     if (!match) unknown.push(piece);
     else if (!ids.includes(match.value)) ids.push(match.value);
   }
+  const order = (id: string) => options.findIndex((o) => o.value === id);
+  ids.sort((a, b) => order(a) - order(b));
   if (unknown.length === 0) return { value: ids, raw };
   if (ctx.opts.unknownOptions === "reject") {
     const names = unknown.map((u) => `"${u}"`).join(", ");
@@ -139,22 +142,33 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 /**
- * Normalised identity of a key cell, used for duplicate detection.
- * TODO(T9): replace with the exported `keyOf` (same rule) once it exists.
+ * Duplicate-detection identity of a key cell: the exported `keyOf` for a parsed
+ * value (the same function the server uses for `existingRowsByKey`), or the
+ * raw text trimmed + lowercased when the cell failed to parse.
  */
-function normalizedKey(cell: CellValidation, mapped: MappedColumn): string {
+function normalizedKey(
+  cell: CellValidation,
+  mapped: MappedColumn,
+  registry: FieldTypeRegistry,
+): string {
   if (cell.error === undefined && !isEmptyValue(cell.value)) {
-    try {
-      const formatted = mapped.type.format(cell.value, mapped.column.config);
-      if (typeof formatted === "string" && formatted.trim() !== "") {
-        return formatted.trim().toLowerCase();
-      }
-    } catch {
-      // fall through to the raw string
-    }
+    const k = keyOf(cell.value, mapped.column, registry);
+    if (k !== "") return k;
   }
   return cell.raw.trim().toLowerCase();
 }
+
+/**
+ * Field types whose formatted value is a lossless, canonical identity and so
+ * can serve as an update/upsert key (see `keyOf`).
+ */
+const KEY_COLUMN_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "longText",
+  "email",
+  "phone",
+  "url",
+]);
 
 function resolveMappings(
   mapping: ColumnMapping[],
@@ -205,6 +219,12 @@ function resolveMappings(
   if (opts.mode !== "create") {
     if (!opts.keyColumnId) {
       throw new ImportConfigError(`Mode "${opts.mode}" requires a key column`);
+    }
+    const keyColumn = columns.find((c) => c.id === opts.keyColumnId);
+    if (keyColumn && !KEY_COLUMN_TYPES.has(keyColumn.type)) {
+      throw new ImportConfigError(
+        `Column "${keyColumn.label}" (type ${keyColumn.type}) cannot be used as a key; use a text, long text, email, phone or URL column`,
+      );
     }
     if (!seen.has(opts.keyColumnId)) {
       throw new ImportConfigError(
@@ -290,8 +310,8 @@ export function validateRows(
       if (keyRaw === "") {
         if (opts.mode === "update") rowError = "Missing key";
       } else {
-        const keyCell = cells[keyMapped.column.id];
-        const k = keyCell ? normalizedKey(keyCell, keyMapped) : keyRaw.toLowerCase();
+        const keyCell = cells[keyMapped.column.id] ?? { value: null, raw: keyRaw };
+        const k = normalizedKey(keyCell, keyMapped, registry);
         const first = firstSeenKey.get(k);
         if (first !== undefined) {
           rowError = `Duplicate key (first seen on row ${first})`;

@@ -260,6 +260,21 @@ describe("validateRows: setup errors", () => {
     ).toThrow(ImportConfigError);
   });
 
+  it("a currency or datetime key column throws", () => {
+    for (const [header, id] of [
+      ["Amount", "c_amount"],
+      ["Last Call", "c_call"],
+    ] as const) {
+      expect(() =>
+        run([header, "Name"], [id, "c_name"], [["1", "A"]], {
+          mode: "update",
+          keyColumnId: id,
+          unknownOptions: "reject",
+        }),
+      ).toThrow(ImportConfigError);
+    }
+  });
+
   it("mapping to an unknown column throws", () => {
     expect(() => run(["X"], ["c_nope"], [["1"]])).toThrow(ImportConfigError);
   });

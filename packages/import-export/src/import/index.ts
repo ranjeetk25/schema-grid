@@ -1,6 +1,8 @@
 export { ImportConfigError, SheetNotFoundError } from "../internal/errors";
 export { autoMapColumns } from "./auto-map";
 export type { AutoMapColumnsOptions } from "./auto-map";
+export { chunkRows, keyOf, toChangeBatches } from "./change-batches";
+export type { ToChangeBatchesOptions } from "./change-batches";
 export {
   buildErrorReportCsv,
   createImportJobState,

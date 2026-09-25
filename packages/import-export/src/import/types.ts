@@ -85,6 +85,8 @@ export interface ImportPlan {
   createSourceRows: number[];
   /** rowId → sourceRow for rows in `updates`. */
   updateSourceRows: Record<string, number>;
+  /** Valid update rows identical to the existing row (elided; count as processed). */
+  unchangedSourceRows: number[];
 }
 
 export interface ImportJobState {

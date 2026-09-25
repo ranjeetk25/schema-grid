@@ -144,6 +144,11 @@ describe("validateRows: multiSelect policy", () => {
     expect(r.summary.newOptions).toEqual({});
   });
 
+  it("known ids are ordered by option config, new labels last", () => {
+    const r = run(["Name", "Tags"], ["c_name", "c_tags"], [["X", "Z, C, a"]]);
+    expect(cellOf(r, 0, "c_tags").value).toEqual(["tag_a", "tag_c", "Z"]);
+  });
+
   it('c_tags "A, Z" under create adds Z to newOptions', () => {
     const r = run(["Name", "Tags"], ["c_name", "c_tags"], [["X", "A, Z"]]);
     expect(cellOf(r, 0, "c_tags").value).toEqual(["tag_a", "Z"]);
