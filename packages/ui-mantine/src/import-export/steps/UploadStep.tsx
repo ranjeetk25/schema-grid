@@ -11,10 +11,12 @@ export interface UploadStepProps {
   parsing: boolean;
   parseError: string | null;
   rowCount: number | null;
+  /** The file had more rows than the parser keeps. */
+  truncated?: boolean;
   onFile(file: File): void;
 }
 
-export function UploadStep({ file, fileName, parsing, parseError, rowCount, onFile }: UploadStepProps) {
+export function UploadStep({ file, fileName, parsing, parseError, rowCount, truncated = false, onFile }: UploadStepProps) {
   const resetRef = useRef<() => void>(null);
   return (
     <Stack gap="sm">
@@ -54,6 +56,7 @@ export function UploadStep({ file, fileName, parsing, parseError, rowCount, onFi
       {rowCount != null && !parseError ? (
         <Text size="sm" c="dimmed">
           {rowCount} {rowCount === 1 ? "row" : "rows"} found
+          {truncated ? " (the file has more rows than can be imported at once; the rest were dropped)" : ""}
         </Text>
       ) : null}
       {parseError ? (

@@ -1,52 +1,64 @@
 /**
- * import-export adapter. The ONLY file in ui-mantine allowed to import from
- * `@masai/schema-grid-io`.
- *
- * `@masai/schema-grid-io` is being built concurrently and currently only
- * exports a placeholder, so each symbol is a local fallback marked
- * `TODO(io)`. The fallback functions throw; components accept injected
- * implementations (the `io` prop) so tests and early consumers never hit them.
+ * import-export adapter. The ONLY file in ui-mantine that imports
+ * `@masai/schema-grid-io`. Functions and types are re-exported from the real
+ * package; a few UI-only types and gaps are defined locally at the bottom.
  */
-import type { Access, ColumnDef, FieldTypeRegistry, GridSchema } from "./core-contracts";
+import {
+  autoMapColumns,
+  parseFile,
+  validateRows,
+  type ValidateRowsOptions,
+} from "@masai/schema-grid-io/import";
+
+// Import pipeline (browser preview + server job share these)
+export {
+  ImportConfigError,
+  SheetNotFoundError,
+  autoMapColumns,
+  buildErrorReportCsv,
+  createImportJobState,
+  keyOf,
+  parseFile,
+  toChangeBatches,
+  validateRows,
+} from "@masai/schema-grid-io/import";
+export type {
+  AutoMapColumnsOptions,
+  CellValidation,
+  ColumnMapping,
+  ImportJobState,
+  ImportMode,
+  ImportPlan as IoImportPlan,
+  ImportRowError,
+  ParsedTable,
+  ParseFileOptions,
+  RowValidation,
+  ValidateRowsOptions,
+  ValidationReport,
+} from "@masai/schema-grid-io/import";
+
+// Export
+export { HiddenColumnError, buildExport, buildExportBlob, exportFileName } from "@masai/schema-grid-io/export";
+export type { ExportFormat, ExportOptions } from "@masai/schema-grid-io/export";
 
 // ---------------------------------------------------------------------------
-// Types
-// TODO(io): replace with real export — ParsedFile, ColumnMapping, RowValidationResult,
-// CellValidationError, ImportJobStatus, ImportMode, UnknownEnumPolicy, ExportFormat
+// Local (UI-only types and gaps in io's public API)
 // ---------------------------------------------------------------------------
 
-export interface ParsedFile {
-  fileName: string;
-  headers: string[];
-  /** Raw cell text, aligned with `headers`. */
-  rows: string[][];
-  sheetName?: string;
-}
+/** How unknown select values are treated: io's `ValidateRowsOptions.unknownOptions`. */
+export type UnknownOptionsPolicy = ValidateRowsOptions["unknownOptions"];
 
-/** Source header → target column id, or null for "Skip". */
-export type ColumnMapping = Record<string, string | null>;
+/**
+ * Field types io accepts as an update/upsert key (`validateRows` throws
+ * `ImportConfigError` for others). io keeps this set private.
+ * TODO(io): replace with an io export if one is added.
+ */
+export const KEY_COLUMN_TYPES: ReadonlySet<string> = new Set(["text", "longText", "email", "phone", "url"]);
 
-export interface CellValidationError {
-  columnId: string;
-  message: string;
-  /** "unknownEnum" marks a select value that is not a configured option. */
-  kind?: "invalid" | "unknownEnum" | "required";
-  value?: string;
-}
-
-export interface RowValidationResult {
-  /** 0-based index into `ParsedFile.rows`. */
-  rowIndex: number;
-  values: Record<string, unknown>;
-  errors: CellValidationError[];
-  /** Row-level problem, e.g. "Missing key" or "Duplicate key". */
-  rowError?: string;
-}
-
-export type ImportMode = "create" | "update" | "upsert";
-export type UnknownEnumPolicy = "createOptions" | "rejectRows";
-export type ExportFormat = "csv" | "xlsx";
-
+/**
+ * Server-side job progress shown by the wizard's run step. The job runner
+ * owns the real `ImportJobState`; hosts map it to this display shape.
+ */
 export interface ImportJobStatus {
   state: "queued" | "running" | "done" | "failed";
   processed: number;
@@ -55,45 +67,11 @@ export interface ImportJobStatus {
   errorReportUrl?: string;
 }
 
-export interface ValidateRowsInput {
-  rows: string[][];
-  headers: string[];
-  mapping: ColumnMapping;
-  schema: GridSchema;
-  registry: FieldTypeRegistry;
-  mode?: ImportMode;
-  keyColumnId?: string | null;
-  unknownEnumPolicy?: UnknownEnumPolicy;
-  access?: ReadonlyMap<string, Access>;
-}
-
-export interface BuildExportInput {
-  format: ExportFormat;
-  columns: ColumnDef[];
-  rows: Record<string, unknown>[];
-  registry: FieldTypeRegistry;
-  fileName?: string;
-}
-
+/** The io functions the import wizard calls; injectable for tests and server-mode hosts. */
 export interface IoFunctions {
-  parseFile(file: File | Blob, options?: { fileName?: string }): Promise<ParsedFile>;
-  autoMapColumns(headers: string[], columns: ColumnDef[]): ColumnMapping;
-  validateRows(input: ValidateRowsInput): RowValidationResult[] | Promise<RowValidationResult[]>;
-  buildExport(input: BuildExportInput): Promise<Blob>;
+  parseFile: typeof parseFile;
+  autoMapColumns: typeof autoMapColumns;
+  validateRows: typeof validateRows;
 }
 
-// ---------------------------------------------------------------------------
-// Functions
-// TODO(io): replace with real export — parseFile, autoMapColumns, validateRows, buildExport
-// ---------------------------------------------------------------------------
-
-const unavailable = (name: string): never => {
-  throw new Error(`@masai/schema-grid-io not available: ${name}() — inject an implementation via the \`io\` prop`);
-};
-
-export const parseFile: IoFunctions["parseFile"] = async () => unavailable("parseFile");
-export const autoMapColumns: IoFunctions["autoMapColumns"] = () => unavailable("autoMapColumns");
-export const validateRows: IoFunctions["validateRows"] = () => unavailable("validateRows");
-export const buildExport: IoFunctions["buildExport"] = async () => unavailable("buildExport");
-
-export const defaultIo: IoFunctions = { parseFile, autoMapColumns, validateRows, buildExport };
+export const defaultIo: IoFunctions = { parseFile, autoMapColumns, validateRows };

@@ -1,29 +1,29 @@
 import { Alert, Group, Loader, SegmentedControl, Stack, Table, Text, Tooltip } from "@mantine/core";
 import type { ColumnDef } from "../../internal/core-contracts";
-import type { CellValidationError, ColumnMapping, ParsedFile, RowValidationResult, UnknownEnumPolicy } from "../../internal/io-contracts";
+import type { ColumnMapping, ParsedTable, UnknownOptionsPolicy, ValidationReport } from "../../internal/io-contracts";
 import { summarizePreview } from "../import-model";
 
-const POLICY_DATA: { label: string; value: UnknownEnumPolicy }[] = [
-  { label: "Create options", value: "createOptions" },
-  { label: "Reject rows", value: "rejectRows" },
+const POLICY_DATA: { label: string; value: UnknownOptionsPolicy }[] = [
+  { label: "Create options", value: "create" },
+  { label: "Reject rows", value: "reject" },
 ];
 
 export interface PreviewStepProps {
-  parsed: ParsedFile;
-  mapping: ColumnMapping;
+  parsed: ParsedTable;
+  mapping: ColumnMapping[];
+  /** Columns the mapping may point at (labels for the table header). */
   columns: ColumnDef[];
-  preview: RowValidationResult[] | null;
+  preview: ValidationReport | null;
   loading: boolean;
   error: string | null;
-  unknownEnumPolicy: UnknownEnumPolicy;
-  onPolicyChange(policy: UnknownEnumPolicy): void;
-  totalRows: number;
+  unknownOptions: UnknownOptionsPolicy;
+  onPolicyChange(policy: UnknownOptionsPolicy): void;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-function isPolicy(value: string): value is UnknownEnumPolicy {
-  return value === "createOptions" || value === "rejectRows";
+function isPolicy(value: string): value is UnknownOptionsPolicy {
+  return value === "create" || value === "reject";
 }
 
 export function PreviewStep({
@@ -33,9 +33,8 @@ export function PreviewStep({
   preview,
   loading,
   error,
-  unknownEnumPolicy,
+  unknownOptions,
   onPolicyChange,
-  totalRows,
 }: PreviewStepProps) {
   if (loading && !preview) {
     return (
@@ -54,11 +53,11 @@ export function PreviewStep({
   }
   if (!preview) return null;
 
-  const labelById = new Map(columns.map((c) => [c.id, c.label]));
-  const mapped = parsed.headers
-    .map((header, index) => ({ header, index, columnId: mapping[header] ?? null }))
-    .filter((m): m is { header: string; index: number; columnId: string } => m.columnId != null);
+  const byId = new Map(columns.map((c) => [c.id, c]));
+  const mapped = mapping.filter((m): m is ColumnMapping & { columnId: string } => m.columnId != null);
   const summary = summarizePreview(preview);
+  const showPolicy = summary.unknownOptions > 0 || unknownOptions === "reject";
+  const unmappedRequired = preview.summary.unmappedRequired.map((id) => byId.get(id)?.label ?? id);
 
   return (
     <Stack gap="sm">
@@ -69,16 +68,21 @@ export function PreviewStep({
         <Text size="sm" c={summary.invalid > 0 ? "red" : "dimmed"}>
           {plural(summary.invalid, "invalid row")}
         </Text>
-        <Text size="sm" c={summary.unknownEnum > 0 ? "orange" : "dimmed"}>
-          {plural(summary.unknownEnum, "unknown value")}
+        <Text size="sm" c={summary.unknownOptions > 0 ? "orange" : "dimmed"}>
+          {plural(summary.unknownOptions, "unknown value")}
         </Text>
       </Group>
-      {totalRows > preview.length ? (
+      {parsed.rows.length > preview.rows.length ? (
         <Text size="xs" c="dimmed">
-          Previewing the first {preview.length} of {totalRows} rows.
+          Previewing the first {preview.rows.length} of {parsed.rows.length} rows.
         </Text>
       ) : null}
-      {summary.unknownEnum > 0 ? (
+      {unmappedRequired.length > 0 ? (
+        <Text size="sm" c="orange">
+          Required columns not in the file: {unmappedRequired.join(", ")}
+        </Text>
+      ) : null}
+      {showPolicy ? (
         <Stack gap={4}>
           <Text size="sm" fw={500}>
             Values that are not existing options
@@ -87,7 +91,7 @@ export function PreviewStep({
             aria-label="Unknown option values"
             disabled={loading}
             data={POLICY_DATA}
-            value={unknownEnumPolicy}
+            value={unknownOptions}
             onChange={(v) => {
               if (isPolicy(v)) onPolicyChange(v);
             }}
@@ -95,66 +99,65 @@ export function PreviewStep({
         </Stack>
       ) : null}
       <Table.ScrollContainer minWidth={400} maxHeight={360}>
-        <Table striped={false} withTableBorder>
+        <Table withTableBorder>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Row</Table.Th>
               {mapped.map((m) => (
-                <Table.Th key={m.index}>{labelById.get(m.columnId) ?? m.header}</Table.Th>
+                <Table.Th key={m.headerIndex}>{byId.get(m.columnId)?.label ?? m.header}</Table.Th>
               ))}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {preview.map((result) => {
-              const row = parsed.rows[result.rowIndex] ?? [];
-              const errorsByColumn = new Map<string, CellValidationError[]>();
-              for (const e of result.errors) {
-                const list = errorsByColumn.get(e.columnId) ?? [];
-                list.push(e);
-                errorsByColumn.set(e.columnId, list);
-              }
-              return (
-                <Table.Tr key={result.rowIndex}>
-                  {result.rowError ? (
-                    <Table.Td data-row-error="true" style={{ background: "var(--mantine-color-red-light)" }}>
-                      <Text size="sm">{result.rowIndex + 1}</Text>
-                      <Text size="xs" c="red">
-                        {result.rowError}
-                      </Text>
-                    </Table.Td>
-                  ) : (
-                    <Table.Td>{result.rowIndex + 1}</Table.Td>
-                  )}
-                  {mapped.map((m) => {
-                    const raw = row[m.index] ?? "";
-                    const cellErrors = errorsByColumn.get(m.columnId);
-                    if (!cellErrors) {
-                      return (
-                        <Table.Td key={m.index} data-row={result.rowIndex} data-column={m.columnId}>
-                          {raw}
-                        </Table.Td>
-                      );
-                    }
-                    const message = cellErrors.map((e) => e.message).join("; ");
+            {preview.rows.map((row) => (
+              <Table.Tr key={row.index}>
+                {row.rowError ? (
+                  <Table.Td data-row-error="true" style={{ background: "var(--mantine-color-red-light)" }}>
+                    <Text size="sm">{row.sourceRow}</Text>
+                    <Text size="xs" c="red">
+                      {row.rowError}
+                    </Text>
+                  </Table.Td>
+                ) : (
+                  <Table.Td>{row.sourceRow}</Table.Td>
+                )}
+                {mapped.map((m) => {
+                  const cell = row.cells[m.columnId];
+                  const raw = cell?.raw ?? parsed.rows[row.index]?.[m.headerIndex] ?? "";
+                  if (cell?.error) {
                     return (
                       <Table.Td
-                        key={m.index}
-                        data-row={result.rowIndex}
+                        key={m.headerIndex}
+                        data-row={row.index}
                         data-column={m.columnId}
                         data-error="true"
                         style={{ background: "var(--mantine-color-red-light)" }}
                       >
-                        <Tooltip label={message} multiline events={{ hover: true, focus: true, touch: true }}>
+                        <Tooltip label={cell.error} multiline events={{ hover: true, focus: true, touch: true }}>
                           <Text span size="sm" aria-invalid="true" tabIndex={0} display="block">
-                            {raw === "" ? "\u00a0" : raw}
+                            {raw === "" ? " " : raw}
                           </Text>
                         </Tooltip>
                       </Table.Td>
                     );
-                  })}
-                </Table.Tr>
-              );
-            })}
+                  }
+                  if (cell?.skip) {
+                    return (
+                      <Table.Td key={m.headerIndex} data-row={row.index} data-column={m.columnId} data-skip="true">
+                        <Text span size="sm" c="dimmed" fs="italic">
+                          unchanged
+                        </Text>
+                      </Table.Td>
+                    );
+                  }
+                  return (
+                    <Table.Td key={m.headerIndex} data-row={row.index} data-column={m.columnId}>
+                      {raw}
+                    </Table.Td>
+                  );
+                })}
+              </Table.Tr>
+            ))}
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>

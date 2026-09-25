@@ -2,9 +2,15 @@ import { Alert, Button, Group, Modal, Stack, Stepper } from "@mantine/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import type { FieldTypeRegistry, GridSchema } from "../internal/core-contracts";
-import { type ImportJobStatus, type IoFunctions, type RowValidationResult, type UnknownEnumPolicy, defaultIo } from "../internal/io-contracts";
 import {
-  type ImportPlan,
+  type ImportJobStatus,
+  type IoFunctions,
+  type UnknownOptionsPolicy,
+  type ValidationReport,
+  defaultIo,
+} from "../internal/io-contracts";
+import {
+  type ImportWizardPlan,
   PREVIEW_ROW_LIMIT,
   buildImportPlan,
   canProceed,
@@ -31,8 +37,8 @@ export interface ImportWizardProps {
   /** Injectable io functions; missing ones fall back to `@masai/schema-grid-io`. */
   io?: Partial<IoFunctions>;
   /** Server-mode override for the preview; replaces the local `validateRows`. */
-  onPreview?(plan: ImportPlan): Promise<RowValidationResult[]>;
-  onCommit(plan: ImportPlan): void | Promise<void>;
+  onPreview?(plan: ImportWizardPlan): Promise<ValidationReport>;
+  onCommit(plan: ImportWizardPlan): void | Promise<void>;
   job?: ImportJobStatus;
 }
 
@@ -70,9 +76,9 @@ export function ImportWizard({
     dispatch({ type: "fileSelected", file, fileName: file.name });
     setParsing(true);
     try {
-      const parsed = await io.parseFile(file, { fileName: file.name });
+      const parsed = await io.parseFile(file);
       if (token !== parseToken.current) return;
-      const auto = io.autoMapColumns(parsed.headers, targets);
+      const auto = io.autoMapColumns(parsed.headers, schema, access);
       dispatch({ type: "parsed", parsed, mapping: sanitizeMapping(parsed.headers, auto, targets) });
     } catch (e) {
       if (token !== parseToken.current) return;
@@ -82,24 +88,21 @@ export function ImportWizard({
     }
   };
 
-  const runPreview = async (overrides: Partial<Pick<ImportPlan, "unknownEnumPolicy">> = {}) => {
+  const runPreview = async (overrides: Partial<Pick<ImportWizardPlan, "unknownOptions">> = {}) => {
     const base = buildImportPlan(state);
     if (!base) return;
-    const plan: ImportPlan = { ...base, ...overrides };
+    const plan: ImportWizardPlan = { ...base, ...overrides };
     const token = ++previewToken.current;
     setPreviewLoading(true);
     try {
       const preview = onPreview
         ? await onPreview(plan)
-        : await io.validateRows({
-            rows: plan.parsed.rows.slice(0, PREVIEW_ROW_LIMIT),
-            headers: plan.parsed.headers,
-            mapping: plan.mapping,
-            schema,
-            registry,
+        : // Synchronous and throws ImportConfigError for an unusable mapping; the catch shows it inline.
+          io.validateRows(plan.parsed, plan.mapping, schema, registry, {
             mode: plan.mode,
-            keyColumnId: plan.keyColumnId,
-            unknownEnumPolicy: plan.unknownEnumPolicy,
+            keyColumnId: plan.keyColumnId ?? undefined,
+            unknownOptions: plan.unknownOptions,
+            limit: PREVIEW_ROW_LIMIT,
             access,
           });
       if (token !== previewToken.current) return;
@@ -129,10 +132,10 @@ export function ImportWizard({
     } else if (state.step === 1) dispatch({ type: "goTo", step: 0 });
   };
 
-  const changePolicy = (policy: UnknownEnumPolicy) => {
-    if (policy === state.unknownEnumPolicy) return;
+  const changePolicy = (policy: UnknownOptionsPolicy) => {
+    if (policy === state.unknownOptions) return;
     dispatch({ type: "setPolicy", policy });
-    void runPreview({ unknownEnumPolicy: policy });
+    void runPreview({ unknownOptions: policy });
   };
 
   const startImport = async () => {
@@ -204,6 +207,7 @@ export function ImportWizard({
               parsing={parsing}
               parseError={state.parseError}
               rowCount={state.parsed?.rows.length ?? null}
+              truncated={state.parsed?.truncated ?? false}
               onFile={(f) => void handleFile(f)}
             />
           </Stepper.Step>
@@ -218,7 +222,7 @@ export function ImportWizard({
                 keyColumnId={state.keyColumnId}
                 mode={state.mode}
                 errors={errors}
-                onMappingChange={(header, columnId) => dispatch({ type: "setMapping", header, columnId })}
+                onMappingChange={(headerIndex, columnId) => dispatch({ type: "setMapping", headerIndex, columnId })}
                 onKeyColumnChange={(columnId) => dispatch({ type: "setKeyColumn", columnId })}
                 onModeChange={(mode) => dispatch({ type: "setMode", mode })}
               />
@@ -229,13 +233,12 @@ export function ImportWizard({
               <PreviewStep
                 parsed={state.parsed}
                 mapping={state.mapping}
-                columns={targets}
+                columns={mappingTargets(state, schema, access)}
                 preview={state.preview}
                 loading={previewLoading}
                 error={state.previewError}
-                unknownEnumPolicy={state.unknownEnumPolicy}
+                unknownOptions={state.unknownOptions}
                 onPolicyChange={changePolicy}
-                totalRows={state.parsed.rows.length}
               />
             ) : null}
           </Stepper.Step>

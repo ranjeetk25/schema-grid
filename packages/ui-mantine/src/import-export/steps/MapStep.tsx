@@ -13,7 +13,7 @@ const MODE_DATA: { label: string; value: ImportMode }[] = [
 
 export interface MapStepProps {
   headers: string[];
-  mapping: ColumnMapping;
+  mapping: ColumnMapping[];
   targets: ColumnDef[];
   /** Id of a read-only key column offered only to match existing rows. */
   matchOnlyColumnId?: string | null;
@@ -21,7 +21,7 @@ export interface MapStepProps {
   keyColumnId: string | null;
   mode: ImportMode;
   errors: MappingErrors;
-  onMappingChange(header: string, columnId: string | null): void;
+  onMappingChange(headerIndex: number, columnId: string | null): void;
   onKeyColumnChange(columnId: string | null): void;
   onModeChange(mode: ImportMode): void;
 }
@@ -99,10 +99,10 @@ export function MapStep({
                 <Select
                   aria-label={`Map ${header.trim() === "" ? `column ${index + 1}` : header}`}
                   data={targetData}
-                  value={(Object.prototype.hasOwnProperty.call(mapping, header) ? mapping[header] : null) ?? SKIP}
-                  onChange={(v) => onMappingChange(header, v == null || v === SKIP ? null : v)}
+                  value={mapping.find((m) => m.headerIndex === index)?.columnId ?? SKIP}
+                  onChange={(v) => onMappingChange(index, v == null || v === SKIP ? null : v)}
                   allowDeselect={false}
-                  error={errors.byIndex[index] ?? errors.byHeader[header]}
+                  error={errors.byIndex[index]}
                   comboboxProps={{ withinPortal: false }}
                 />
               </Table.Td>

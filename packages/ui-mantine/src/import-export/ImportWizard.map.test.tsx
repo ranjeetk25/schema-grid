@@ -1,16 +1,26 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Access } from "../internal/core-contracts";
-import type { ColumnMapping, IoFunctions, ParsedFile } from "../internal/io-contracts";
+import type { ColumnMapping, IoFunctions, ParsedTable, ValidationReport } from "../internal/io-contracts";
 import { FIXTURE_IDS, buildFixtureAccess, buildFixtureRegistry, buildFixtureSchema } from "../test/fixtures";
 import { renderWithMantine } from "../test/render";
 import { ImportWizard } from "./ImportWizard";
 
-const PARSED: ParsedFile = {
-  fileName: "leads.csv",
+const PARSED: ParsedTable = {
   headers: ["Payment Status", "Call Date", "Unknown"],
   rows: [["Paid", "2026-01-01", "x"]],
+  truncated: false,
 };
+
+/** io-shaped auto-map result: one entry per header, in order. */
+function mapOf(headers: string[], ids: (string | null)[]): ColumnMapping[] {
+  return headers.map((header, headerIndex) => {
+    const columnId = ids[headerIndex] ?? null;
+    return { header, headerIndex, columnId, confidence: columnId ? 0.9 : 0 };
+  });
+}
+
+const EMPTY_REPORT: ValidationReport = { rows: [], summary: { valid: 0, invalid: 0, newOptions: {}, unmappedRequired: [] } };
 
 function setup(ioOverrides: Partial<IoFunctions> = {}, accessOverrides: Record<string, Access> = {}) {
   const schema = buildFixtureSchema();
@@ -18,10 +28,8 @@ function setup(ioOverrides: Partial<IoFunctions> = {}, accessOverrides: Record<s
   for (const [id, a] of Object.entries(accessOverrides)) access.set(id, a);
   const io = {
     parseFile: vi.fn(async () => PARSED),
-    autoMapColumns: vi.fn(
-      (): ColumnMapping => ({ "Payment Status": FIXTURE_IDS.payment, "Call Date": FIXTURE_IDS.call, Unknown: null }),
-    ),
-    validateRows: vi.fn(() => []),
+    autoMapColumns: vi.fn((headers: string[]) => mapOf(headers, [FIXTURE_IDS.payment, FIXTURE_IDS.call, null])),
+    validateRows: vi.fn(() => EMPTY_REPORT),
     ...ioOverrides,
   };
   const onCommit = vi.fn();
@@ -36,7 +44,7 @@ function setup(ioOverrides: Partial<IoFunctions> = {}, accessOverrides: Record<s
       onCommit={onCommit}
     />,
   );
-  return { ...utils, io, onCommit };
+  return { ...utils, io, onCommit, schema, access };
 }
 
 function fileInput(container: HTMLElement): HTMLInputElement {
@@ -68,7 +76,7 @@ describe("ImportWizard upload + mapping", () => {
     await utils.user.upload(fileInput(utils.container), file);
     expect(await screen.findByText("leads.csv")).toBeInTheDocument();
     expect(screen.getByText("2.0 KB")).toBeInTheDocument();
-    expect(utils.io.parseFile).toHaveBeenCalledWith(file, { fileName: "leads.csv" });
+    expect(utils.io.parseFile).toHaveBeenCalledWith(file);
   });
 
   it("shows parse errors inline", async () => {
@@ -85,7 +93,7 @@ describe("ImportWizard upload + mapping", () => {
   it("auto-maps known headers and skips the unknown one", async () => {
     const utils = setup();
     await uploadAndGoToMap(utils);
-    expect(utils.io.autoMapColumns).toHaveBeenCalledWith(PARSED.headers, expect.any(Array));
+    expect(utils.io.autoMapColumns).toHaveBeenCalledWith(PARSED.headers, utils.schema, utils.access);
     expect(screen.getByRole("textbox", { name: "Map Payment Status" })).toHaveValue("Payment status");
     expect(screen.getByRole("textbox", { name: "Map Call Date" })).toHaveValue("Call status");
     expect(screen.getByRole("textbox", { name: "Map Unknown" })).toHaveValue("Skip");
@@ -93,9 +101,7 @@ describe("ImportWizard upload + mapping", () => {
 
   it("drops auto-mapped targets that are not importable", async () => {
     const utils = setup({
-      autoMapColumns: vi.fn(
-        (): ColumnMapping => ({ "Payment Status": FIXTURE_IDS.total, "Call Date": FIXTURE_IDS.secret, Unknown: FIXTURE_IDS.notes }),
-      ),
+      autoMapColumns: vi.fn((headers: string[]) => mapOf(headers, [FIXTURE_IDS.total, FIXTURE_IDS.secret, FIXTURE_IDS.notes])),
     });
     await uploadAndGoToMap(utils);
     expect(screen.getByRole("textbox", { name: "Map Payment Status" })).toHaveValue("Skip");
@@ -149,6 +155,10 @@ describe("ImportWizard upload + mapping", () => {
       .map((o) => o.textContent);
     expect(keyNames).not.toContain("Total");
     expect(keyNames).not.toContain("Secret");
+    // Only key types (text/longText/email/phone/url) can be keys.
+    expect(keyNames).not.toContain("Payment status");
+    expect(keyNames).not.toContain("Call status");
+    expect(keyNames).toContain("Notes");
     await utils.user.click(within(listbox).getByRole("option", { name: "Website" }));
     expect(await screen.findByText("Map a file column to the key column")).toBeInTheDocument();
     expect(screen.queryByText("A key column is required for update and upsert")).not.toBeInTheDocument();
@@ -187,8 +197,8 @@ describe("ImportWizard upload + mapping", () => {
 
   it("flags duplicate and blank headers in the file", async () => {
     const utils = setup({
-      parseFile: vi.fn(async () => ({ fileName: "leads.csv", headers: ["Email", "Email", ""], rows: [] })),
-      autoMapColumns: vi.fn((): ColumnMapping => ({})),
+      parseFile: vi.fn(async (): Promise<ParsedTable> => ({ headers: ["Email", "Email", ""], rows: [], truncated: false })),
+      autoMapColumns: vi.fn((): ColumnMapping[] => []),
     });
     const file = new File(["x"], "leads.csv", { type: "text/csv" });
     await utils.user.upload(fileInput(utils.container), file);

@@ -1,11 +1,12 @@
 import { type AccessMap, readableColumns, writableColumns } from "../internal/access";
 import type { ColumnDef, GridSchema } from "../internal/core-contracts";
-import type {
-  ColumnMapping,
-  ImportMode,
-  ParsedFile,
-  RowValidationResult,
-  UnknownEnumPolicy,
+import {
+  type ColumnMapping,
+  type ImportMode,
+  KEY_COLUMN_TYPES,
+  type ParsedTable,
+  type UnknownOptionsPolicy,
+  type ValidationReport,
 } from "../internal/io-contracts";
 
 /** Only this many parsed rows are validated in the preview step. */
@@ -13,26 +14,29 @@ export const PREVIEW_ROW_LIMIT = 100;
 
 export type ImportStep = 0 | 1 | 2 | 3;
 
-export interface ImportPlan {
+/** What the wizard commits. Named to avoid io's server-side `ImportPlan`. */
+export interface ImportWizardPlan {
   fileName: string;
   file: File | null;
-  parsed: ParsedFile;
-  mapping: ColumnMapping;
+  parsed: ParsedTable;
+  /** One entry per file header, keyed by `headerIndex`. */
+  mapping: ColumnMapping[];
   mode: ImportMode;
+  /** Always null in create mode. */
   keyColumnId: string | null;
-  unknownEnumPolicy: UnknownEnumPolicy;
+  unknownOptions: UnknownOptionsPolicy;
 }
 
 export interface ImportState {
   file: File | null;
   fileName: string;
-  parsed: ParsedFile | null;
+  parsed: ParsedTable | null;
   parseError: string | null;
-  mapping: ColumnMapping;
+  mapping: ColumnMapping[];
   keyColumnId: string | null;
   mode: ImportMode;
-  unknownEnumPolicy: UnknownEnumPolicy;
-  preview: RowValidationResult[] | null;
+  unknownOptions: UnknownOptionsPolicy;
+  preview: ValidationReport | null;
   previewError: string | null;
   /** 0 upload, 1 map, 2 preview, 3 run. */
   step: ImportStep;
@@ -40,33 +44,16 @@ export interface ImportState {
 
 export type ImportAction =
   | { type: "fileSelected"; file: File | null; fileName: string }
-  | { type: "parsed"; parsed: ParsedFile; mapping: ColumnMapping }
+  | { type: "parsed"; parsed: ParsedTable; mapping: ColumnMapping[] }
   | { type: "parseFailed"; error: string }
-  | { type: "setMapping"; header: string; columnId: string | null }
+  | { type: "setMapping"; headerIndex: number; columnId: string | null }
   | { type: "setKeyColumn"; columnId: string | null }
   | { type: "setMode"; mode: ImportMode }
-  | { type: "setPolicy"; policy: UnknownEnumPolicy }
-  | { type: "previewLoaded"; preview: RowValidationResult[] }
+  | { type: "setPolicy"; policy: UnknownOptionsPolicy }
+  | { type: "previewLoaded"; preview: ValidationReport }
   | { type: "previewFailed"; error: string }
   | { type: "goTo"; step: ImportStep }
   | { type: "reset" };
-
-/** A prototype-free mapping record, so headers like "constructor" or "__proto__" are plain keys. */
-export function createMapping(entries?: ColumnMapping): ColumnMapping {
-  const out: ColumnMapping = Object.create(null);
-  if (entries) {
-    for (const key of Object.keys(entries)) out[key] = entries[key] ?? null;
-  }
-  return out;
-}
-
-function hasOwn(record: ColumnMapping, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(record, key);
-}
-
-function mappedTarget(mapping: ColumnMapping, header: string): string | null {
-  return hasOwn(mapping, header) ? (mapping[header] ?? null) : null;
-}
 
 export function initialImportState(): ImportState {
   return {
@@ -74,10 +61,10 @@ export function initialImportState(): ImportState {
     fileName: "",
     parsed: null,
     parseError: null,
-    mapping: createMapping(),
+    mapping: [],
     keyColumnId: null,
     mode: "create",
-    unknownEnumPolicy: "createOptions",
+    unknownOptions: "create",
     preview: null,
     previewError: null,
     step: 0,
@@ -87,34 +74,28 @@ export function initialImportState(): ImportState {
 export function importReducer(state: ImportState, action: ImportAction): ImportState {
   switch (action.type) {
     case "fileSelected":
-      return {
-        ...initialImportState(),
-        mode: state.mode,
-        file: action.file,
-        fileName: action.fileName,
-      };
+      return { ...initialImportState(), mode: state.mode, file: action.file, fileName: action.fileName };
     case "parsed":
+      return { ...state, parsed: action.parsed, parseError: null, mapping: action.mapping, preview: null, previewError: null };
+    case "parseFailed":
+      return { ...state, parsed: null, parseError: action.error, mapping: [], preview: null };
+    case "setMapping":
       return {
         ...state,
-        parsed: action.parsed,
-        parseError: null,
-        mapping: createMapping(action.mapping),
+        mapping: state.mapping.map((m) =>
+          m.headerIndex === action.headerIndex
+            ? { ...m, columnId: action.columnId, confidence: action.columnId == null ? 0 : 1 }
+            : m,
+        ),
         preview: null,
         previewError: null,
       };
-    case "parseFailed":
-      return { ...state, parsed: null, parseError: action.error, mapping: createMapping(), preview: null };
-    case "setMapping": {
-      const mapping = createMapping(state.mapping);
-      mapping[action.header] = action.columnId;
-      return { ...state, mapping, preview: null, previewError: null };
-    }
     case "setKeyColumn":
       return { ...state, keyColumnId: action.columnId, preview: null, previewError: null };
     case "setMode":
       return { ...state, mode: action.mode, preview: null, previewError: null };
     case "setPolicy":
-      return { ...state, unknownEnumPolicy: action.policy };
+      return { ...state, unknownOptions: action.policy };
     case "previewLoaded":
       return { ...state, preview: action.preview, previewError: null };
     case "previewFailed":
@@ -131,9 +112,9 @@ export function targetColumns(schema: GridSchema, access: AccessMap): ColumnDef[
   return writableColumns(schema, access);
 }
 
-/** Key column candidates: readable (never hidden), non-formula columns. */
+/** Key column candidates: readable (never hidden) columns of a type io accepts as a key. */
 export function keyColumnOptions(schema: GridSchema, access: AccessMap): ColumnDef[] {
-  return readableColumns(schema, access).filter((c) => c.type !== "formula");
+  return readableColumns(schema, access).filter((c) => KEY_COLUMN_TYPES.has(c.type));
 }
 
 /**
@@ -161,32 +142,31 @@ export function mappingTargets(
   return key ? [...targets, key] : targets;
 }
 
-/** Every header gets an entry; targets not in `targets` become null (Skip). */
-export function sanitizeMapping(headers: string[], mapping: ColumnMapping, targets: ColumnDef[]): ColumnMapping {
+/**
+ * One entry per header (by index). Suggestions whose target is not in
+ * `targets`, or that point at a missing header, become Skip.
+ */
+export function sanitizeMapping(headers: string[], mapping: ColumnMapping[], targets: ColumnDef[]): ColumnMapping[] {
   const allowed = new Set(targets.map((c) => c.id));
-  const out = createMapping();
-  for (const h of headers) {
-    const target = mappedTarget(mapping, h);
-    out[h] = target != null && allowed.has(target) ? target : null;
-  }
-  return out;
+  return headers.map((header, headerIndex) => {
+    const suggested = mapping.find((m) => m.headerIndex === headerIndex);
+    const columnId = suggested?.columnId != null && allowed.has(suggested.columnId) ? suggested.columnId : null;
+    return { header, headerIndex, columnId, confidence: columnId == null ? 0 : (suggested?.confidence ?? 1) };
+  });
 }
 
 export interface MappingErrors {
-  /** Source header → message (duplicate or invalid target). */
-  byHeader: Record<string, string>;
-  /** Header index → message (duplicate or blank header in the file). */
+  /** Header index → message (duplicate/blank header, duplicate or invalid target). */
   byIndex: Record<number, string>;
   keyColumn: string | null;
   general: string | null;
 }
 
 export function mappingErrors(state: ImportState, schema: GridSchema, access: AccessMap): MappingErrors {
-  const byHeader: Record<string, string> = Object.create(null);
   const byIndex: Record<number, string> = {};
   const targets = mappingTargets(state, schema, access);
   const labelById = new Map(targets.map((c) => [c.id, c.label]));
-  const headers = state.parsed?.headers ?? Object.keys(state.mapping);
+  const headers = state.parsed?.headers ?? state.mapping.map((m) => m.header);
 
   const indexesByHeader = new Map<string, number[]>();
   headers.forEach((h, i) => {
@@ -203,22 +183,21 @@ export function mappingErrors(state: ImportState, schema: GridSchema, access: Ac
     for (const i of list) byIndex[i] = `Duplicate header "${h}": rename it in the file`;
   }
 
-  const headersByTarget = new Map<string, string[]>();
-  for (const h of new Set(headers)) {
-    const target = mappedTarget(state.mapping, h);
-    if (target == null) continue;
-    if (!labelById.has(target)) {
-      byHeader[h] = "This column cannot be imported into";
+  const indexesByTarget = new Map<string, number[]>();
+  for (const m of state.mapping) {
+    if (m.columnId == null) continue;
+    if (!labelById.has(m.columnId)) {
+      byIndex[m.headerIndex] ??= "This column cannot be imported into";
       continue;
     }
-    const list = headersByTarget.get(target) ?? [];
-    list.push(h);
-    headersByTarget.set(target, list);
+    const list = indexesByTarget.get(m.columnId) ?? [];
+    list.push(m.headerIndex);
+    indexesByTarget.set(m.columnId, list);
   }
-  for (const [target, list] of headersByTarget) {
+  for (const [target, list] of indexesByTarget) {
     if (list.length < 2) continue;
-    for (const h of list) {
-      byHeader[h] = `Duplicate target: ${labelById.get(target) ?? target} is mapped more than once`;
+    for (const i of list) {
+      byIndex[i] ??= `Duplicate target: ${labelById.get(target) ?? target} is mapped more than once`;
     }
   }
 
@@ -228,22 +207,17 @@ export function mappingErrors(state: ImportState, schema: GridSchema, access: Ac
       keyColumn = "A key column is required for update and upsert";
     } else if (!keyColumnOptions(schema, access).some((c) => c.id === state.keyColumnId)) {
       keyColumn = "This column cannot be used as a key";
-    } else if (!headersByTarget.has(state.keyColumnId)) {
+    } else if (!indexesByTarget.has(state.keyColumnId)) {
       keyColumn = "Map a file column to the key column";
     }
   }
 
-  const general = headersByTarget.size === 0 ? "Map at least one column to import" : null;
-  return { byHeader, byIndex, keyColumn, general };
+  const general = indexesByTarget.size === 0 ? "Map at least one column to import" : null;
+  return { byIndex, keyColumn, general };
 }
 
 export function hasMappingErrors(errors: MappingErrors): boolean {
-  return (
-    Object.keys(errors.byHeader).length > 0 ||
-    Object.keys(errors.byIndex).length > 0 ||
-    errors.keyColumn != null ||
-    errors.general != null
-  );
+  return Object.keys(errors.byIndex).length > 0 || errors.keyColumn != null || errors.general != null;
 }
 
 /** Whether "Next" is allowed on the current step. */
@@ -255,35 +229,38 @@ export function canProceed(state: ImportState, schema: GridSchema, access: Acces
   return false;
 }
 
-export function buildImportPlan(state: ImportState): ImportPlan | null {
+export function buildImportPlan(state: ImportState): ImportWizardPlan | null {
   if (!state.parsed) return null;
   return {
     fileName: state.fileName,
     file: state.file,
     parsed: state.parsed,
-    mapping: createMapping(state.mapping),
+    mapping: state.mapping.map((m) => ({ ...m })),
     mode: state.mode,
     keyColumnId: state.mode === "create" ? null : state.keyColumnId,
-    unknownEnumPolicy: state.unknownEnumPolicy,
+    unknownOptions: state.unknownOptions,
   };
 }
+
+/** Matches io's cell error for an unknown option in reject mode. */
+const UNKNOWN_OPTION_ERROR = /^Unknown option/;
 
 export interface PreviewSummary {
   valid: number;
   invalid: number;
-  unknownEnum: number;
+  /** New option labels (create policy) or rejected unknown-option cells (reject policy). */
+  unknownOptions: number;
 }
 
-export function summarizePreview(preview: RowValidationResult[]): PreviewSummary {
-  let valid = 0;
-  let invalid = 0;
-  let unknownEnum = 0;
-  for (const r of preview) {
-    if (r.errors.length === 0 && !r.rowError) valid += 1;
-    else invalid += 1;
-    for (const e of r.errors) if (e.kind === "unknownEnum") unknownEnum += 1;
+export function summarizePreview(report: ValidationReport): PreviewSummary {
+  let unknownOptions = 0;
+  for (const labels of Object.values(report.summary.newOptions)) unknownOptions += labels.length;
+  for (const row of report.rows) {
+    for (const cell of Object.values(row.cells)) {
+      if (cell.error && UNKNOWN_OPTION_ERROR.test(cell.error)) unknownOptions += 1;
+    }
   }
-  return { valid, invalid, unknownEnum };
+  return { valid: report.summary.valid, invalid: report.summary.invalid, unknownOptions };
 }
 
 export function formatFileSize(bytes: number): string {

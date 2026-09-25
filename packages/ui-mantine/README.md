@@ -62,5 +62,6 @@ never throws.
 ## Upstream contracts
 
 `@masai/schema-grid-core`, `-ag-grid` and `-io` are consumed only through
-`src/internal/{core,grid,io}-contracts.ts`. While those packages are
-placeholders, the adapters hold local fallbacks marked `TODO(core|ag-grid|io)`.
+`src/internal/{core,grid,io}-contracts.ts`. Core and io are real re-exports
+(plus a few local helpers for gaps); the ag-grid adapter still holds local
+fallbacks marked `TODO(ag-grid)` until that package lands.
