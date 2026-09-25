@@ -8,7 +8,7 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
   const { schemaColumn, fieldType } = props;
   const options = columnOptions(schemaColumn?.config ?? fieldType?.defaultConfig);
   const selected = new Set(props.value ?? []);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLFieldSetElement | null>(null);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLInputElement>("input")?.focus();
@@ -23,11 +23,12 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
   };
 
   return (
-    <div
+    <fieldset
       ref={listRef}
       className="sg-multi-select-editor"
-      role="group"
-      aria-label={schemaColumn?.label}
+      // Native <fieldset> chrome (border/margin/padding) isn't part of this widget's design; reset it inline
+      // rather than in a shared stylesheet, since the group's a11y semantics are local to this editor.
+      style={{ border: 0, margin: 0, padding: 0 }}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
@@ -39,13 +40,16 @@ function MultiSelectInner(props: PopupEditorInnerProps<GridRow, string[]>): JSX.
         }
       }}
     >
+      <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+        {schemaColumn?.label}
+      </legend>
       {options.map((o) => (
         <label key={o.id} className="sg-multi-select-option">
           <input type="checkbox" checked={selected.has(o.id)} onChange={(e) => props.onChange(toNext(o.id, e.target.checked))} />
           {o.label}
         </label>
       ))}
-    </div>
+    </fieldset>
   );
 }
 

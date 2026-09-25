@@ -331,7 +331,10 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
 
       {kind === "multi" &&
         (useCheckboxes ? (
-          <div className="sg-filter-options" role="group" aria-label="Values">
+          <fieldset className="sg-filter-options" style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+              Values
+            </legend>
             {options.map((o) => (
               <label key={o.id}>
                 <input
@@ -346,7 +349,7 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
                 {o.label}
               </label>
             ))}
-          </div>
+          </fieldset>
         ) : (
           <input
             aria-label="Value"

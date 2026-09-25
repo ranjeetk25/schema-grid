@@ -111,7 +111,10 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
       {!isBoolean && (
         <input aria-label="Search options" type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
       )}
-      <div className="sg-filter-options" role="group" aria-label={`${resolved.column.label} values`}>
+      <fieldset className="sg-filter-options" style={{ border: 0, margin: 0, padding: 0 }}>
+        <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+          {`${resolved.column.label} values`}
+        </legend>
         {visible.map((o) => (
           <label key={o.id}>
             <input type="checkbox" checked={selected.includes(o.id)} onChange={(e) => toggle(o.id, e.target.checked)} />
@@ -119,7 +122,7 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
           </label>
         ))}
         {visible.length === 0 && <div className="sg-filter-empty">No options</div>}
-      </div>
+      </fieldset>
     </div>
   );
 }

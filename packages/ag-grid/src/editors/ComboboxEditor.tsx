@@ -224,14 +224,20 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
         onChange={(e) => setSearch(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      {loading ? (
-        <div className="sg-combobox-loading" role="status">
-          Loading…
-        </div>
-      ) : null}
+      {loading ? <output className="sg-combobox-loading">Loading…</output> : null}
+      {/*
+       * This is the ARIA 1.2 "combobox with aria-activedescendant" pattern (APG), not a
+       * native <select> — it needs a text input for live search, async-loaded/custom-
+       * rendered options and a "Create…" row, none of which a <select> can express. Focus
+       * stays on the <input> above; the active option is announced via
+       * aria-activedescendant, so the listbox and its options are intentionally not part
+       * of the tab order (see the ignores on the listbox and each option below).
+       */}
+      {/* biome-ignore lint/a11y/useFocusableInteractive: see comment above (aria-activedescendant pattern; focus stays on the input). */}
       <div
         id={listboxId}
         className="sg-combobox-listbox"
+        // biome-ignore lint/a11y/useSemanticElements: see comment above — not a native <select>.
         role="listbox"
         aria-label={schemaColumn?.label}
         aria-multiselectable={multiple || undefined}
@@ -240,9 +246,12 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
           const isActive = index === active;
           const selected = entry.kind === "item" && selectedKeys.has(entry.item.key);
           return (
+            // biome-ignore lint/a11y/useFocusableInteractive: intentionally not focusable — the aria-activedescendant combobox pattern keeps focus on the <input>; this row is only ever reached via aria-activedescendant + arrow keys, never Tab.
+            // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard activation is already handled by the input's onKeyDown (ArrowUp/Down to move `active`, Enter to activate the active entry); onClick here only covers the mouse/pointer path (see onKeyDown above).
             <div
               key={entry.kind === "item" ? `i:${entry.item.key}` : "create"}
               id={optionId(index)}
+              // biome-ignore lint/a11y/useSemanticElements: part of the custom combobox listbox above; a native <option> can't host this custom markup (create-row label, active/selected styling) inside a div-based popup.
               role="option"
               aria-selected={selected}
               className={[

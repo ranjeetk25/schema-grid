@@ -719,6 +719,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   });
   const { flushAfterGridUpdate, onCellEditingStopped } = remote;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rowData isn't read in the body; it's a trigger so this runs again after the grid has re-rendered with the new rows (pending cell refreshes must target freshly rendered nodes).
   useEffect(() => {
     if (mode !== "client") return;
     flushPendingRefresh();
@@ -726,6 +727,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [rowData, mode, flushPendingRefresh, flushAfterGridUpdate]);
 
   // Re-derive when anything the derivation reads changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: schema/registry/readable/tz/getCellValue/externalFilter/externalErrors aren't read directly here — deriveRef.current() (invoked via scheduleRowSync) reads them off `cfg.current`. They're kept as deps purely to re-trigger derivation whenever any of them changes.
   useEffect(() => {
     if (mode === "client") scheduleRowSync();
   }, [mode, schema, registry, readable, tz, getCellValue, externalFilter, externalErrors, scheduleRowSync]);
@@ -963,6 +965,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [loadAll, stores]);
 
   // Client: (re)load on mount, data source change and external filter change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dataSource/externalFilter/externalErrors aren't read directly — loadAll() reads the current values off `cfg.current`/`latest.current`. They're kept as deps to force a reload whenever any of them changes, per the comment above.
   useEffect(() => {
     if (mode !== "client") return;
     loadAll().catch(() => {
@@ -1190,6 +1193,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   );
   const appliedViewId = useRef<string | undefined>(undefined);
   const viewId = props.view?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: viewId isn't read in the body — the effect reads the real view off `latest.current.view` to avoid a stale closure. viewId is kept as a dep purely to re-trigger applyView when the view identity changes.
   useEffect(() => {
     const api = apiRef.current;
     const view = latest.current.view;

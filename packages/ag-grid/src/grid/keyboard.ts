@@ -44,7 +44,7 @@ import type { ExtendDirection } from "../range/geometry";
 export type GridKeyHandler<Row = unknown> = (params: SuppressKeyboardEventParams<Row>) => boolean;
 
 /** `true` is an alias of `"handled"`. */
-export type RootKeyResult = "handled" | "handled-no-prevent" | boolean | undefined | void;
+export type RootKeyResult = "handled" | "handled-no-prevent" | boolean | undefined;
 
 /** Root keydown handler; `event` is the native KeyboardEvent. */
 export type RootKeyHandler = (event: KeyboardEvent) => RootKeyResult;

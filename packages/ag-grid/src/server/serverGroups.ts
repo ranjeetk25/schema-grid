@@ -19,12 +19,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { combineFilters } from "../client/combineFilters";
-import {
-  type DisplayRow,
-  type GroupDisplayRow,
-  type GroupPathEntry,
-  type LoadMoreDisplayRow,
-} from "../grouping/clientGroups";
+import type { DisplayRow, GroupDisplayRow, GroupPathEntry, LoadMoreDisplayRow } from "../grouping/clientGroups";
 import { groupKeyToCondition } from "../grouping/groupCondition";
 import {
   type ColumnDef,
@@ -446,6 +441,7 @@ export function useServerGroups<Row extends GridRow = GridRow>(options: UseServe
 
   useEffect(() => () => controller?.dispose(), [controller]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dataSource isn't read directly (getDataSource() reads it via `latest.current`); it's kept as a dep so a new data source forces a fresh effect run (re-subscribe + reload), matching the "dataSource: a new data source reloads through a fresh effect run" contract below.
   useEffect(() => {
     if (!controller) {
       setRows(NO_ROWS);
