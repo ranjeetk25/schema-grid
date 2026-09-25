@@ -90,3 +90,8 @@ export {
 } from "./permissions/column-access";
 export type { AnyFieldType, FieldType, ParseResult } from "./field-types/types";
 export type { FieldTypeRegistry } from "./field-types/registry";
+export {
+  computeAggregate,
+  isAggregationAllowed,
+  UNIVERSAL_AGGREGATIONS,
+} from "./query/aggregate";
