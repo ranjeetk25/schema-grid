@@ -62,14 +62,14 @@ describe("planFormulaColumns", () => {
   it("number results are wrapped in the DECIMAL cast", () => {
     const r = renderSql(plans.get("total")?.sql as never);
     expect(r.sql).toMatchInlineSnapshot(
-      `"CAST((((COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)), 0) * ?) + COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.discount') AS DECIMAL(38,10)), 0))) AS DECIMAL(38,10))"`,
+      `"CAST((((COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END), 0) * ?) + COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.discount')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.discount') AS DECIMAL(38,10)) END), 0))) AS DECIMAL(38,10))"`,
     );
     expect(r.params).toEqual([2]);
   });
 
   it("text and boolean results are parenthesized", () => {
     expect(renderSql(plans.get("band")?.sql as never).sql.startsWith("((CASE WHEN")).toBe(true);
-    expect(renderSql(plans.get("big")?.sql as never).sql.startsWith("((CAST(")).toBe(true);
+    expect(renderSql(plans.get("big")?.sql as never).sql.startsWith("(((CASE WHEN")).toBe(true);
   });
 });
 

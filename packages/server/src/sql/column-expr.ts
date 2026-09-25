@@ -36,22 +36,26 @@ export function datetimeCast(inner: SQL): SQL {
   return sql`CAST(REPLACE(REPLACE(${inner}, 'T', ' '), 'Z', '') AS DATETIME(3))`;
 }
 
-/** Typed form of a JSON value extracted from `raw`. Exactly what `gc_<key>` columns are generated from. */
+/**
+ * Typed form of a JSON value extracted from `raw`. Exactly what `gc_<key>` columns are generated from.
+ * Every form maps absent keys, legacy JSON null and wrongly-typed JSON to SQL NULL (never to 0 / 'null'),
+ * so positive operators cannot match them and `empty` stays two-valued.
+ */
 export function typedFromRaw(raw: SQL, kind: StorageKind): SQL {
   switch (kind) {
     case "text":
     case "choice":
     case "ref":
-      return sql`JSON_UNQUOTE(${raw}) COLLATE ${sql.raw(TEXT_COLLATION)}`;
+      return sql`IF(JSON_TYPE(${raw}) = 'NULL', NULL, JSON_UNQUOTE(${raw})) COLLATE ${sql.raw(TEXT_COLLATION)}`;
     case "number":
-      return sql`CAST(${raw} AS DECIMAL(38,10))`;
+      return sql`(CASE WHEN JSON_TYPE(${raw}) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(${raw} AS DECIMAL(38,10)) END)`;
     case "date":
-      return sql`CAST(JSON_UNQUOTE(${raw}) AS DATE)`;
+      return sql`CAST(IF(JSON_TYPE(${raw}) = 'STRING', JSON_UNQUOTE(${raw}), NULL) AS DATE)`;
     case "datetime":
-      return datetimeCast(sql`JSON_UNQUOTE(${raw})`);
+      return datetimeCast(sql`IF(JSON_TYPE(${raw}) = 'STRING', JSON_UNQUOTE(${raw}), NULL)`);
     case "boolean":
-      // 1 / 0, NULL when absent. JSON booleans unquote to 'true' / 'false'.
-      return sql`(JSON_UNQUOTE(${raw}) = 'true')`;
+      // 1 / 0 for JSON booleans, NULL for anything else (absent, null, legacy 1/"true").
+      return sql`(CASE WHEN JSON_TYPE(${raw}) = 'BOOLEAN' THEN JSON_UNQUOTE(${raw}) = 'true' END)`;
     default:
       return raw;
   }
@@ -65,10 +69,14 @@ const TEXTISH: ReadonlySet<StorageKind> = new Set(["text", "choice", "ref"]);
 
 function jsonEmpty(key: string, kind: StorageKind, subPath: string | undefined): SQL {
   const base = jsonExtract(key);
-  const parts: SQL[] = [sql`${base} IS NULL`, sql`JSON_TYPE(${base}) = 'NULL'`];
-  if (TEXTISH.has(kind)) parts.push(sql`${typedJsonExpr(key, kind, subPath)} = ''`);
-  if (kind === "multi") parts.push(sql`JSON_LENGTH(${base}) = 0`);
-  return sql`(${sql.join(parts, sql` OR `)})`;
+  if (kind === "multi" || kind === "json") {
+    const parts: SQL[] = [sql`${base} IS NULL`, sql`JSON_TYPE(${base}) = 'NULL'`];
+    if (kind === "multi") parts.push(sql`JSON_LENGTH(${base}) = 0`);
+    return sql`(${sql.join(parts, sql` OR `)})`;
+  }
+  // Scalars: `typed` is NULL for absent / JSON null / wrong type / missing sub-path leaf.
+  const typed = typedJsonExpr(key, kind, subPath);
+  return TEXTISH.has(kind) ? sql`(${typed} IS NULL OR ${typed} = '')` : sql`(${typed} IS NULL)`;
 }
 
 function columnEmpty(expr: SQL, kind: StorageKind): SQL {

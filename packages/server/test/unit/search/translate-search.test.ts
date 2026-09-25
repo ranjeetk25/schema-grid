@@ -45,7 +45,7 @@ describe("translateSearch", () => {
     const scope = makeScope(makeCtx(single));
     const { sql: rendered, params } = renderSql(translateSearch("50%", accessAllReadable(single), scope)!);
     expect(rendered).toContain("LIKE");
-    expect(params).toEqual(["%50\\%%"]);
+    expect(params).toEqual(["%50!%%"]);
   });
 
   it("returns undefined when nothing is searchable", () => {
@@ -63,7 +63,7 @@ describe("translateSearch", () => {
     const scope = makeScope(makeCtx(schema));
     const { sql: rendered, params } = renderSql(translateSearch("bob", accessAllReadable(schema), scope)!);
     expect(rendered).toMatchInlineSnapshot(
-      `"(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name')) COLLATE utf8mb4_0900_ai_ci LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.status')) COLLATE utf8mb4_0900_ai_ci LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id')) COLLATE utf8mb4_0900_ai_ci LIKE ?)"`,
+      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.status')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.status'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!' OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci LIKE ? ESCAPE '!')"`,
     );
     expect(params).toEqual(["%bob%", "%bob%", "%bob%"]);
   });

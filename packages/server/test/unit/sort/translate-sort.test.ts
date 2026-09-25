@@ -21,7 +21,7 @@ describe("translateSort", () => {
   it("a number sort uses the DECIMAL cast", () => {
     const { orderBy } = translateSort([{ columnId: "fee", dir: "asc" }], makeScope());
     expect(orderSql(orderBy).sql).toMatchInlineSnapshot(
-      `"(CASE WHEN (JSON_EXTRACT(\`cells\`, '$.fee') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) = 'NULL') THEN 1 ELSE 0 END) ASC, CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) ASC, \`id\` ASC"`,
+      `"(CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) IS NULL) THEN 1 ELSE 0 END) ASC, (CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) ASC, \`id\` ASC"`,
     );
   });
 
@@ -29,7 +29,9 @@ describe("translateSort", () => {
     const { orderBy, keys } = translateSort([{ columnId: "callDate", dir: "desc" }], makeScope());
     const rendered = orderSql(orderBy).sql;
     expect(rendered.startsWith("(CASE WHEN")).toBe(true);
-    expect(rendered).toContain("ASC, CAST(JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')) AS DATE) DESC");
+    expect(rendered).toContain(
+      "ASC, CAST(IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')), NULL) AS DATE) DESC",
+    );
     expect(rendered.endsWith("`id` ASC")).toBe(true);
     expect(keys[0]?.dir).toBe("desc");
   });

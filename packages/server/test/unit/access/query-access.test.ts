@@ -114,3 +114,37 @@ describe("assertQueryAccess permission matrix", () => {
     expect(catchErr(run("admin", { filter: tooDeep }))).toBeInstanceOf(FilterValidationError);
   });
 });
+
+describe("assertQueryAccess robustness", () => {
+  it("malformed filters throw FilterValidationError, not TypeError", () => {
+    const bad = [
+      { columnId: "fee", operator: "gt", value: 1, op: "and" },
+      { op: "and", children: "ab" },
+      { op: "xor", children: [] },
+      { columnId: 3, operator: "is" },
+    ];
+    for (const f of bad) {
+      expect(catchErr(run("admin", { filter: f as never }))).toBeInstanceOf(FilterValidationError);
+    }
+    expect(catchErr(run("admin", { sort: "x" as never }))).toBeInstanceOf(FilterValidationError);
+  });
+
+  it("zero-pin AND[OR[AND[..]]] beyond depth is rejected", () => {
+    const inner = { op: "or" as const, children: [{ op: "and" as const, children: [{ op: "or" as const, children: [{ columnId: "fee", operator: "gt", value: 1 }] }] }] };
+    expect(catchErr(run("admin", { filter: { op: "and", children: [inner] } }))).toBeInstanceOf(FilterValidationError);
+  });
+
+  it("custom resolver returning an unknown access value fails closed (and hides dependent formulas)", async () => {
+    const { createServerContext } = await import("../../../src/context");
+    const { createDefaultRegistry } = await import("../../../src/internal/core");
+    const ctx = createServerContext({
+      schema,
+      registry: createDefaultRegistry(),
+      resolver: ({ column }) => (column.id === "salary" ? ("none" as never) : "read"),
+      user: { id: "x", roles: [] },
+    });
+    const access = resolveAccess(ctx);
+    expect(access.get("salary")).toBe("hidden");
+    expect(access.get("net")).toBe("hidden");
+  });
+});

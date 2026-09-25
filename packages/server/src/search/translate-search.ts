@@ -2,8 +2,9 @@ import { type SQL, sql } from "drizzle-orm";
 import { resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { storageKindOf } from "../sql/storage-kind";
-import { escapeLike } from "../sql/like";
+import { escapeLike, likeSql } from "../sql/like";
 import type { Access } from "../internal/core";
+import { isReadable } from "../access/query-access";
 
 const SEARCHABLE_KINDS = new Set(["text", "choice", "ref"]);
 
@@ -25,7 +26,7 @@ export function translateSearch(
   const branches: SQL[] = [];
 
   for (const column of scope.ctx.schema.columns) {
-    if (access.get(column.id) === "hidden") continue;
+    if (!isReadable(access, column.id)) continue;
 
     if (column.type === "formula") {
       const plan = scope.formulaPlans?.get(column.id);
@@ -38,7 +39,7 @@ export function translateSearch(
     }
 
     const expr = resolveColumnExpr(column, scope);
-    branches.push(sql`${expr.typed} LIKE ${pattern}`);
+    branches.push(likeSql(expr.typed, pattern));
   }
 
   if (branches.length === 0) return undefined;

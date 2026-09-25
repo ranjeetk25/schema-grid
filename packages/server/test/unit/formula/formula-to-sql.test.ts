@@ -38,7 +38,7 @@ describe("formulaToSql — translatable subset", () => {
   it("arithmetic on currency/number refs with DECIMAL casts and COALESCE(…, 0)", () => {
     const r = render("{fee} * 2 + {discount}");
     expect(r?.sql).toMatchInlineSnapshot(
-      `"((COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)), 0) * ?) + COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.discount') AS DECIMAL(38,10)), 0))"`,
+      `"((COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END), 0) * ?) + COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.discount')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.discount') AS DECIMAL(38,10)) END), 0))"`,
     );
     expect(r?.params).toEqual([2]);
   });
@@ -46,7 +46,7 @@ describe("formulaToSql — translatable subset", () => {
   it("IF becomes CASE WHEN with bound literals", () => {
     const r = render('IF({fee} > 1000, "high", "low")');
     expect(r?.sql).toMatchInlineSnapshot(
-      `"(CASE WHEN (CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) > ?) THEN ? ELSE ? END)"`,
+      `"(CASE WHEN ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END) > ?) THEN ? ELSE ? END)"`,
     );
     expect(r?.params).toEqual([1000, "high", "low"]);
   });
@@ -57,7 +57,7 @@ describe("formulaToSql — translatable subset", () => {
 
   it("COALESCE translates", () => {
     const r = render("COALESCE({a}, 0)");
-    expect(r?.sql).toMatchInlineSnapshot(`"COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.a') AS DECIMAL(38,10)), ?)"`);
+    expect(r?.sql).toMatchInlineSnapshot(`"COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.a')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.a') AS DECIMAL(38,10)) END), ?)"`);
     expect(r?.params).toEqual([0]);
   });
 
@@ -77,7 +77,7 @@ describe("formulaToSql — translatable subset", () => {
 
   it("text comparison and select refs translate", () => {
     const r = render('{name} = "Bob" && {status} = "paid"');
-    expect(r?.sql).toContain("JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name')) COLLATE utf8mb4_0900_ai_ci");
+    expect(r?.sql).toContain("IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_ai_ci");
     expect(r?.params).toEqual(["Bob", "paid"]);
   });
 
@@ -101,7 +101,7 @@ describe("formulaToSql — translatable subset", () => {
     // MySQL returns NULL for `x / 0` and `MOD(x, 0)` natively; core `evaluate`
     // also yields null for ÷0. Parity between the two is asserted in T25.
     const r = render("{a} / 0");
-    expect(r?.sql).toMatchInlineSnapshot(`"(COALESCE(CAST(JSON_EXTRACT(\`cells\`, '$.a') AS DECIMAL(38,10)), 0) / ?)"`);
+    expect(r?.sql).toMatchInlineSnapshot(`"(COALESCE((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.a')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.a') AS DECIMAL(38,10)) END), 0) / ?)"`);
     expect(r?.params).toEqual([0]);
   });
 });

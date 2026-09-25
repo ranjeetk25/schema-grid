@@ -1,6 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import { UnsupportedOperatorError } from "../errors";
-import { type FilterCondition, type FilterNode, getColumnOperators } from "../internal/core";
+import { type FilterCondition, type FilterNode, getColumnOperators, isNegativeOperator } from "../internal/core";
 import { resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { getOperatorTranslator } from "./operator-table";
@@ -24,7 +24,8 @@ function translateCondition(cond: FilterCondition, scope: SqlScope): SQL {
   const cmp = translator({ expr, column, operator, value: cond.value, scope });
 
   // Null rule (spec §4.3): negative operators MATCH empty values; positive never do.
-  return operator.negative ? sql`(${cmp} OR ${expr.empty})` : sql`(${cmp} AND NOT ${expr.empty})`;
+  const negative = operator.negative === true || isNegativeOperator(operator.id);
+  return negative ? sql`(${cmp} OR ${expr.empty})` : sql`(${cmp} AND NOT ${expr.empty})`;
 }
 
 /**

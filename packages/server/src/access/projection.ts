@@ -1,5 +1,6 @@
 import { type SQL, sql } from "drizzle-orm";
 import type { AnyMySqlColumn } from "drizzle-orm/mysql-core";
+import { SchemaValidationError } from "../errors";
 import type { GridRow, GridSchema } from "../internal/core";
 import { assertSafeColumnKey, jsonPath } from "../storage/keys";
 import type { GridTables } from "../storage/tables";
@@ -25,7 +26,17 @@ export function projectionSql(schema: GridSchema, access: AccessMap, tables: Gri
     if (!isReadable(access, column.id) || column.type === "formula") continue;
     if (column.source) {
       const col = tables.physical[column.source.valueField];
-      if (col) physical[column.source.valueField] = col;
+      if (!col) {
+        throw new SchemaValidationError([
+          {
+            code: "unknownValueField",
+            columnId: column.id,
+            path: ["source", "valueField"],
+            message: `Physical column "${column.source.valueField}" is not defined on the rows table`,
+          },
+        ]);
+      }
+      physical[column.source.valueField] = col;
       continue;
     }
     const key = assertSafeColumnKey(column.key, column.id);

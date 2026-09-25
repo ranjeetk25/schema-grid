@@ -14,10 +14,11 @@ const t = (node: FilterNode | null) => {
   return out ? renderSql(out) : undefined;
 };
 
-const NAME = "JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name')) COLLATE utf8mb4_0900_ai_ci";
-const NAME_EMPTY = `(JSON_EXTRACT(\`cells\`, '$.name') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL' OR ${NAME} = '')`;
-const FEE = "CAST(JSON_EXTRACT(`cells`, '$.fee') AS DECIMAL(38,10))";
-const FEE_EMPTY = "(JSON_EXTRACT(`cells`, '$.fee') IS NULL OR JSON_TYPE(JSON_EXTRACT(`cells`, '$.fee')) = 'NULL')";
+const NAME = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.name'))) COLLATE utf8mb4_0900_ai_ci";
+const NAME_EMPTY = `(${NAME} IS NULL OR ${NAME} = '')`;
+const FEE =
+  "(CASE WHEN JSON_TYPE(JSON_EXTRACT(`cells`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(`cells`, '$.fee') AS DECIMAL(38,10)) END)";
+const FEE_EMPTY = `(${FEE} IS NULL)`;
 
 describe("translateFilter: text", () => {
   it("isNot includes empty values: (expr <> ? OR expr IS NULL ...)", () => {
@@ -28,11 +29,11 @@ describe("translateFilter: text", () => {
 
   it("notContains includes the empty branch; contains excludes it and escapes", () => {
     const nc = t({ columnId: "name", operator: "notContains", value: "x" });
-    expect(nc?.sql).toBe(`(${NAME} NOT LIKE ? OR ${NAME_EMPTY})`);
+    expect(nc?.sql).toBe(`(${NAME} NOT LIKE ? ESCAPE '!' OR ${NAME_EMPTY})`);
     expect(nc?.params).toEqual(["%x%"]);
     const c = t({ columnId: "name", operator: "contains", value: "5%_" });
-    expect(c?.sql).toBe(`(${NAME} LIKE ? AND NOT ${NAME_EMPTY})`);
-    expect(c?.params).toEqual(["%5\\%\\_%"]);
+    expect(c?.sql).toBe(`(${NAME} LIKE ? ESCAPE '!' AND NOT ${NAME_EMPTY})`);
+    expect(c?.params).toEqual(["%5!%!_%"]);
   });
 
   it("startsWith / is", () => {
@@ -72,7 +73,7 @@ describe("translateFilter: boolean", () => {
   it("isFalse does not match empty (no OR-empty branch)", () => {
     const r = t({ columnId: "isActive", operator: "isFalse" });
     expect(r?.sql).toMatchInlineSnapshot(
-      `"((JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true') = 0 AND NOT (JSON_EXTRACT(\`cells\`, '$.isActive') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'NULL'))"`,
+      `"((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'BOOLEAN' THEN JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true' END) = 0 AND NOT ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'BOOLEAN' THEN JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true' END) IS NULL))"`,
     );
     expect(r?.sql).not.toMatch(/ OR \(JSON_EXTRACT/);
     expect(t({ columnId: "isActive", operator: "isTrue" })?.sql).toContain("= 1 AND NOT");

@@ -17,10 +17,10 @@ const tAt = (now: Date, node: FilterNode) => {
 };
 const t = (node: FilterNode) => tAt(NOW, node);
 
-const CD = "CAST(JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')) AS DATE)";
-const CD_EMPTY = "(JSON_EXTRACT(`cells`, '$.callDate') IS NULL OR JSON_TYPE(JSON_EXTRACT(`cells`, '$.callDate')) = 'NULL')";
-const CA = "CAST(REPLACE(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.calledAt')), 'T', ' '), 'Z', '') AS DATETIME(3))";
-const CA_EMPTY = "(JSON_EXTRACT(`cells`, '$.calledAt') IS NULL OR JSON_TYPE(JSON_EXTRACT(`cells`, '$.calledAt')) = 'NULL')";
+const CD = "CAST(IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.callDate')), NULL) AS DATE)";
+const CD_EMPTY = `(${CD} IS NULL)`;
+const CA = "CAST(REPLACE(REPLACE(IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.calledAt')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.calledAt')), NULL), 'T', ' '), 'Z', '') AS DATETIME(3))";
+const CA_EMPTY = `(${CA} IS NULL)`;
 
 describe("sql/dates helpers", () => {
   it("toMysqlUtc renders UTC with milliseconds", () => {
@@ -177,7 +177,7 @@ describe("translateFilter: §8 combined filter", () => {
           "2026-09-24",
           "2026-09-25",
         ],
-        "sql": "((JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) COLLATE utf8mb4_0900_ai_ci <> ? OR (JSON_EXTRACT(\`cells\`, '$.paymentStatus') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL' OR JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) COLLATE utf8mb4_0900_ai_ci = '')) AND (CAST(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')) AS DATE) >= ? AND CAST(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')) AS DATE) < ? AND NOT (JSON_EXTRACT(\`cells\`, '$.callDate') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'NULL')))",
+        "sql": "((IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci <> ? OR (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci = '')) AND (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) >= ? AND CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) < ? AND NOT (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL)))",
       }
     `);
     expect(r.params).toEqual(["paid", "2026-09-24", "2026-09-25"]);

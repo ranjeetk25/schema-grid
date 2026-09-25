@@ -52,15 +52,15 @@ describe("resolveColumnExpr", () => {
       link: typed("links").sql,
     }).toMatchInlineSnapshot(`
       {
-        "boolean": "(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true')",
-        "choice": "JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) COLLATE utf8mb4_0900_ai_ci",
-        "date": "CAST(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')) AS DATE)",
-        "datetime": "CAST(REPLACE(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), 'T', ' '), 'Z', '') AS DATETIME(3))",
+        "boolean": "(CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'BOOLEAN' THEN JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.isActive')) = 'true' END)",
+        "choice": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci",
+        "date": "CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE)",
+        "datetime": "CAST(REPLACE(REPLACE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.calledAt')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), NULL), 'T', ' '), 'Z', '') AS DATETIME(3))",
         "link": "JSON_EXTRACT(\`cells\`, '$.links[*].id')",
         "multi": "JSON_EXTRACT(\`cells\`, '$.tags')",
-        "number": "CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10))",
-        "ref": "JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id')) COLLATE utf8mb4_0900_ai_ci",
-        "text": "JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name')) COLLATE utf8mb4_0900_ai_ci",
+        "number": "(CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)",
+        "ref": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci",
+        "text": "IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci",
       }
     `);
     expect(typed("name").params).toEqual([]);
@@ -79,11 +79,15 @@ describe("resolveColumnExpr", () => {
     expect(renderSql(e.typed).sql).toBe("`gc_indexedFee`");
     const j = resolveColumnExpr(column(schema, "indexedFee"), makeScope(makeCtx(schema), { generatedColumns: "ignore" }));
     expect(j.source).toBe("json");
-    expect(renderSql(j.typed).sql).toBe("CAST(JSON_EXTRACT(`cells`, '$.indexedFee') AS DECIMAL(38,10))");
+    expect(renderSql(j.typed).sql).toBe(
+      "(CASE WHEN JSON_TYPE(JSON_EXTRACT(`cells`, '$.indexedFee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(`cells`, '$.indexedFee') AS DECIMAL(38,10)) END)",
+    );
   });
 
   it("datetime cast is the shared constant used by generated columns", () => {
-    const shared = renderSql(datetimeCast(sql`JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt'))`)).sql;
+    const shared = renderSql(
+      datetimeCast(sql`IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.calledAt')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), NULL)`),
+    ).sql;
     expect(typed("calledAt").sql).toBe(shared);
     expect(renderSql(typedJsonExpr("calledAt", "datetime")).sql).toBe(shared);
   });
@@ -93,7 +97,7 @@ describe("resolveColumnExpr", () => {
       `"(JSON_EXTRACT(\`cells\`, '$.tags') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.tags')) = 'NULL' OR JSON_LENGTH(JSON_EXTRACT(\`cells\`, '$.tags')) = 0)"`,
     );
     expect(renderSql(isEmptyExpr(column(schema, "name"), scope)).sql).toMatchInlineSnapshot(
-      `"(JSON_EXTRACT(\`cells\`, '$.name') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL' OR JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name')) COLLATE utf8mb4_0900_ai_ci = '')"`,
+      `"(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci = '')"`,
     );
     expect(renderSql(isEmptyExpr(column(schema, "fee"), scope)).sql).not.toContain("= ''");
   });

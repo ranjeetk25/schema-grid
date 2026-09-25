@@ -12,10 +12,10 @@ const t = (node: FilterNode | null) => {
   return out ? renderSql(out) : undefined;
 };
 
-const PS = "JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.paymentStatus')) COLLATE utf8mb4_0900_ai_ci";
-const PS_EMPTY = `(JSON_EXTRACT(\`cells\`, '$.paymentStatus') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL' OR ${PS} = '')`;
-const OWNER = "JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.owner.id')) COLLATE utf8mb4_0900_ai_ci";
-const OWNER_EMPTY = `(JSON_EXTRACT(\`cells\`, '$.owner') IS NULL OR JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.owner')) = 'NULL' OR ${OWNER} = '')`;
+const PS = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci";
+const PS_EMPTY = `(${PS} IS NULL OR ${PS} = '')`;
+const OWNER = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci";
+const OWNER_EMPTY = `(${OWNER} IS NULL OR ${OWNER} = '')`;
 const TAGS = "JSON_EXTRACT(`cells`, '$.tags')";
 const TAGS_EMPTY = `(${TAGS} IS NULL OR JSON_TYPE(${TAGS}) = 'NULL' OR JSON_LENGTH(${TAGS}) = 0)`;
 const LINKS = "JSON_EXTRACT(`cells`, '$.links[*].id')";
@@ -26,7 +26,7 @@ describe("translateFilter: choice (select / creatableSelect)", () => {
     expect(is?.sql).toBe(`(${PS} = ? AND NOT ${PS_EMPTY})`);
     expect(is?.params).toEqual(["paid"]);
     const isNot = t({ columnId: "source", operator: "isNot", value: "paid" });
-    expect(isNot?.sql).toContain(" <> ? OR (JSON_EXTRACT(`cells`, '$.source') IS NULL");
+    expect(isNot?.sql).toContain(" <> ? OR (IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.source')) = 'NULL'");
     expect(isNot?.params).toEqual(["paid"]);
   });
 

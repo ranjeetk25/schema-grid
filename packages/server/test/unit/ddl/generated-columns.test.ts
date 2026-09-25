@@ -12,28 +12,28 @@ describe("generatedColumnDDL", () => {
   it("emits the ALTER for a text column", () => {
     const stmt = generatedColumnDDL(TABLE, column(schema, "name"));
     expect(stmt.sql).toMatchInlineSnapshot(
-      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_name\` VARCHAR(191) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name')) COLLATE utf8mb4_0900_ai_ci) VIRTUAL, ADD INDEX \`idx_gc_name\` (\`gc_name\`)"`,
+      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_name\` VARCHAR(191) GENERATED ALWAYS AS (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.name')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.name'))) COLLATE utf8mb4_0900_ai_ci) VIRTUAL, ADD INDEX \`idx_gc_name\` (\`gc_name\`)"`,
     );
   });
 
   it("emits the ALTER for a number column", () => {
     const stmt = generatedColumnDDL(TABLE, column(schema, "fee"));
     expect(stmt.sql).toMatchInlineSnapshot(
-      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_fee\` DECIMAL(38,10) GENERATED ALWAYS AS (CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10))) VIRTUAL, ADD INDEX \`idx_gc_fee\` (\`gc_fee\`)"`,
+      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_fee\` DECIMAL(38,10) GENERATED ALWAYS AS ((CASE WHEN JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.fee')) IN ('INTEGER', 'UNSIGNED INTEGER', 'DOUBLE', 'DECIMAL') THEN CAST(JSON_EXTRACT(\`cells\`, '$.fee') AS DECIMAL(38,10)) END)) VIRTUAL, ADD INDEX \`idx_gc_fee\` (\`gc_fee\`)"`,
     );
   });
 
   it("emits the ALTER for a date column", () => {
     const stmt = generatedColumnDDL(TABLE, column(schema, "callDate"));
     expect(stmt.sql).toMatchInlineSnapshot(
-      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_callDate\` DATE GENERATED ALWAYS AS (CAST(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')) AS DATE)) VIRTUAL, ADD INDEX \`idx_gc_callDate\` (\`gc_callDate\`)"`,
+      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_callDate\` DATE GENERATED ALWAYS AS (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE)) VIRTUAL, ADD INDEX \`idx_gc_callDate\` (\`gc_callDate\`)"`,
     );
   });
 
   it("emits the ALTER for a datetime column", () => {
     const stmt = generatedColumnDDL(TABLE, column(schema, "calledAt"));
     expect(stmt.sql).toMatchInlineSnapshot(
-      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_calledAt\` DATETIME(3) GENERATED ALWAYS AS (CAST(REPLACE(REPLACE(JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), 'T', ' '), 'Z', '') AS DATETIME(3))) VIRTUAL, ADD INDEX \`idx_gc_calledAt\` (\`gc_calledAt\`)"`,
+      `"ALTER TABLE \`grid_rows\` ADD COLUMN \`gc_calledAt\` DATETIME(3) GENERATED ALWAYS AS (CAST(REPLACE(REPLACE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.calledAt')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.calledAt')), NULL), 'T', ' '), 'Z', '') AS DATETIME(3))) VIRTUAL, ADD INDEX \`idx_gc_calledAt\` (\`gc_calledAt\`)"`,
     );
   });
 
