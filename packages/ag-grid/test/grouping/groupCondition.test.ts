@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+import { createDefaultRegistry } from "../../src/internal/core";
+import { groupKeyToCondition } from "../../src/grouping/groupCondition";
+import { fixtureColumns, PAYMENT_OPTIONS } from "../fixtures/schema";
+
+const registry = createDefaultRegistry();
+const byId = new Map(fixtureColumns.map((c) => [c.id, c]));
+
+describe("groupKeyToCondition", () => {
+  it("select/creatableSelect/user/text-like/date use 'is'", () => {
+    const payment = byId.get("payment")!;
+    expect(groupKeyToCondition(payment, "paid", registry)).toEqual({ columnId: "payment", operator: "is", value: "paid" });
+
+    const callDate = byId.get("callDate")!;
+    expect(groupKeyToCondition(callDate, "2026-09-24", registry)).toEqual({
+      columnId: "callDate",
+      operator: "is",
+      value: "2026-09-24",
+    });
+
+    const name = byId.get("name")!;
+    expect(groupKeyToCondition(name, "Asha", registry)).toEqual({ columnId: "name", operator: "is", value: "Asha" });
+  });
+
+  it("link uses 'is' with the link's id as value", () => {
+    const program = byId.get("program")!;
+    expect(groupKeyToCondition(program, { id: "prog-1", label: "Program 1" }, registry)).toEqual({
+      columnId: "program",
+      operator: "is",
+      value: "prog-1",
+    });
+  });
+
+  it("number/currency use 'eq'", () => {
+    const score = byId.get("score")!;
+    expect(groupKeyToCondition(score, 10, registry)).toEqual({ columnId: "score", operator: "eq", value: 10 });
+
+    const fee = byId.get("fee")!;
+    expect(groupKeyToCondition(fee, 1000, registry)).toEqual({ columnId: "fee", operator: "eq", value: 1000 });
+  });
+
+  it("boolean uses isTrue/isFalse", () => {
+    const active = byId.get("active")!;
+    expect(groupKeyToCondition(active, true, registry)).toEqual({ columnId: "active", operator: "isTrue" });
+    expect(groupKeyToCondition(active, false, registry)).toEqual({ columnId: "active", operator: "isFalse" });
+  });
+
+  it("multiSelect uses hasAllOf with the array", () => {
+    const tags = byId.get("tags")!;
+    expect(groupKeyToCondition(tags, ["hot", "warm"], registry)).toEqual({
+      columnId: "tags",
+      operator: "hasAllOf",
+      value: ["hot", "warm"],
+    });
+  });
+
+  it("empty keys map to isEmpty regardless of type", () => {
+    const payment = byId.get("payment")!;
+    expect(groupKeyToCondition(payment, null, registry)).toEqual({ columnId: "payment", operator: "isEmpty" });
+
+    const tags = byId.get("tags")!;
+    expect(groupKeyToCondition(tags, [], registry)).toEqual({ columnId: "tags", operator: "isEmpty" });
+
+    const name = byId.get("name")!;
+    expect(groupKeyToCondition(name, "", registry)).toEqual({ columnId: "name", operator: "isEmpty" });
+  });
+
+  it("formula columns use the result type's operator", () => {
+    const total = byId.get("total")!; // resultType: number
+    expect(groupKeyToCondition(total, 20, registry)).toEqual({ columnId: "total", operator: "eq", value: 20 });
+  });
+
+  it("uses PAYMENT_OPTIONS values as-is (no label translation)", () => {
+    const payment = byId.get("payment")!;
+    for (const opt of PAYMENT_OPTIONS) {
+      expect(groupKeyToCondition(payment, opt.value, registry)).toEqual({
+        columnId: "payment",
+        operator: "is",
+        value: opt.value,
+      });
+    }
+  });
+});
