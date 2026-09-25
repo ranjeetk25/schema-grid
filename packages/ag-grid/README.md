@@ -472,7 +472,7 @@ exponential backoff on errors (capped at 60 s) and never more than one request i
 | Key | Effect |
 |---|---|
 | Enter / F2 / typing | Start editing the focused editable cell (read-only cells never enter edit mode) |
-| Enter (editing) | Commit and move down one row (`enterNavigatesVertically` + `enterNavigatesVerticallyAfterEdit`) |
+| Enter (editing) | Commit and move down one row (`enterNavigatesVerticallyAfterEdit`) |
 | Tab / Shift+Tab (editing) | Commit and move to the next / previous **editable** cell, which starts editing |
 | Esc (editing) | Cancel: the value is restored, nothing is written |
 | Arrows | Move focus; collapses the range |

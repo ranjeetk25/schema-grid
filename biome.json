@@ -11,7 +11,11 @@
       "**/dist/**",
       "**/node_modules/**",
       "**/coverage/**",
-      "**/.worktrees/**"
+      "**/.worktrees/**",
+      "**/storybook-static/**",
+      "**/test-results/**",
+      "**/playwright-report/**",
+      "apps/demo-api/data/**"
     ]
   },
   "formatter": {

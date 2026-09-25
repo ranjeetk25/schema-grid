@@ -5,9 +5,10 @@
  *
  * Every selector below is scoped under `.sg-root` (the class the grid's
  * wrapping element carries) so this CSS never leaks onto the rest of the
- * host page. `theme.ts` injects it via the Theming API's `createPart`
- * `css` option; `SG_CSS` is also exported raw so a consumer that can't use
- * the Theming part mechanism can ship it as a stylesheet instead.
+ * host page when shipped as a plain stylesheet. `theme.ts` injects the
+ * part-scoped variant (`SG_THEME_CSS`) via the Theming API's `createPart`
+ * `css` option; `SG_CSS` is exported raw so a consumer that can't use the
+ * Theming part mechanism can ship it as a stylesheet instead.
  */
 
 export const SG_CLASSES = {
@@ -29,12 +30,8 @@ export const SG_CLASSES = {
 
 export type SgClassName = (typeof SG_CLASSES)[keyof typeof SG_CLASSES];
 
-/**
- * Raw CSS for all `SG_CLASSES`, every selector scoped under `.sg-root`.
- * Colors are `var(--sg-*, <fallback>)` so a host page can theme us without
- * a rebuild, falling back to sensible defaults otherwise.
- */
-export const SG_CSS = `
+/** The decoration rules, every selector scoped under `.sg-root`. */
+const SG_RULES_CSS = `
 .${SG_CLASSES.root} .${SG_CLASSES.range} {
   background-color: var(--sg-range-bg, rgba(33, 133, 208, 0.12));
 }
@@ -102,7 +99,14 @@ export const SG_CSS = `
   cursor: pointer;
   text-align: center;
 }
+`;
 
+/**
+ * The remote-change flash. `@keyframes` cannot live inside the theme part
+ * (AG Grid nests a part in a style rule, where `@keyframes` is invalid and
+ * dropped), so `<SchemaGrid>` renders this in a plain `<style>` element.
+ */
+export const SG_KEYFRAMES_CSS = `
 @keyframes sg-remote-flash {
   from {
     background-color: var(--sg-remote-flash-bg, rgba(33, 186, 69, 0.35));
@@ -112,3 +116,20 @@ export const SG_CSS = `
   }
 }
 `;
+
+/**
+ * Raw CSS for all `SG_CLASSES`, every selector scoped under `.sg-root`, plus
+ * the keyframes. Colors are `var(--sg-*, <fallback>)` so a host page can
+ * theme us without a rebuild, falling back to sensible defaults otherwise.
+ */
+export const SG_CSS = `${SG_RULES_CSS}${SG_KEYFRAMES_CSS}`;
+
+/**
+ * The rules as injected through the Theming API part (`theme.ts`). AG Grid
+ * wraps a part's CSS in the theme's scope class, which it puts on the grid's
+ * own `ag-styled-root` element — *inside* `.sg-root` — so the `.sg-root`
+ * ancestor is dropped here (a `.sg-root` below that scope never exists and
+ * no rule would match). The theme scope already keeps this CSS off the rest
+ * of the page.
+ */
+export const SG_THEME_CSS = SG_RULES_CSS.split(`.${SG_CLASSES.root} `).join("");

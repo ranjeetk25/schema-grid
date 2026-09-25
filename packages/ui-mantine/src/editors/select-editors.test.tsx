@@ -124,3 +124,101 @@ describe("select editors follow config changes", () => {
     expect(await screen.findByRole("option", { name: /Paid/ })).toBeInTheDocument();
   });
 });
+
+// Found by apps/storybook Playwright (ui scenario §2): in a grid popup the
+// wrapper div kept focus, so arrow keys / typing never reached the combobox.
+describe("grid-mode focus (autoFocus !== false)", () => {
+  it("SelectEditor focuses its input on mount", () => {
+    const { getByRole } = renderWithMantine(
+      <SelectEditor
+        value={null}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onCancel={vi.fn()}
+        column={fixtureColumn(FIXTURE_IDS.payment)}
+        config={fixtureColumn(FIXTURE_IDS.payment).config as SelectEditorConfig}
+        autoFocus
+      />,
+    );
+    expect(document.activeElement).toBe(getByRole("textbox"));
+  });
+
+  it("MultiSelectEditor focuses its input on mount", () => {
+    const { container } = renderWithMantine(
+      <MultiSelectEditor
+        value={[]}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onCancel={vi.fn()}
+        column={fixtureColumn(FIXTURE_IDS.payment)}
+        config={fixtureColumn(FIXTURE_IDS.payment).config as MultiSelectEditorConfig}
+        autoFocus
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector("input:not([type=hidden])"));
+  });
+
+  it("does not steal focus when autoFocus is false (filter builder / forms)", () => {
+    renderWithMantine(
+      <SelectEditor
+        value={null}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        onCancel={vi.fn()}
+        column={fixtureColumn(FIXTURE_IDS.payment)}
+        config={fixtureColumn(FIXTURE_IDS.payment).config as SelectEditorConfig}
+        autoFocus={false}
+      />,
+    );
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+
+// Found by apps/storybook Playwright (ui scenario §2): AG Grid forwards Enter
+// from popup editors to the grid, which ended the edit with the OLD value
+// before the combobox could pick the highlighted option.
+describe("SelectEditor keyboard pick in grid mode", () => {
+  it("Enter on a highlighted option commits it and does not reach the grid", async () => {
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    const gridKeys: string[] = [];
+    const { user, container, getByRole } = renderWithMantine(
+      <SelectEditor
+        value="paid"
+        onChange={onChange}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+        column={fixtureColumn(FIXTURE_IDS.payment)}
+        config={fixtureColumn(FIXTURE_IDS.payment).config as SelectEditorConfig}
+        autoFocus
+      />,
+    );
+    // Stands in for AG Grid's native keydown listener on the popup wrapper.
+    container.addEventListener("keydown", (e) => gridKeys.push(e.key));
+    expect(document.activeElement).toBe(getByRole("textbox"));
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    await user.keyboard("{Enter}");
+    expect(onCommit).toHaveBeenCalledWith("pending");
+    expect(gridKeys).not.toContain("Enter");
+  });
+
+  it("Enter with nothing highlighted still reaches the grid (commit current value)", async () => {
+    const onCommit = vi.fn();
+    const gridKeys: string[] = [];
+    const { user, container } = renderWithMantine(
+      <SelectEditor
+        value="paid"
+        onChange={vi.fn()}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+        column={fixtureColumn(FIXTURE_IDS.payment)}
+        config={fixtureColumn(FIXTURE_IDS.payment).config as SelectEditorConfig}
+        autoFocus
+      />,
+    );
+    container.addEventListener("keydown", (e) => gridKeys.push(e.key));
+    await user.keyboard("{Enter}");
+    expect(gridKeys).toContain("Enter");
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+});

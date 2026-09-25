@@ -1,0 +1,24 @@
+{
+  "name": "demo-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --conditions=development --watch src/server.ts",
+    "start": "bun --conditions=development src/server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@masai/schema-grid-core": "workspace:*",
+    "@masai/schema-grid-io": "workspace:*",
+    "@masai/schema-grid-server": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "hono": "^4.6.0",
+    "mysql2": "^3.24.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4"
+  }
+}

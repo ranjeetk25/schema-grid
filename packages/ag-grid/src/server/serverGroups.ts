@@ -3,8 +3,9 @@
  * insert group rows, so while server mode has a `groupBy` the grid runs the
  * client-side row model over the flat display rows this controller builds:
  *
- * - `load()` fetches the top-level groups (`QueryResult.groups`) with a
- *   one-row page and the full `groupBy`.
+ * - `load()` fetches the top-level groups (`QueryResult.groups`) with the
+ *   full `groupBy`, following `nextCursor` when the source pages the groups
+ *   themselves (the Drizzle server does; core's in-memory source doesn't).
  * - Groups start collapsed. Expanding a non-leaf group shows its sub-groups:
  *   core's nested `children` when the server sent them, otherwise one query
  *   pinned to the group with `groupBy` sliced to the remaining levels.
@@ -71,6 +72,8 @@ export interface ServerGroupsController<Row extends GridRow = GridRow> {
 }
 
 const EMPTY_LABEL = "(empty)";
+/** Safety cap on group pages followed through `nextCursor`. */
+const MAX_GROUP_PAGES = 100;
 const LOAD_MORE_PREFIX = "__sg_loadmore:";
 
 interface GroupNode<Row> {
@@ -194,6 +197,25 @@ export function createServerGroupsController<Row extends GridRow = GridRow>(
     return combineFilters(base, ...pins);
   };
 
+  /**
+   * Every group of a grouping query. core's in-memory source returns all
+   * groups and pages `rows`; `@masai/schema-grid-server` pages the groups
+   * themselves (`rows: []`, `nextCursor` while more exist), so a one-row page
+   * would show only the first group. Follow `nextCursor` for that shape only.
+   */
+  const fetchGroups = async (query: ServerGroupsQuery): Promise<GroupResult[]> => {
+    const groups: GroupResult[] = [];
+    let page: GridQuery["page"] = { offset: 0, limit: pageSize };
+    for (let i = 0; i < MAX_GROUP_PAGES; i++) {
+      const result = await dataSource.fetch({ ...query, page });
+      const batch = result.groups ?? [];
+      groups.push(...batch);
+      if (result.rows.length > 0 || batch.length === 0 || !result.nextCursor) break;
+      page = { cursor: result.nextCursor, limit: pageSize };
+    }
+    return groups;
+  };
+
   const isLeaf = (node: GroupNode<Row>, groupBy: readonly GroupSpec[]) => node.level >= groupBy.length - 1;
 
   /** Fetches the node's next children (sub-groups, or the next page of rows). */
@@ -207,10 +229,10 @@ export function createServerGroupsController<Row extends GridRow = GridRow>(
     let work: Promise<void>;
     if (!isLeaf(node, groupBy)) {
       if (node.childrenLoaded) return Promise.resolve();
-      const query: GridQuery = { ...rest, filter, groupBy: groupBy.slice(node.level + 1), page: { offset: 0, limit: 1 } };
-      work = dataSource.fetch(query).then((result) => {
+      const query: ServerGroupsQuery = { ...rest, filter, groupBy: groupBy.slice(node.level + 1) };
+      work = fetchGroups(query).then((groups) => {
         if (gen !== generation || disposed) return;
-        node.subgroups = makeNodes(result.groups ?? [], node);
+        node.subgroups = makeNodes(groups, node);
         node.childrenLoaded = true;
         index(node.subgroups);
       });
@@ -263,9 +285,9 @@ export function createServerGroupsController<Row extends GridRow = GridRow>(
       return;
     }
     try {
-      const result = await track(dataSource.fetch({ ...base, page: { offset: 0, limit: 1 } }));
+      const groups = await track(fetchGroups(base));
       if (gen !== generation || disposed) return;
-      roots = makeNodes(result.groups ?? [], null);
+      roots = makeNodes(groups, null);
       byId = new Map();
       index(roots);
       for (const id of [...expanded]) if (!byId.has(id)) expanded.delete(id);

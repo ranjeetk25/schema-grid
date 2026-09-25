@@ -7,12 +7,13 @@
  * ag-grid-community 36.2 — `createPart({ feature, css })` + `theme.withPart(part)`
  * are both present, and `css` accepts a raw string).
  *
- * No global stylesheet is shipped: the grid injects `SG_CSS` itself, scoped
- * under `.sg-root`, only while a grid using this theme is mounted.
+ * No global stylesheet is shipped: the grid injects `SG_THEME_CSS` itself,
+ * scoped by AG Grid to the grid's themed root, only while a grid using this
+ * theme is mounted.
  */
 import { createPart, themeQuartz } from "ag-grid-community";
 import type { Theme } from "ag-grid-community";
-import { SG_CSS } from "./classNames";
+import { SG_THEME_CSS } from "./classNames";
 
 /**
  * Overridable Quartz params. Kept to the subset the plan calls out
@@ -33,7 +34,7 @@ export interface SchemaGridThemeOverrides {
 
 const schemaGridPart = createPart({
   feature: "schemaGrid",
-  css: SG_CSS,
+  css: SG_THEME_CSS,
 });
 
 export function createSchemaGridTheme(overrides: SchemaGridThemeOverrides = {}): Theme {
