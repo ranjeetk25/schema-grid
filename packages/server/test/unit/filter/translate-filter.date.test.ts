@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { UnsupportedOperatorError } from "../../../src/errors";
 import { translateFilter } from "../../../src/filter/translate-filter";
 import type { FilterNode } from "../../../src/internal/core";
 import { localDayStartUtc, toLocalDate, toMysqlUtc } from "../../../src/sql/dates";
@@ -63,11 +62,11 @@ describe("translateFilter: date column", () => {
     expect(tAt(later, dt).params).toEqual(["2026-09-24 18:30:00.000", "2026-09-25 18:30:00.000"]);
   });
 
-  it("invalid relative dates throw", () => {
-    expect(() => t({ columnId: "callDate", operator: "isWithin", value: { relative: "lastNDays" } })).toThrow(
-      UnsupportedOperatorError,
+  it("invalid relative dates are unusable → FALSE", () => {
+    expect(t({ columnId: "callDate", operator: "isWithin", value: { relative: "lastNDays" } }).sql).toBe(
+      `(FALSE AND NOT ${CD_EMPTY})`,
     );
-    expect(() => t({ columnId: "callDate", operator: "isWithin", value: "yesterday" })).toThrow(UnsupportedOperatorError);
+    expect(t({ columnId: "callDate", operator: "isWithin", value: "yesterday" }).sql).toBe(`(FALSE AND NOT ${CD_EMPTY})`);
   });
 
   it("is / isBefore / isAfter; a full ISO value is converted to the local day", () => {
@@ -90,12 +89,51 @@ describe("translateFilter: date column", () => {
     expect(r.params).toEqual(["2026-09-01", "2026-09-30"]);
   });
 
-  it("rejects invalid date values", () => {
-    expect(() => t({ columnId: "callDate", operator: "is", value: "2026-02-30" })).toThrow(UnsupportedOperatorError);
-    expect(() => t({ columnId: "callDate", operator: "is", value: "yesterday" })).toThrow(UnsupportedOperatorError);
-    expect(() => t({ columnId: "callDate", operator: "is", value: 20260924 })).toThrow(UnsupportedOperatorError);
-    expect(() => t({ columnId: "callDate", operator: "isBetween", value: "2026-09-01" })).toThrow(
-      UnsupportedOperatorError,
+  it("invalid date values are unusable → FALSE", () => {
+    const FALSE = `(FALSE AND NOT ${CD_EMPTY})`;
+    expect(t({ columnId: "callDate", operator: "is", value: "2026-02-30" }).sql).toBe(FALSE);
+    expect(t({ columnId: "callDate", operator: "is", value: "2026-02-30T10:00:00Z" }).sql).toBe(FALSE);
+    expect(t({ columnId: "callDate", operator: "is", value: "yesterday" }).sql).toBe(FALSE);
+    expect(t({ columnId: "callDate", operator: "is", value: 20260924 }).sql).toBe(FALSE);
+    expect(t({ columnId: "callDate", operator: "isBetween", value: "2026-09-01" }).sql).toBe(FALSE);
+    expect(t({ columnId: "callDate", operator: "isBetween", value: { from: "nope", to: null } }).sql).toBe(FALSE);
+  });
+
+  it("values are trimmed", () => {
+    expect(t({ columnId: "callDate", operator: "is", value: " 2026-09-24 " }).params).toEqual(["2026-09-24"]);
+  });
+
+  it("instant values compare against the cell's start-of-day instant", () => {
+    // 12:00 Kolkata on the 24th: start(24th) < v, so the 24th IS before it.
+    const before = t({ columnId: "callDate", operator: "isBefore", value: "2026-09-24T12:00:00+05:30" });
+    expect(before.sql).toBe(`(${CD} < ? AND NOT ${CD_EMPTY})`);
+    expect(before.params).toEqual(["2026-09-25"]);
+    // Exactly local midnight of the 24th: the 24th is NOT before it.
+    expect(t({ columnId: "callDate", operator: "isBefore", value: "2026-09-24T00:00:00+05:30" }).params).toEqual([
+      "2026-09-24",
+    ]);
+    // isAfter an instant: start(D) > v → D >= next day (also for a midnight instant).
+    const after = t({ columnId: "callDate", operator: "isAfter", value: "2026-09-24T12:00:00+05:30" });
+    expect(after.sql).toBe(`(${CD} >= ? AND NOT ${CD_EMPTY})`);
+    expect(after.params).toEqual(["2026-09-25"]);
+    expect(t({ columnId: "callDate", operator: "isAfter", value: "2026-09-24T00:00:00+05:30" }).params).toEqual([
+      "2026-09-25",
+    ]);
+    // isBetween: from an instant mid-day excludes that day; to an instant includes its day.
+    const between = t({
+      columnId: "callDate",
+      operator: "isBetween",
+      value: { from: "2026-09-01T12:00:00+05:30", to: "2026-09-30T00:00:00+05:30" },
+    });
+    expect(between.sql).toBe(`(${CD} >= ? AND ${CD} < ? AND NOT ${CD_EMPTY})`);
+    expect(between.params).toEqual(["2026-09-02", "2026-10-01"]);
+  });
+
+  it("isBetween: null/blank bounds are open; both open matches any non-empty cell", () => {
+    const from = t({ columnId: "callDate", operator: "isBetween", value: { from: "2026-09-01", to: " " } });
+    expect(from.sql).toBe(`(${CD} >= ? AND NOT ${CD_EMPTY})`);
+    expect(t({ columnId: "callDate", operator: "isBetween", value: { from: null, to: null } }).sql).toBe(
+      `(TRUE AND NOT ${CD_EMPTY})`,
     );
   });
 
@@ -118,10 +156,27 @@ describe("translateFilter: datetime column", () => {
     expect(r.params).toEqual(["2026-09-23 18:30:00.000", "2026-09-24 18:30:00.000"]);
   });
 
-  it("is with a full ISO value is an exact instant match", () => {
+  it("is with a full ISO value means the same LOCAL day as that instant", () => {
     const r = t({ columnId: "calledAt", operator: "is", value: "2026-09-24T10:00:00.000+05:30" });
-    expect(r.sql).toBe(`(${CA} = ? AND NOT ${CA_EMPTY})`);
-    expect(r.params).toEqual(["2026-09-24 04:30:00.000"]);
+    expect(r.sql).toBe(`(${CA} >= ? AND ${CA} < ? AND NOT ${CA_EMPTY})`);
+    expect(r.params).toEqual(["2026-09-23 18:30:00.000", "2026-09-24 18:30:00.000"]);
+    // 20:00Z on the 24th is already the 25th in Kolkata.
+    expect(t({ columnId: "calledAt", operator: "is", value: "2026-09-24T20:00:00Z" }).params).toEqual([
+      "2026-09-24 18:30:00.000",
+      "2026-09-25 18:30:00.000",
+    ]);
+  });
+
+  it("accepts core's ISO forms: up to 9 fractional digits (truncated to ms), lowercase t/z, +HHMM", () => {
+    expect(t({ columnId: "calledAt", operator: "isBefore", value: "2026-09-24T10:00:00.123956789Z" }).params).toEqual([
+      "2026-09-24 10:00:00.123",
+    ]);
+    expect(t({ columnId: "calledAt", operator: "isBefore", value: "2026-09-24t10:00:00z" }).params).toEqual([
+      "2026-09-24 10:00:00.000",
+    ]);
+    expect(t({ columnId: "calledAt", operator: "isBefore", value: "2026-09-24T10:00+0530" }).params).toEqual([
+      "2026-09-24 04:30:00.000",
+    ]);
   });
 
   it("isBefore / isAfter with a plain date: before the day starts / from the next day on", () => {
@@ -154,10 +209,16 @@ describe("translateFilter: datetime column", () => {
     expect(iso.params).toEqual(["2026-09-01 00:00:00.000", "2026-09-02 00:00:00.000"]);
   });
 
-  it("ISO values without an offset are rejected (ambiguous instant)", () => {
-    expect(() => t({ columnId: "calledAt", operator: "is", value: "2026-09-24T10:00:00" })).toThrow(
-      UnsupportedOperatorError,
+  it("ISO values without an offset are unusable (ambiguous instant) → FALSE", () => {
+    expect(t({ columnId: "calledAt", operator: "is", value: "2026-09-24T10:00:00" }).sql).toBe(
+      `(FALSE AND NOT ${CA_EMPTY})`,
     );
+  });
+
+  it("isBetween with one open bound", () => {
+    const r = t({ columnId: "calledAt", operator: "isBetween", value: { from: null, to: "2026-09-30" } });
+    expect(r.sql).toBe(`(${CA} < ? AND NOT ${CA_EMPTY})`);
+    expect(r.params).toEqual(["2026-09-30 18:30:00.000"]);
   });
 });
 
@@ -177,7 +238,7 @@ describe("translateFilter: §8 combined filter", () => {
           "2026-09-24",
           "2026-09-25",
         ],
-        "sql": "((IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci <> ? OR (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci = '')) AND (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) >= ? AND CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) < ? AND NOT (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL)))",
+        "sql": "((IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci <> ? OR (IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci IS NULL OR REGEXP_LIKE(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci, '^[[:space:]]*$'))) AND (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) >= ? AND CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) < ? AND NOT (CAST(IF(JSON_TYPE(JSON_EXTRACT(\`cells\`, '$.callDate')) = 'STRING', JSON_UNQUOTE(JSON_EXTRACT(\`cells\`, '$.callDate')), NULL) AS DATE) IS NULL)))",
       }
     `);
     expect(r.params).toEqual(["paid", "2026-09-24", "2026-09-25"]);

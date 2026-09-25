@@ -53,8 +53,8 @@ describe("translateSort", () => {
   it("a physical-source column sorts on the table column", () => {
     const { orderBy } = translateSort([{ columnId: "contactEmail", dir: "asc" }], makeScope());
     expect(orderSql(orderBy).sql).toBe(
-      "(CASE WHEN (`email_addr` IS NULL OR `email_addr` = '') THEN 1 ELSE 0 END) ASC, " +
-        "(CASE WHEN (`email_addr` IS NULL OR `email_addr` = '') THEN NULL ELSE `email_addr` END) ASC, `id` ASC",
+      "(CASE WHEN (`email_addr` IS NULL OR REGEXP_LIKE(`email_addr`, '^[[:space:]]*$')) THEN 1 ELSE 0 END) ASC, " +
+        "(CASE WHEN (`email_addr` IS NULL OR REGEXP_LIKE(`email_addr`, '^[[:space:]]*$')) THEN NULL ELSE `email_addr` END) ASC, `id` ASC",
     );
   });
 

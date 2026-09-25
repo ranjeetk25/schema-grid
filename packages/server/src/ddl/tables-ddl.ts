@@ -52,6 +52,13 @@ function boundedIndexName(table: string, suffix: string, maxLen = 64): string {
   return `${prefix}${tablePart}${suffix}`;
 }
 
+/**
+ * Row ids use a binary collation so `ORDER BY id` / `id > ?` (the final sort
+ * tie-break and keyset cursor) follow code-point order, like core's in-memory
+ * sort, instead of the case/accent-insensitive table default.
+ */
+const ID_TYPE = "VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin";
+
 const ENGINE_CLAUSE = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
 
 export interface CreateRowsTableDDLOptions {
@@ -64,7 +71,7 @@ export function createRowsTableDDL(options: CreateRowsTableDDLOptions): DdlState
   const physicalColumns = options.physicalColumns ?? [];
 
   const fixedLines = [
-    "  `id` VARCHAR(36) NOT NULL,",
+    `  \`id\` ${ID_TYPE} NOT NULL,`,
     "  `grid_id` VARCHAR(64) NOT NULL,",
     "  `version` INT NOT NULL DEFAULT 1,",
     "  `updated_at` DATETIME(3) NOT NULL,",
@@ -106,7 +113,7 @@ export function createChangeLogTableDDL(options: CreateChangeLogTableDDLOptions)
     `CREATE TABLE IF NOT EXISTS ${quoteIdent(table)} (`,
     "  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,",
     "  `grid_id` VARCHAR(64) NOT NULL,",
-    "  `row_id` VARCHAR(36) NOT NULL,",
+    `  \`row_id\` ${ID_TYPE} NOT NULL,`,
     "  `column_id` VARCHAR(64) NULL,",
     "  `kind` VARCHAR(16) NOT NULL,",
     "  `prev` JSON NULL,",

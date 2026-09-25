@@ -13,9 +13,9 @@ const t = (node: FilterNode | null) => {
 };
 
 const PS = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.paymentStatus')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.paymentStatus'))) COLLATE utf8mb4_0900_ai_ci";
-const PS_EMPTY = `(${PS} IS NULL OR ${PS} = '')`;
+const PS_EMPTY = `(${PS} IS NULL OR REGEXP_LIKE(${PS}, '^[[:space:]]*$'))`;
 const OWNER = "IF(JSON_TYPE(JSON_EXTRACT(`cells`, '$.owner.id')) = 'NULL', NULL, JSON_UNQUOTE(JSON_EXTRACT(`cells`, '$.owner.id'))) COLLATE utf8mb4_0900_ai_ci";
-const OWNER_EMPTY = `(${OWNER} IS NULL OR ${OWNER} = '')`;
+const OWNER_EMPTY = `(${OWNER} IS NULL OR REGEXP_LIKE(${OWNER}, '^[[:space:]]*$'))`;
 const TAGS = "JSON_EXTRACT(`cells`, '$.tags')";
 const TAGS_EMPTY = `(${TAGS} IS NULL OR JSON_TYPE(${TAGS}) = 'NULL' OR JSON_LENGTH(${TAGS}) = 0)`;
 const LINKS = "JSON_EXTRACT(`cells`, '$.links[*].id')";
@@ -42,19 +42,36 @@ describe("translateFilter: choice (select / creatableSelect)", () => {
     expect(r?.params).toEqual(["a", "b"]);
   });
 
-  it("empty isAnyOf is a constant false; empty isNoneOf a constant true", () => {
+  it("empty isAnyOf is a constant false; empty isNoneOf is unusable (only empty cells match)", () => {
     const any = t({ columnId: "paymentStatus", operator: "isAnyOf", value: [] });
     expect(any?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
     expect(any?.params).toEqual([]);
+    // core: isNoneOf [] has no usable id → never matches a non-empty cell.
     const none = t({ columnId: "paymentStatus", operator: "isNoneOf", value: [] });
-    expect(none?.sql).toBe(`(TRUE OR ${PS_EMPTY})`);
+    expect(none?.sql).toBe(`(FALSE OR ${PS_EMPTY})`);
     expect(none?.params).toEqual([]);
   });
 
-  it("rejects non-array values for list operators and non-primitives for is", () => {
-    expect(() => t({ columnId: "paymentStatus", operator: "isAnyOf", value: "paid" })).toThrow(UnsupportedOperatorError);
-    expect(() => t({ columnId: "paymentStatus", operator: "isAnyOf", value: [null] })).toThrow(UnsupportedOperatorError);
-    expect(() => t({ columnId: "paymentStatus", operator: "is", value: ["paid"] })).toThrow(UnsupportedOperatorError);
+  it("ids compare as strings: numbers bind as strings, { id } objects are accepted for is", () => {
+    expect(t({ columnId: "paymentStatus", operator: "is", value: 7 })?.params).toEqual(["7"]);
+    expect(t({ columnId: "paymentStatus", operator: "isNot", value: 7 })?.params).toEqual(["7"]);
+    const obj = t({ columnId: "paymentStatus", operator: "is", value: { id: "paid" } as unknown as FilterValue });
+    expect(obj?.sql).toBe(`(${PS} = ? AND NOT ${PS_EMPTY})`);
+    expect(obj?.params).toEqual(["paid"]);
+  });
+
+  it("unusable values make the comparison FALSE instead of throwing", () => {
+    // Non-array list → no ids → isAnyOf never matches.
+    expect(t({ columnId: "paymentStatus", operator: "isAnyOf", value: "paid" })?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
+    // null items are dropped (core asIdList).
+    expect(t({ columnId: "paymentStatus", operator: "isAnyOf", value: [null] })?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
+    // An array / boolean is not an id.
+    expect(t({ columnId: "paymentStatus", operator: "is", value: ["paid"] })?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
+    expect(t({ columnId: "paymentStatus", operator: "is", value: true })?.sql).toBe(`(FALSE AND NOT ${PS_EMPTY})`);
+    // Negatives: an unusable value matches only empty cells.
+    expect(t({ columnId: "paymentStatus", operator: "isNot", value: true })?.sql).toBe(`(FALSE OR ${PS_EMPTY})`);
+    expect(t({ columnId: "paymentStatus", operator: "isNoneOf", value: [true] })?.sql).toBe(`(FALSE OR ${PS_EMPTY})`);
+    expect(t({ columnId: "paymentStatus", operator: "isNoneOf", value: "paid" })?.sql).toBe(`(FALSE OR ${PS_EMPTY})`);
   });
 });
 
@@ -116,10 +133,15 @@ describe("translateFilter: multiSelect", () => {
     expect(r?.params).toEqual(['["a"]']);
   });
 
-  it("empty lists: hasAnyOf FALSE, hasAllOf TRUE, hasNoneOf TRUE", () => {
+  it("empty lists never match: hasAnyOf / hasAllOf FALSE; hasNoneOf [] is unusable (only empty cells)", () => {
     expect(t({ columnId: "tags", operator: "hasAnyOf", value: [] })?.sql).toBe(`(FALSE AND NOT ${TAGS_EMPTY})`);
-    expect(t({ columnId: "tags", operator: "hasAllOf", value: [] })?.sql).toBe(`(TRUE AND NOT ${TAGS_EMPTY})`);
-    expect(t({ columnId: "tags", operator: "hasNoneOf", value: [] })?.sql).toBe(`(TRUE OR ${TAGS_EMPTY})`);
+    expect(t({ columnId: "tags", operator: "hasAllOf", value: [] })?.sql).toBe(`(FALSE AND NOT ${TAGS_EMPTY})`);
+    expect(t({ columnId: "tags", operator: "hasNoneOf", value: [] })?.sql).toBe(`(FALSE OR ${TAGS_EMPTY})`);
+  });
+
+  it("list items are stringified like core asIdList (nulls dropped)", () => {
+    expect(t({ columnId: "tags", operator: "hasAllOf", value: ["a", null, 2] })?.params).toEqual(['["a","2"]']);
+    expect(t({ columnId: "tags", operator: "hasAnyOf", value: "a" })?.sql).toBe(`(FALSE AND NOT ${TAGS_EMPTY})`);
   });
 });
 

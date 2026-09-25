@@ -1,26 +1,16 @@
 import { type SQL, sql } from "drizzle-orm";
-import { UnsupportedOperatorError } from "../errors";
-import type { FilterValue } from "../internal/core";
 import type { OperatorTranslator } from "./types";
-
-export function numberValue(value: unknown, operator: string): number {
-  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN;
-  if (!Number.isFinite(n)) throw new UnsupportedOperatorError(operator, { kind: "expected a finite number" });
-  return n;
-}
-
-function rangeValue(value: FilterValue | undefined, operator: string): { from: unknown; to: unknown } {
-  if (typeof value === "object" && value !== null && !Array.isArray(value) && "from" in value && "to" in value) {
-    return { from: value.from, to: value.to };
-  }
-  throw new UnsupportedOperatorError(operator, { kind: "expected a {from, to} range" });
-}
+import { isOpenBound, numberValue, rangeValue } from "./values";
 
 const cmp =
   (op: "=" | "<>" | "<" | "<=" | ">" | ">="): OperatorTranslator =>
-  ({ expr, value, operator }) =>
-    sql`${expr.typed} ${sql.raw(op)} ${numberValue(value, operator.id)}`;
+  ({ expr, value }) =>
+    sql`${expr.typed} ${sql.raw(op)} ${numberValue(value)}`;
 
+/**
+ * Number operators (core `matchNumber`). Values use core's strict decimal
+ * coercion (`numberValue`); an unusable value makes the comparison FALSE.
+ */
 export const NUMBER_TRANSLATORS: Readonly<Record<string, OperatorTranslator>> = {
   eq: cmp("="),
   neq: cmp("<>"),
@@ -28,13 +18,17 @@ export const NUMBER_TRANSLATORS: Readonly<Record<string, OperatorTranslator>> = 
   lte: cmp("<="),
   gt: cmp(">"),
   gte: cmp(">="),
-  /** Inclusive on both ends; a null bound makes it one-sided. */
-  between: ({ expr, value, operator }) => {
-    const { from, to } = rangeValue(value, operator.id);
+  /**
+   * Inclusive on both ends. A null / blank bound is open; both open matches any
+   * non-empty cell (`TRUE`, the null rule adds `AND NOT empty`). A present but
+   * non-numeric bound is unusable (FALSE).
+   */
+  between: ({ expr, value }) => {
+    const { from, to } = rangeValue(value);
     const parts: SQL[] = [];
-    if (from !== null && from !== undefined && from !== "") parts.push(sql`${expr.typed} >= ${numberValue(from, operator.id)}`);
-    if (to !== null && to !== undefined && to !== "") parts.push(sql`${expr.typed} <= ${numberValue(to, operator.id)}`);
-    if (parts.length === 0) throw new UnsupportedOperatorError(operator.id, { kind: "range needs at least one bound" });
+    if (!isOpenBound(from)) parts.push(sql`${expr.typed} >= ${numberValue(from)}`);
+    if (!isOpenBound(to)) parts.push(sql`${expr.typed} <= ${numberValue(to)}`);
+    if (parts.length === 0) return sql`TRUE`;
     return parts.length === 1 ? (parts[0] as SQL) : sql`(${sql.join(parts, sql` AND `)})`;
   },
 };

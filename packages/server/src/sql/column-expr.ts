@@ -15,7 +15,10 @@ export interface ColumnExpr {
   raw: SQL;
   /** Typed comparable expression (see `typedJsonExpr`). For `multi` it is the JSON id array. */
   typed: SQL;
-  /** Predicate that is TRUE when the cell is empty (absent, JSON null, '' for text-like, [] for multi). */
+  /**
+   * Predicate that is TRUE when the cell is empty — core `isEmptyValue`: absent,
+   * JSON null, whitespace-only for text-like, [] for multi. Always two-valued.
+   */
   empty: SQL;
 }
 
@@ -67,20 +70,39 @@ export function typedJsonExpr(key: string, kind: StorageKind, subPath?: string):
 
 const TEXTISH: ReadonlySet<StorageKind> = new Set(["text", "choice", "ref"]);
 
+/**
+ * TRUE when a (non-NULL) string is empty or whitespace-only — core
+ * `isEmptyValue` uses JS `trim()`. ICU `[[:space:]]` covers spaces, tabs,
+ * newlines and the Unicode white-space set (`TRIM` would strip spaces only).
+ */
+export function blankText(expr: SQL): SQL {
+  return sql`REGEXP_LIKE(${expr}, '^[[:space:]]*$')`;
+}
+
+/** `(x IS NULL OR <blank x>)` — the `IS NULL` guard keeps it two-valued. */
+function textEmpty(expr: SQL): SQL {
+  return sql`(${expr} IS NULL OR ${blankText(expr)})`;
+}
+
 function jsonEmpty(key: string, kind: StorageKind, subPath: string | undefined): SQL {
   const base = jsonExtract(key);
   if (kind === "multi" || kind === "json") {
     const parts: SQL[] = [sql`${base} IS NULL`, sql`JSON_TYPE(${base}) = 'NULL'`];
     if (kind === "multi") parts.push(sql`JSON_LENGTH(${base}) = 0`);
+    if (kind === "json") {
+      // Custom types: core treats whitespace-only strings and [] as empty too.
+      parts.push(sql`(JSON_TYPE(${base}) = 'STRING' AND ${blankText(sql`JSON_UNQUOTE(${base})`)})`);
+      parts.push(sql`(JSON_TYPE(${base}) = 'ARRAY' AND JSON_LENGTH(${base}) = 0)`);
+    }
     return sql`(${sql.join(parts, sql` OR `)})`;
   }
   // Scalars: `typed` is NULL for absent / JSON null / wrong type / missing sub-path leaf.
   const typed = typedJsonExpr(key, kind, subPath);
-  return TEXTISH.has(kind) ? sql`(${typed} IS NULL OR ${typed} = '')` : sql`(${typed} IS NULL)`;
+  return TEXTISH.has(kind) ? textEmpty(typed) : sql`(${typed} IS NULL)`;
 }
 
 function columnEmpty(expr: SQL, kind: StorageKind): SQL {
-  if (TEXTISH.has(kind)) return sql`(${expr} IS NULL OR ${expr} = '')`;
+  if (TEXTISH.has(kind)) return textEmpty(expr);
   if (kind === "multi") return sql`(${expr} IS NULL OR JSON_LENGTH(${expr}) = 0)`;
   return sql`(${expr} IS NULL)`;
 }

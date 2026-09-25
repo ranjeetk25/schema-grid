@@ -4,6 +4,7 @@ import { type FilterCondition, type FilterNode, getColumnOperators, isNegativeOp
 import { resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { getOperatorTranslator } from "./operator-table";
+import { UnusableFilterValue } from "./values";
 
 function isGroup(node: FilterNode): node is Extract<FilterNode, { op: "and" | "or" }> {
   return "op" in node && "children" in node;
@@ -21,7 +22,17 @@ function translateCondition(cond: FilterCondition, scope: SqlScope): SQL {
 
   const translator = getOperatorTranslator(expr.kind, operator.id);
   if (!translator) throw new UnsupportedOperatorError(operator.id, { columnId: column.id, kind: expr.kind });
-  const cmp = translator({ expr, column, operator, value: cond.value, scope });
+  // An unusable filter value (core `isUsableValue`) never matches a non-empty
+  // cell, for positive AND negative operators: the comparison becomes FALSE, so
+  // positives match nothing and negatives match only empty cells. Unknown
+  // columns / operators (above) still throw UnsupportedOperatorError.
+  let cmp: SQL;
+  try {
+    cmp = translator({ expr, column, operator, value: cond.value, scope });
+  } catch (err) {
+    if (!(err instanceof UnusableFilterValue)) throw err;
+    cmp = sql`FALSE`;
+  }
 
   // Null rule (spec §4.3): negative operators MATCH empty values; positive never do.
   const negative = operator.negative === true || isNegativeOperator(operator.id);

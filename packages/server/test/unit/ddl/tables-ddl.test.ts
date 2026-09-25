@@ -7,7 +7,7 @@ describe("createRowsTableDDL", () => {
     expect(stmt.description).toMatchInlineSnapshot(`"Create rows table \`grid_rows\`"`);
     expect(stmt.sql).toMatchInlineSnapshot(`
       "CREATE TABLE IF NOT EXISTS \`grid_rows\` (
-        \`id\` VARCHAR(36) NOT NULL,
+        \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
         \`grid_id\` VARCHAR(64) NOT NULL,
         \`version\` INT NOT NULL DEFAULT 1,
         \`updated_at\` DATETIME(3) NOT NULL,
@@ -37,7 +37,7 @@ describe("createRowsTableDDL", () => {
     });
     expect(stmt.sql).toMatchInlineSnapshot(`
       "CREATE TABLE IF NOT EXISTS \`grid_rows\` (
-        \`id\` VARCHAR(36) NOT NULL,
+        \`id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
         \`grid_id\` VARCHAR(64) NOT NULL,
         \`version\` INT NOT NULL DEFAULT 1,
         \`updated_at\` DATETIME(3) NOT NULL,
@@ -96,7 +96,7 @@ describe("createChangeLogTableDDL", () => {
       "CREATE TABLE IF NOT EXISTS \`grid_change_log\` (
         \`id\` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         \`grid_id\` VARCHAR(64) NOT NULL,
-        \`row_id\` VARCHAR(36) NOT NULL,
+        \`row_id\` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
         \`column_id\` VARCHAR(64) NULL,
         \`kind\` VARCHAR(16) NOT NULL,
         \`prev\` JSON NULL,
@@ -112,5 +112,13 @@ describe("createChangeLogTableDDL", () => {
 
   it("rejects an unsafe table name", () => {
     expect(() => createChangeLogTableDDL({ table: "a;b" })).toThrow();
+  });
+});
+
+describe("row id collation", () => {
+  it("rows.id and change_log.row_id are binary-collated so id order / id > ? are code-point order", () => {
+    const bin = "VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL";
+    expect(createRowsTableDDL({ table: "grid_rows" }).sql).toContain(`\`id\` ${bin},`);
+    expect(createChangeLogTableDDL({ table: "grid_change_log" }).sql).toContain(`\`row_id\` ${bin},`);
   });
 });

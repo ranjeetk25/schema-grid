@@ -10,8 +10,12 @@
  */
 
 export const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-/** Full ISO instant; an explicit `Z` or `±HH:MM` offset is required. */
-export const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})$/;
+/**
+ * Full ISO instant; an explicit `Z` or `±HH[:]MM` offset is required. Same
+ * pattern as core's `ISO_INSTANT` (up to 9 fractional digits — `Date.parse`
+ * truncates to ms — and case-insensitive `T` / `Z`).
+ */
+export const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})$/i;
 
 export interface Ymd {
   year: number;
@@ -117,4 +121,41 @@ export function localDayStartUtc(ymd: string, tz: string): string {
     guess = Math.max(guess, next);
   }
   return new Date(guess).toISOString();
+}
+
+/** A parsed date filter value: a calendar day (`YYYY-MM-DD`) or an exact instant. */
+export type DateFilterInput = { kind: "day"; ymd: string } | { kind: "instant"; ms: number };
+
+/**
+ * core `parseInstant` for filter values: trims, then accepts `YYYY-MM-DD` (a
+ * real calendar day) or an ISO instant with Z/offset whose date part is a real
+ * day. Anything else → undefined.
+ */
+export function parseDateFilterValue(value: unknown): DateFilterInput | undefined {
+  if (typeof value !== "string") return undefined;
+  const s = value.trim();
+  if (YMD_RE.test(s)) return parseYmd(s) ? { kind: "day", ymd: s } : undefined;
+  if (!ISO_INSTANT_RE.test(s) || !parseYmd(s.slice(0, 10))) return undefined;
+  const ms = Date.parse(s);
+  return Number.isNaN(ms) ? undefined : { kind: "instant", ms };
+}
+
+/** Epoch ms → `YYYY-MM-DD HH:MM:SS.fff` in UTC. */
+export function msToMysqlUtc(ms: number): string {
+  return toMysqlUtc(new Date(ms).toISOString());
+}
+
+/** Local midnight starting `ymd` in `tz`, as epoch ms. */
+export function localDayStartMs(ymd: string, tz: string): number {
+  return Date.parse(localDayStartUtc(ymd, tz));
+}
+
+/**
+ * The earliest calendar day whose local start (in `tz`) is at or after the
+ * instant `ms`. For a date column whose cell `D` means "start of D in tz",
+ * `start(D) >= ms` ⟺ `D >= firstDayStartingAtOrAfter(ms)`.
+ */
+export function firstDayStartingAtOrAfter(ms: number, tz: string): string {
+  const day = toLocalDate(new Date(ms).toISOString(), tz);
+  return localDayStartMs(day, tz) >= ms ? day : addDaysYmd(day, 1);
 }
