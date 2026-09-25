@@ -1,4 +1,6 @@
 import type { FilterOperatorDef } from "../filter/operators";
+import { UNIVERSAL_AGGREGATIONS } from "../query/aggregate";
+import type { AggregationId } from "../query/types";
 import type { ColumnDef } from "../schema/types";
 import type { FieldTypeId } from "./ids";
 import type { FieldTypeRegistry } from "./registry";
@@ -47,9 +49,41 @@ export function getColumnOperators(
   registry: FieldTypeRegistry,
 ): readonly FilterOperatorDef[] {
   if (column.type === "formula") {
-    const config = column.config as { resultType?: string } | null | undefined;
-    const mappedId = resolveFormulaOperandTypeId(config?.resultType);
-    return registry.get(mappedId)?.operators ?? [];
+    return registry.get(resolveFormulaOperandTypeId(formulaResultType(column)))?.operators ?? [];
   }
   return registry.get(column.type)?.operators ?? [];
+}
+
+function formulaResultType(column: ColumnDef): string | undefined {
+  const config = column.config;
+  if (typeof config !== "object" || config === null) return undefined;
+  const rt = (config as { resultType?: unknown }).resultType;
+  return typeof rt === "string" ? rt : undefined;
+}
+
+/**
+ * The field type whose value semantics a column follows: the column's own
+ * type, or for a formula column the type mapped from `config.resultType`.
+ */
+export function getColumnValueFieldType(
+  column: ColumnDef,
+  registry: FieldTypeRegistry,
+): AnyFieldType | undefined {
+  if (column.type === "formula") {
+    return registry.get(resolveFormulaOperandTypeId(formulaResultType(column)));
+  }
+  return registry.get(column.type);
+}
+
+/**
+ * Aggregations allowed on `column`: the universal ones (count, countEmpty,
+ * countFilled) plus those its value field type declares. Formula columns
+ * resolve through `config.resultType`, so only number-result formulas allow sum/avg.
+ */
+export function getColumnAggregations(
+  column: ColumnDef,
+  registry: FieldTypeRegistry,
+): readonly AggregationId[] {
+  const declared = getColumnValueFieldType(column, registry)?.aggregations ?? [];
+  return [...new Set<AggregationId>([...UNIVERSAL_AGGREGATIONS, ...declared])];
 }
