@@ -12,6 +12,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./drizzle": {
+      "development": "./src/drizzle/index.ts",
+      "types": "./dist/drizzle/index.d.ts",
+      "import": "./dist/drizzle/index.js",
+      "require": "./dist/drizzle/index.cjs"
+    },
+    "./ddl": {
+      "development": "./src/ddl/index.ts",
+      "types": "./dist/ddl/index.d.ts",
+      "import": "./dist/ddl/index.js",
+      "require": "./dist/ddl/index.cjs"
     }
   },
   "files": ["dist"],
@@ -24,10 +36,18 @@
     "@masai/schema-grid-core": "workspace:*"
   },
   "peerDependencies": {
-    "drizzle-orm": "^0.45.0"
+    "drizzle-orm": "^0.45.0",
+    "mysql2": "^3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "mysql2": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@testcontainers/mysql": "^12.1.0",
     "drizzle-orm": "^0.45.3",
-    "mysql2": "^3.24.4"
+    "mysql2": "^3.24.4",
+    "zod": "^3.25.76"
   }
 }
