@@ -47,7 +47,7 @@ describe("buildRowUpdate", () => {
     };
     const q = renderQuery(buildRowUpdate(plan, ctx, { db: mockDb(), tables, gridId: "grid1" }, NOW));
     expect(q.sql).toMatchInlineSnapshot(
-      `"update \`grid_rows\` set \`version\` = \`version\` + 1, \`updated_at\` = ?, \`updated_by\` = ?, \`cells\` = JSON_REMOVE(JSON_SET(\`cells\`, '$.name', CAST(? AS JSON), '$.fee', CAST(? AS JSON)), '$.notes'), \`email_addr\` = ? where (\`grid_rows\`.\`id\` = ? and \`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`version\` = ? and \`grid_rows\`.\`deleted_at\` is null)"`,
+      `"update \`grid_rows\` set \`version\` = \`version\` + 1, \`updated_at\` = ?, \`updated_by\` = ?, \`cells\` = JSON_REMOVE(JSON_SET(COALESCE(\`cells\`, JSON_OBJECT()), '$.name', CAST(? AS JSON), '$.fee', CAST(? AS JSON)), '$.notes'), \`email_addr\` = ? where (\`grid_rows\`.\`id\` = ? and \`grid_rows\`.\`grid_id\` = ? and \`grid_rows\`.\`version\` = ? and \`grid_rows\`.\`deleted_at\` is null)"`,
     );
     expect(q.params).toEqual(["2026-09-25 06:00:00.000", "u1", '"Asha"', "12.5", "a@b.co", "r1", "grid1", 3]);
     expect(q.sql.match(/`version` \+ 1/g)).toHaveLength(1);
@@ -109,8 +109,11 @@ describe("applyChanges", () => {
     expect(result.errors).toEqual([{ rowId: "rC", columnId: "fee", message: expect.any(String) }]);
 
     const updates = statements().filter((s) => s.sql.startsWith("update"));
-    expect(updates).toHaveLength(2); // one per planned row (A, B), not per cell
+    // one UPDATE for A (two cells, one version bump); B's locked version already mismatches → no UPDATE
+    expect(updates).toHaveLength(1);
     expect(updates[0]?.sql.match(/`version` \+ 1/g)).toHaveLength(1);
+    const lockRead = statements()[0] as FakeCall;
+    expect(lockRead.sql).toMatch(/order by `grid_rows`.`id` for update$/);
 
     const inserts = statements().filter((s) => s.sql.startsWith("insert"));
     expect(inserts).toHaveLength(1);
@@ -123,15 +126,38 @@ describe("applyChanges", () => {
     expect(insert.params.filter((p) => p === "u1")).toHaveLength(2);
   });
 
-  it("version mismatch (affectedRows 0) is a conflict, not an error; nothing logged", async () => {
-    const state = { r1: dbRow("r1", 2, { name: "Server" }) };
+  it("affectedRows 0 (backstop) is a conflict, not an error; nothing logged", async () => {
+    const state = { r1: dbRow("r1", 1, { name: "Server" }) };
     const { db, statements } = createFakeMysql(script(state, new Set(["r1"])));
     const result = await applyChanges(batch([ch("r1", "name", "Client")], { r1: 1 }), ctx, { db, tables, gridId: "grid1" });
     expect(result.applied).toEqual([]);
     expect(result.errors).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0]).toMatchObject({ serverValue: "Server", serverVersion: 2 });
+    expect(result.conflicts[0]).toMatchObject({ serverValue: "Server", serverVersion: 1 });
     expect(statements().some((s) => s.sql.startsWith("insert"))).toBe(false);
+  });
+
+  it("version mismatch on the locked row is a conflict without an UPDATE", async () => {
+    const state = { r1: dbRow("r1", 2, { name: "Server" }) };
+    const { db, statements } = createFakeMysql(script(state, new Set()));
+    const result = await applyChanges(batch([ch("r1", "name", "Client")], { r1: 1 }), ctx, { db, tables, gridId: "grid1" });
+    expect(result).toMatchObject({ applied: [], errors: [], conflicts: [{ serverValue: "Server", serverVersion: 2 }] });
+    expect(statements().some((s) => s.sql.startsWith("update"))).toBe(false);
+  });
+
+  it("rejects an oversized batch id before touching the database", async () => {
+    const { db, calls } = createFakeMysql();
+    await expect(
+      applyChanges({ ...batch([], {}), id: "x".repeat(65) }, ctx, { db, tables, gridId: "grid1" }),
+    ).rejects.toMatchObject({ code: "INVALID_BATCH" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("unknown driver result shape throws instead of reporting a false conflict", async () => {
+    const { affectedRowsOf } = await import("../../../src/changes/db");
+    expect(affectedRowsOf([{ affectedRows: 1 }])).toBe(1);
+    expect(affectedRowsOf({ rowsAffected: 2 })).toBe(2);
+    expect(() => affectedRowsOf({})).toThrow();
   });
 
   it("conflict carries the readable server value for the edited column", async () => {
@@ -148,5 +174,23 @@ describe("applyChanges", () => {
     const res = await applyChanges(batch([ch("r1", "secret", "x")], { r1: 1 }), ctx, { db, tables, gridId: "grid1" });
     expect(res.errors).toHaveLength(1);
     expect(calls.map((c) => c.sql.split(" ")[0])).toEqual(["begin", "select", "commit"]);
+  });
+});
+
+describe("physical column writes", () => {
+  it("an undeclared valueField is a schema error, never silently dropped", async () => {
+    const { physicalWriteValue } = await import("../../../src/changes/physical");
+    const { SchemaValidationError } = await import("../../../src/errors");
+    expect(() => physicalWriteValue(col("x", "text", { source: { valueField: "version" } }), "v", tables)).toThrow(
+      SchemaValidationError,
+    );
+  });
+  it("datetime values go to non-datetime physical columns as UTC strings", async () => {
+    const { physicalWriteValue } = await import("../../../src/changes/physical");
+    const c = col("seen", "datetime", { source: { valueField: "email_addr" } });
+    expect(physicalWriteValue(c, "2026-09-24T19:00:00.000Z", tables)).toEqual({
+      field: "email_addr",
+      value: "2026-09-24 19:00:00.000",
+    });
   });
 });

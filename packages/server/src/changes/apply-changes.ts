@@ -1,12 +1,14 @@
 import { type SQL, and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { isReadable, resolveAccess } from "../access/query-access";
+import { type AccessMap, isReadable, resolveAccess } from "../access/query-access";
 import type { ServerContext } from "../context";
+import { SchemaGridServerError } from "../errors";
 import type { CellChange, ChangeBatch, ChangeConflict, ChangeError, ChangeResult } from "../internal/core";
 import { ident } from "../sql/column-expr";
 import { type DbRow, hydrateRow } from "../storage/hydrate";
 import { jsonPath } from "../storage/keys";
 import { insertChangeLog, type ChangeLogEntry } from "./change-log";
 import { type GridDb, type WriteDeps, affectedRowsOf } from "./db";
+import { physicalWriteValue } from "./physical";
 import { type CurrentRow, type PlannedSet, type RowWritePlan, planChanges } from "./plan-changes";
 
 const path = (key: string) => sql.raw(`'${jsonPath(key)}'`);
@@ -17,9 +19,14 @@ export function cellsUpdateExpr(sets: PlannedSet[]): SQL | undefined {
   const writes = json.filter((s) => !s.remove);
   const removes = json.filter((s) => s.remove);
   if (writes.length === 0 && removes.length === 0) return undefined;
-  let expr: SQL = sql`${ident("cells")}`;
+  // COALESCE guards a (legacy) NULL cells document: JSON_SET(NULL, …) would be NULL.
+  let expr: SQL = sql`COALESCE(${ident("cells")}, JSON_OBJECT())`;
   if (writes.length > 0) {
-    const args = writes.map((s) => sql`${path(s.column.key)}, CAST(${JSON.stringify(s.serialized)} AS JSON)`);
+    const args = writes.map((s) => {
+      const json = JSON.stringify(s.serialized);
+      if (typeof json !== "string") throw new Error(`Column ${s.column.id} serialized to a non-JSON value`);
+      return sql`${path(s.column.key)}, CAST(${json} AS JSON)`;
+    });
     expr = sql`JSON_SET(${expr}, ${sql.join(args, sql`, `)})`;
   }
   if (removes.length > 0) {
@@ -29,12 +36,6 @@ export function cellsUpdateExpr(sets: PlannedSet[]): SQL | undefined {
     )})`;
   }
   return expr;
-}
-
-function physicalValue(set: PlannedSet): unknown {
-  if (set.remove) return null;
-  if (set.column.type === "datetime" && typeof set.serialized === "string") return new Date(set.serialized);
-  return set.serialized;
 }
 
 /**
@@ -50,7 +51,11 @@ export function buildRowUpdate(plan: RowWritePlan, ctx: ServerContext, deps: Wri
   };
   const cells = cellsUpdateExpr(plan.sets);
   if (cells) values.cells = cells;
-  for (const s of plan.sets) if (s.column.source) values[s.column.source.valueField] = physicalValue(s);
+  for (const s of plan.sets) {
+    if (!s.column.source) continue;
+    const w = physicalWriteValue(s.column, s.remove ? null : s.serialized, deps.tables);
+    values[w.field] = w.value;
+  }
   return deps.db
     .update(rows)
     .set(values as never)
@@ -64,14 +69,26 @@ export function buildRowUpdate(plan: RowWritePlan, ctx: ServerContext, deps: Wri
     );
 }
 
-async function loadRows(tx: GridDb, deps: WriteDeps, ids: string[], ctx: ServerContext): Promise<Map<string, CurrentRow>> {
+/**
+ * Locking read (`FOR UPDATE`, primary-key order): sees the latest committed
+ * version under REPEATABLE READ and serializes concurrent batches on the same
+ * rows in a deadlock-free order.
+ */
+async function loadRowsForUpdate(
+  tx: GridDb,
+  deps: WriteDeps,
+  ids: string[],
+  ctx: ServerContext,
+): Promise<Map<string, CurrentRow>> {
   const out = new Map<string, CurrentRow>();
   if (ids.length === 0) return out;
   const { rows } = deps.tables;
   const found = (await tx
     .select()
     .from(rows)
-    .where(and(eq(rows.gridId, deps.gridId), inArray(rows.id, ids)))) as unknown as DbRow[];
+    .where(and(eq(rows.gridId, deps.gridId), inArray(rows.id, ids)))
+    .orderBy(rows.id)
+    .for("update")) as unknown as DbRow[];
   for (const r of found) {
     const row: CurrentRow = hydrateRow(r, ctx.schema, ctx.registry);
     if (r.deletedAt) row.deletedAt = r.deletedAt instanceof Date ? r.deletedAt.toISOString() : String(r.deletedAt);
@@ -87,38 +104,68 @@ async function loadRows(tx: GridDb, deps: WriteDeps, ids: string[], ctx: ServerC
  * never errors → change_log rows for applied cells only.
  * A conflict on one row does not block the others.
  */
+export const MAX_BATCH_ID_LENGTH = 64;
+
+function conflictsFor(rowPlan: RowWritePlan, fresh: CurrentRow | undefined, ctx: ServerContext, access: AccessMap) {
+  const conflicts: ChangeConflict[] = [];
+  const errors: ChangeError[] = [];
+  for (const s of rowPlan.sets) {
+    if (!fresh || fresh.deletedAt) {
+      errors.push({ rowId: rowPlan.rowId, columnId: s.column.id, message: "Row not found" });
+      continue;
+    }
+    // Row-aware, fail-closed: the other writer may have changed what this user can see.
+    const a = ctx.resolver({ user: ctx.user, column: s.column, row: fresh });
+    if ((a !== "read" && a !== "edit") || !isReadable(access, s.column.id)) {
+      errors.push({ rowId: rowPlan.rowId, columnId: s.column.id, message: "Unknown column" });
+      continue;
+    }
+    const conflict: ChangeConflict = {
+      rowId: rowPlan.rowId,
+      columnId: s.column.id,
+      serverValue: fresh.cells[s.column.key] ?? null,
+      serverVersion: fresh.version,
+      updatedAt: fresh.updatedAt,
+    };
+    if (fresh.updatedBy) conflict.updatedBy = fresh.updatedBy;
+    conflicts.push(conflict);
+  }
+  return { conflicts, errors };
+}
+
 export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps: WriteDeps): Promise<ChangeResult> {
-  const rowIds = [...new Set(batch.changes.map((c) => c.rowId))];
+  if (typeof batch.id !== "string" || batch.id.length === 0 || batch.id.length > MAX_BATCH_ID_LENGTH) {
+    throw new SchemaGridServerError("INVALID_BATCH", `ChangeBatch.id must be 1..${MAX_BATCH_ID_LENGTH} characters`);
+  }
+  const rowIds = [...new Set(batch.changes.map((c) => c.rowId))].sort();
   const access = resolveAccess(ctx);
   return deps.db.transaction(async (tx) => {
     const txDeps: WriteDeps = { ...deps, db: tx as unknown as GridDb };
     const now = ctx.now();
-    const current = await loadRows(txDeps.db, txDeps, rowIds, ctx);
+    const current = await loadRowsForUpdate(txDeps.db, txDeps, rowIds, ctx);
     const plan = planChanges(batch, current, ctx);
     const applied: CellChange[] = [];
     const conflicts: ChangeConflict[] = [];
     const errors: ChangeError[] = [...plan.errors];
     const log: ChangeLogEntry[] = [];
 
-    for (const rowPlan of plan.rowPlans) {
+    const rowPlans = [...plan.rowPlans].sort((a, b) => (a.rowId < b.rowId ? -1 : a.rowId > b.rowId ? 1 : 0));
+    for (const rowPlan of rowPlans) {
+      const locked = current.get(rowPlan.rowId);
+      // Rows are locked, so a version mismatch here is final: report it without writing.
+      if (!locked || locked.version !== rowPlan.baseVersion) {
+        const c = conflictsFor(rowPlan, locked, ctx, access);
+        conflicts.push(...c.conflicts);
+        errors.push(...c.errors);
+        continue;
+      }
       const result = await buildRowUpdate(rowPlan, ctx, txDeps, now);
       if (affectedRowsOf(result) === 0) {
-        const fresh = (await loadRows(txDeps.db, txDeps, [rowPlan.rowId], ctx)).get(rowPlan.rowId);
-        for (const s of rowPlan.sets) {
-          if (!fresh || fresh.deletedAt) {
-            errors.push({ rowId: rowPlan.rowId, columnId: s.column.id, message: "Row not found" });
-            continue;
-          }
-          const conflict: ChangeConflict = {
-            rowId: rowPlan.rowId,
-            columnId: s.column.id,
-            serverValue: isReadable(access, s.column.id) ? (fresh.cells[s.column.key] ?? null) : null,
-            serverVersion: fresh.version,
-            updatedAt: fresh.updatedAt,
-          };
-          if (fresh.updatedBy) conflict.updatedBy = fresh.updatedBy;
-          conflicts.push(conflict);
-        }
+        // Backstop (e.g. a driver/isolation setup without locking reads).
+        const fresh = (await loadRowsForUpdate(txDeps.db, txDeps, [rowPlan.rowId], ctx)).get(rowPlan.rowId);
+        const c = conflictsFor(rowPlan, fresh, ctx, access);
+        conflicts.push(...c.conflicts);
+        errors.push(...c.errors);
         continue;
       }
       for (const s of rowPlan.sets) {

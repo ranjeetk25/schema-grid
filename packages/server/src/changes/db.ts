@@ -13,9 +13,15 @@ export interface WriteDeps {
   gridId: string;
 }
 
-/** `affectedRows` from a mysql2 / drizzle write result (`[ResultSetHeader, …]` or a header). */
+/**
+ * Affected-row count from a write result: mysql2 `[ResultSetHeader, …]` / header
+ * (`affectedRows`) or PlanetScale-style (`rowsAffected`). Unknown shapes throw —
+ * treating them as 0 would turn successful writes into false conflicts.
+ */
 export function affectedRowsOf(result: unknown): number {
   const header = Array.isArray(result) ? result[0] : result;
-  const n = (header as { affectedRows?: unknown } | undefined)?.affectedRows;
-  return typeof n === "number" ? n : 0;
+  const h = header as { affectedRows?: unknown; rowsAffected?: unknown } | undefined;
+  if (typeof h?.affectedRows === "number") return h.affectedRows;
+  if (typeof h?.rowsAffected === "number") return h.rowsAffected;
+  throw new Error("Cannot read affected rows from the database driver result");
 }

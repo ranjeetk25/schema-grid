@@ -56,7 +56,8 @@ export function validateCellValue(
   const next = isEmptyValue(parsed.data) ? null : parsed.data;
   if (next === null) return { ok: true, next: null, serialized: null, remove: true };
   const serialized = ft.serialize(next);
-  return { ok: true, next, serialized, remove: isEmptyValue(serialized) };
+  if (isEmptyValue(serialized)) return { ok: true, next: null, serialized: null, remove: true };
+  return { ok: true, next, serialized, remove: false };
 }
 
 /**
@@ -73,7 +74,7 @@ export function planChanges(
   const errors: ChangeError[] = [];
   const byId = new Map(ctx.schema.columns.map((c) => [c.id, c]));
 
-  // Last write wins per (row, column), keeping first-seen order of rows/cells.
+  // Last write wins per (row, column); rows keep first-seen order, a repeated cell moves to its last position.
   const collapsed = new Map<string, Map<string, unknown>>();
   for (const change of batch.changes) {
     let cells = collapsed.get(change.rowId);
@@ -105,13 +106,18 @@ export function planChanges(
         fail(columnId, "Unknown column");
         continue;
       }
+      const access = ctx.resolver({ user: ctx.user, column, row });
+      if (access !== "read" && access !== "edit") {
+        // Same message as a missing column: hidden columns must not be detectable.
+        fail(columnId, "Unknown column");
+        continue;
+      }
       if (column.type === "formula") {
         fail(columnId, "Column is read-only (formula)");
         continue;
       }
-      const access = ctx.resolver({ user: ctx.user, column, row });
       if (access !== "edit") {
-        fail(columnId, access === "hidden" ? "Column not found" : "Column is read-only");
+        fail(columnId, "Column is read-only");
         continue;
       }
       const v = validateCellValue(column, next, ctx);

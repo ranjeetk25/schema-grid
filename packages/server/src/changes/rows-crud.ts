@@ -9,6 +9,7 @@ import { hydrateRow } from "../storage/hydrate";
 import { type ChangeLogEntry, insertChangeLog } from "./change-log";
 import type { GridDb, WriteDeps } from "./db";
 import { validateCellValue } from "./plan-changes";
+import { physicalWriteValue } from "./physical";
 import { uuidv7 } from "./uuid";
 
 export interface CreateRowsOptions {
@@ -57,8 +58,8 @@ export async function createRows(
       const v = validateCellValue(column, value, ctx);
       if (!v.ok) throw new RowValidationError(rowIndex, column.id, v.message);
       if (column.source) {
-        values[column.source.valueField] =
-          v.remove ? null : column.type === "datetime" && typeof v.serialized === "string" ? new Date(v.serialized) : v.serialized;
+        const w = physicalWriteValue(column, v.remove ? null : v.serialized, deps.tables);
+        values[w.field] = w.value;
       } else if (!v.remove) {
         cells[column.key] = v.serialized;
       }
