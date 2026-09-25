@@ -13,6 +13,7 @@ import {
   getNumericConfig,
   getSelectOptions,
 } from "../internal/core";
+import { sanitizeCsvText } from "../internal/csv-guard";
 import { toIsoDate, toZonedWallClock } from "../internal/tz";
 import type { ExcelCell } from "./types";
 
@@ -262,17 +263,7 @@ function formulaExcelCell(
   return { value: formatValue(value, column, registry) };
 }
 
-const CSV_TRIGGER_RE =
-  /^[\s\u00A0\u3000]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]|^[\t\r\n]/;
-
-/**
- * OWASP CSV injection guard: prefix `'` when text starts with a formula
- * trigger (`=`, `+`, `-`, `@`, their full-width forms, tab/CR/LF), including
- * after leading whitespace, which some importers trim before evaluating.
- */
-export function sanitizeCsvText(s: string): string {
-  return CSV_TRIGGER_RE.test(s) ? `'${s}` : s;
-}
+export { sanitizeCsvText };
 
 export function toCsvCell(
   value: unknown,

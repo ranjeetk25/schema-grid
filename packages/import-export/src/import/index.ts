@@ -1,6 +1,12 @@
 export { ImportConfigError, SheetNotFoundError } from "../internal/errors";
 export { autoMapColumns } from "./auto-map";
 export type { AutoMapColumnsOptions } from "./auto-map";
+export {
+  buildErrorReportCsv,
+  createImportJobState,
+  recordChunkResult,
+} from "./job-state";
+export type { ImportChunk } from "./job-state";
 export { parseFile } from "./parse-file";
 export { validateRows } from "./validate";
 export type {
