@@ -5,6 +5,7 @@
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "vitest run",
+    "test:integration": "bun run --filter @masai/schema-grid-server test:integration",
     "build": "bun run --filter '*' build",
     "lint": "biome check .",
     "changeset": "changeset"
