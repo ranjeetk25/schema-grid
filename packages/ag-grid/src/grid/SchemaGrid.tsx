@@ -36,7 +36,7 @@ import { FullWidthRowRenderer } from "../grouping/GroupRowRenderer";
 import type { GridRow, ViewDef } from "../internal/core";
 import { wrapWithCellShell } from "../range/CellShell";
 import { RANGE_CELL_CLASS_RULES } from "../range/useRangeSelection";
-import { SG_CLASSES } from "../theme/classNames";
+import { SG_CLASSES, SG_KEYFRAMES_CSS } from "../theme/classNames";
 import type { SchemaGridStores } from "./gridContext";
 import {
   type ExportFormat,
@@ -158,6 +158,8 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
         <AgGridReact<Row> key={grid.rowModelKey} {...grid.gridProps} />
       </div>
       <LiveAnnouncer announcer={announcer} />
+      {/* @keyframes can't ride in the theme part (see SG_KEYFRAMES_CSS). */}
+      <style>{SG_KEYFRAMES_CSS}</style>
     </div>
   );
 }
