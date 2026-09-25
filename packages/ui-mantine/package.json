@@ -68,6 +68,7 @@
     "@mantine/core": "^8.3.18",
     "@mantine/dates": "^8.3.18",
     "@mantine/hooks": "^8.3.18",
+    "@mantine/notifications": "^8.3.18",
     "@testing-library/user-event": "^14.6.1",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",

@@ -71,7 +71,8 @@ Popup set: `longText`, `date`, `datetime`, `select`, `multiSelect`,
 
 ## Notifications (optional)
 
-`notifyClipboardReport(report)` lazily loads `@mantine/notifications` and
+`notifyClipboardReport(report)` lazily loads `@mantine/notifications` (a literal
+`import()`, so bundlers resolve it; pass `{ loader }` to supply the module yourself) and
 shows a toast such as "Pasted 40 cells, 3 skipped (2 invalid, 1 read-only)".
 Mount `<Notifications />` from `@mantine/notifications` in your app for it to
 appear. When the package is not installed it resolves `"unavailable"` and

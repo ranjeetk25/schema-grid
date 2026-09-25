@@ -40,9 +40,13 @@ export interface NotifyClipboardReportOptions {
   loader?: () => Promise<unknown>;
 }
 
-// Non-static specifier so bundlers do not hard-require the optional peer.
-const NOTIFICATIONS_MODULE = ["@mantine", "notifications"].join("/");
-const defaultLoader = () => import(/* @vite-ignore */ /* webpackIgnore: true */ NOTIFICATIONS_MODULE) as Promise<unknown>;
+/**
+ * Literal specifier so bundlers resolve (and code-split) the optional peer;
+ * a non-literal one is left unresolved and always fails in a bundled app.
+ * A missing package rejects here and `notifyClipboardReport` answers
+ * "unavailable".
+ */
+const defaultLoader = (): Promise<unknown> => import("@mantine/notifications");
 
 /**
  * Shows a toast for a paste report via the optional `@mantine/notifications`

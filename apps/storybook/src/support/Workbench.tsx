@@ -358,11 +358,7 @@ export function Workbench({
           {...(pageSize ? { pageSize } : {})}
           onClipboardReport={(report) => {
             setClipboard(report);
-            // The default loader uses a non-static specifier (optional peer), which a
-            // bundled browser app can't resolve; hand it the real module.
-            void notifyClipboardReport(report, {
-              loader: () => import("@mantine/notifications"),
-            });
+            void notifyClipboardReport(report);
           }}
         />
         {conflict && conflictColumn ? (
