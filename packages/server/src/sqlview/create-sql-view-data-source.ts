@@ -141,7 +141,7 @@ interface LoadedRow {
   ext: { exists: boolean; version: number };
 }
 
-const settable = (c: ColumnDef) => (c as ColumnDef & { settable?: boolean }).settable !== false;
+const settable = (c: ColumnDef) => c.settable !== false;
 
 function toNumber(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);

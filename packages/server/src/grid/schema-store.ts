@@ -1,14 +1,7 @@
-import type { GridSchema } from "../internal/core";
+import type { GridSchema, SchemaStore } from "../internal/core";
 
-/**
- * Where a grid's editable schema lives (spec C6).
- * TODO(lane-b): replace with the core `SchemaStore` type once it lands; the shape is identical.
- */
-export interface SchemaStore {
-  /** The stored schema, or null when the grid has never been saved. */
-  get(gridId: string): Promise<GridSchema | null>;
-  put(gridId: string, schema: GridSchema): Promise<void>;
-}
+/** Where a grid's editable schema lives (spec C6); the type is core's. */
+export type { SchemaStore };
 
 export interface MemorySchemaStore extends SchemaStore {
   /** Forgets every stored schema (tests, dev resets). */

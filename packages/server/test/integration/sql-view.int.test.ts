@@ -290,7 +290,9 @@ describeMysql("SQL view over a plain table (MySQL 8.4)", () => {
       changes: [{ rowId: "2", columnId: col.isActive, prev: false, next: true }],
       baseVersions: { "2": base + 1 },
     });
-    expect(ro.errors).toEqual([{ rowId: "2", columnId: col.isActive, message: "Read-only" }]);
+    // settable:false is rejected by the shared planChanges (same message as createDrizzleDataSource);
+    // "Read-only" is reserved for a view without write hooks.
+    expect(ro.errors).toEqual([{ rowId: "2", columnId: col.isActive, message: "Column is read-only" }]);
     expect(ro.applied).toEqual([]);
   });
 

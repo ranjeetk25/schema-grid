@@ -50,39 +50,8 @@ export {
 } from "@ranjeetk25/schema-grid-core";
 
 // ---- data-source capabilities (spec v0.2 §C2) ------------------------------
-// TODO(lane-a): core does not export these yet (Lane A owns C1/C2). Replace this
-// block with `export type { DataSourceCapabilities } from "@ranjeetk25/schema-grid-core"`
-// and `export { DEFAULT_CAPABILITIES } from "@ranjeetk25/schema-grid-core"` once it lands.
-
-/** What a data source can do; the grid derives its feature matrix from it. */
-export interface DataSourceCapabilities {
-  maxPageSize: number;
-  sort: "all" | { columnIds: string[] };
-  filter: "all" | { columnIds: string[] };
-  operators?: Record<string, string[]>;
-  groupBy: boolean;
-  search: boolean;
-  /** `"updates-only"`: the feed reports changed rows but cannot detect deletes (spec §C8). */
-  changeFeed: boolean | "updates-only";
-  write: { cells: boolean; createRows: boolean; deleteRows: boolean };
-  options: boolean;
-  lookup: boolean;
-  export: { maxRows?: number };
-}
-
-/** Everything on, `maxPageSize` 500 (spec §C2). */
-export const DEFAULT_CAPABILITIES: Readonly<DataSourceCapabilities> = Object.freeze({
-  maxPageSize: 500,
-  sort: "all",
-  filter: "all",
-  groupBy: true,
-  search: true,
-  changeFeed: true,
-  write: { cells: true, createRows: true, deleteRows: true },
-  options: true,
-  lookup: true,
-  export: {},
-});
+export type { DataSourceCapabilities } from "@ranjeetk25/schema-grid-core";
+export { DEFAULT_CAPABILITIES } from "@ranjeetk25/schema-grid-core";
 
 // ---- field types / registry -------------------------------------------------
 export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core/field-types";
