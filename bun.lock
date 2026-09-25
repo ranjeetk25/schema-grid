@@ -77,7 +77,11 @@
       },
       "peerDependencies": {
         "drizzle-orm": "^0.45.0",
+        "mysql2": "^3.0.0",
       },
+      "optionalPeers": [
+        "mysql2",
+      ],
     },
     "packages/ui-mantine": {
       "name": "@masai/schema-grid-ui-mantine",
