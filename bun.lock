@@ -36,10 +36,15 @@
         "react-dom": "^18.3.0",
       },
       "peerDependencies": {
+        "@masai/schema-grid-io": "*",
         "ag-grid-community": "^36.0.0",
         "ag-grid-react": "^36.0.0",
         "react": "^18.3.0",
+        "react-dom": "^18.3.0",
       },
+      "optionalPeers": [
+        "@masai/schema-grid-io",
+      ],
     },
     "packages/core": {
       "name": "@masai/schema-grid-core",
