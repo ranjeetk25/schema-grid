@@ -2,7 +2,8 @@
  * apps/demo-api client helpers. The grid itself talks to `POST /grid/:op`
  * through `createHttpDataSource` from `@ranjeetk25/schema-grid-ag-grid` (the wire
  * contract, docs/wire-contract.md); this file only builds its options (the
- * demo's fake-auth headers) and wraps the non-grid REST routes (`/schema`).
+ * demo's fake-auth headers) and the grid-level schema ops (`getSchema` /
+ * `updateSchema`), which are wire ops too (v0.3: the REST `/schema` aliases are gone).
  */
 import {
   type HttpDataSourceOptions,
@@ -71,25 +72,33 @@ export function createDemoDataSource(
   return createHttpDataSource(http);
 }
 
+/** One grid-level wire op on the demo's `admissions` grid (`POST /grid/admissions/:op`, `{ data }` envelope). */
+async function schemaOp(
+  options: HttpClientOptions,
+  op: "getSchema" | "updateSchema",
+  input: unknown,
+): Promise<GridSchema> {
+  const base = options.baseUrl ?? DEMO_API_URL;
+  const body = await readJson<{ data: GridSchema }>(
+    await fetch(`${base}/grid/admissions/${op}`, {
+      method: "POST",
+      headers: headers(options),
+      body: JSON.stringify(input),
+    }),
+  );
+  return body.data;
+}
+
 export async function fetchSchema(
   options: HttpClientOptions,
 ): Promise<GridSchema> {
-  const base = options.baseUrl ?? DEMO_API_URL;
-  return readJson<GridSchema>(
-    await fetch(`${base}/schema`, { headers: headers(options) }),
-  );
+  return schemaOp(options, "getSchema", null);
 }
 
+/** `updateSchema`: send the CURRENT `schemaVersion`; the registry bumps it. */
 export async function putSchema(
   options: HttpClientOptions,
   schema: GridSchema,
 ): Promise<GridSchema> {
-  const base = options.baseUrl ?? DEMO_API_URL;
-  return readJson<GridSchema>(
-    await fetch(`${base}/schema`, {
-      method: "PUT",
-      headers: headers(options),
-      body: JSON.stringify(schema),
-    }),
-  );
+  return schemaOp(options, "updateSchema", schema);
 }

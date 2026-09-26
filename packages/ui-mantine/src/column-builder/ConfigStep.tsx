@@ -19,6 +19,8 @@ export interface ConfigStepProps {
   errors: ColumnDraftErrors;
   onFormulaValidityChange(valid: boolean): void;
   dataSource?: DataSource;
+  /** Roles for option lists' "Who can set" control (v0.3). */
+  roles?: string[];
 }
 
 /** Common fields, then the type's config form (ZodForm) or, for formula columns, the formula editor. */
@@ -32,6 +34,7 @@ export function ConfigStep({
   errors,
   onFormulaValidityChange,
   dataSource,
+  roles,
 }: ConfigStepProps) {
   const fieldType = draft.type ? registry.get(draft.type) : undefined;
   // Errors appear per field, and only for fields the user has left.
@@ -59,6 +62,7 @@ export function ConfigStep({
           onChange={(config) => dispatch({ type: "setConfig", config })}
           errors={fieldErrors}
           onFieldBlur={(path) => setTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
+          {...(roles ? { roles } : {})}
         />
       ) : null}
       {rootError && (

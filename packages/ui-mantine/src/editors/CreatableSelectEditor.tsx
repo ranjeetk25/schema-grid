@@ -3,7 +3,7 @@ import { IconPlus } from "../internal/icons";
 import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
-import { getSelectOptions } from "../internal/options";
+import { getSelectOptions, pickableOptions } from "../internal/options";
 import { useEditorStyles } from "./EditorCard";
 import { OptionColorDot, PickerDivider, PickerEmpty, PickerOption, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 
@@ -24,7 +24,7 @@ const errorMessage = (err: unknown): string =>
  * (`withinPortal={false}`) so AG Grid never sees an outside click.
  */
 export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
-  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error } = props;
+  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, user } = props;
   useEditorStyles();
   // Latest props for async continuations (avoids stale closures after await).
   const latest = useRef(props);
@@ -40,11 +40,14 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   const creatingRef = useRef(false);
   const gridMode = autoFocus !== false;
   const [created, setCreated] = useState<Option[]>([]);
-  const options = useMemo(() => {
+  // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => {
     const base = getSelectOptions(config);
     const extra = created.filter((c) => !base.some((b) => b.id === c.id));
-    return [...base, ...extra];
-  }, [config, created]);
+    return pickableOptions([...base, ...extra], user, value);
+  }, [config, created, user, value]);
+  const options = useMemo(() => pickable.map((p) => p.option), [pickable]);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const selected = options.find((o) => o.id === value);
   const valueLabel = selected?.label ?? (value == null || value === "" ? undefined : String(value));
 
@@ -161,11 +164,18 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
     <>
       {filtered.map((option) =>
         gridMode ? (
-          <PickerOption key={option.id} value={option.id} selected={option.id === value} disabled={creating} leading={<OptionColorDot option={option} />}>
+          <PickerOption
+            key={option.id}
+            value={option.id}
+            selected={option.id === value}
+            disabled={creating || lockOf(option.id) !== null}
+            title={lockOf(option.id) ?? undefined}
+            leading={<OptionColorDot option={option} />}
+          >
             {option.label}
           </PickerOption>
         ) : (
-          <Combobox.Option value={option.id} key={option.id} active={option.id === value} disabled={creating}>
+          <Combobox.Option value={option.id} key={option.id} active={option.id === value} disabled={creating || lockOf(option.id) !== null} title={lockOf(option.id) ?? undefined}>
             <Group gap={8} wrap="nowrap">
               <OptionColorDot option={option} />
               <span>{option.label}</span>

@@ -1,7 +1,8 @@
-import { type ContextArgs, toWireFailure, reportFailure, type WireFailure } from "../http/adapter";
+import { type ContextArgs, reportFailure, toWireFailure, type WireFailure, withServerErrorMapping } from "../http/adapter";
 import {
   createDataSourceHandler,
   createDefaultRegistry,
+  type DataSourceCapabilities,
   type DataSourceHandlerOptions,
   type GridOperation,
   type GridSchema,
@@ -73,12 +74,14 @@ function keyedMutex() {
  * Serves many `defineGrid` grids behind one endpoint. Unknown grid →
  * `UNKNOWN_GRID` 404; `permission(ctx, op)` false → `PERMISSION_DENIED` 403;
  * data operations run through `createDataSourceHandler` on `source(ctx, …)`;
- * `getSchema` / `updateSchema` are served here (schema store + validation).
+ * `getSchema` / `updateSchema` are served here (schema store + validation);
+ * `capabilities` gains `schema: { read, write }` from `permission` (v0.3).
  */
 export function createGridRegistry<Ctx = undefined>(
   definitions: ReadonlyArray<GridDefinition<Ctx>>,
-  options: GridRegistryOptions = {},
+  rawOptions: GridRegistryOptions = {},
 ): GridRegistry<Ctx> {
+  const options = withServerErrorMapping(rawOptions);
   const grids = new Map<string, GridDefinition<Ctx>>();
   for (const def of definitions) {
     if (grids.has(def.id)) throw new Error(`Duplicate grid id "${def.id}"`);
@@ -141,7 +144,33 @@ export function createGridRegistry<Ctx = undefined>(
     });
   }
 
-  async function run(def: GridDefinition<Ctx>, op: GridOperation, input: unknown, ctx: Ctx): Promise<WireResult> {
+  /** `def.permission(ctx, op)`, evaluated at most once per op for this request (default: allowed). */
+  type Permit = (op: GridOperation) => Promise<boolean>;
+  function permitFor(def: GridDefinition<Ctx>, ctx: Ctx): Permit {
+    const memo = new Map<GridOperation, Promise<boolean>>();
+    return (op) => {
+      let p = memo.get(op);
+      if (!p) {
+        p = def.permission ? Promise.resolve(def.permission(ctx, op)) : Promise.resolve(true);
+        memo.set(op, p);
+      }
+      return p;
+    };
+  }
+
+  /**
+   * v0.3: the `capabilities` answer says whether THIS caller may read / change
+   * the schema — `getSchema` permission, and `updateSchema` permission on a
+   * grid that has a schema store — overriding whatever the source reported.
+   */
+  async function withSchemaCapabilities(def: GridDefinition<Ctx>, permit: Permit, result: WireResult): Promise<WireResult> {
+    if (!result.ok) return result;
+    const caps = result.data as DataSourceCapabilities;
+    const [read, write] = await Promise.all([permit("getSchema"), def.schemaStore ? permit("updateSchema") : Promise.resolve(false)]);
+    return { ok: true, data: { ...caps, schema: { read, write } } };
+  }
+
+  async function run(def: GridDefinition<Ctx>, op: GridOperation, input: unknown, ctx: Ctx, permit: Permit): Promise<WireResult> {
     if (op === "getSchema") {
       parse("getSchema", input);
       return { ok: true, data: await currentSchema(def, ctx) };
@@ -149,7 +178,8 @@ export function createGridRegistry<Ctx = undefined>(
     if (op === "updateSchema") return { ok: true, data: await updateSchema(def, input, ctx) };
     const schema = await currentSchema(def, ctx);
     const ds = await def.source(ctx, { gridId: def.id, schema });
-    return createDataSourceHandler(ds, options)(op, input);
+    const result = await createDataSourceHandler(ds, options)(op, input);
+    return op === "capabilities" ? withSchemaCapabilities(def, permit, result) : result;
   }
 
   async function handle(gridId: string, op: string, input: unknown, ctx?: Ctx): Promise<WireResult> {
@@ -157,10 +187,11 @@ export function createGridRegistry<Ctx = undefined>(
     if (!def) return fail("UNKNOWN_GRID", `Unknown grid "${String(gridId)}"`, op);
     if (!isGridOperation(op)) return fail("UNKNOWN_OPERATION", `Unknown grid operation "${op}"`, op);
     try {
-      if (def.permission && !(await def.permission(ctx as Ctx, op))) {
+      const permit = permitFor(def, ctx as Ctx);
+      if (!(await permit(op))) {
         return fail("PERMISSION_DENIED", `Not allowed to run "${op}" on grid "${def.id}"`, op);
       }
-      return await run(def, op, input, ctx as Ctx);
+      return await run(def, op, input, ctx as Ctx, permit);
     } catch (err) {
       if (err instanceof WireFault) return fail(err.code, err.message, op, err.details);
       return failure(err, op);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GridDb } from "../../../src/changes/db";
-import { SchemaGridServerError } from "../../../src/errors";
+import { MissingTableError, SchemaGridServerError } from "../../../src/errors";
 import type { GridSchema } from "../../../src/internal/core";
 import { createDrizzleSchemaStore } from "../../../src/schema-store/drizzle-schema-store";
 import { asRows, createFakeMysql } from "../../helpers/fake-mysql";
@@ -85,5 +85,34 @@ describe("createDrizzleSchemaStore", () => {
   it("rejects an unsafe table name at construction", () => {
     const fake = createFakeMysql();
     expect(() => createDrizzleSchemaStore({ db: fake.db as unknown as GridDb, table: "bad-name" })).toThrow();
+  });
+});
+
+describe("createDrizzleSchemaStore: missing table (v0.3)", () => {
+  const noSuchTable = () =>
+    Object.assign(new Error("Table 'app.grid_schemas' doesn't exist"), { errno: 1146, code: "ER_NO_SUCH_TABLE" });
+
+  it("get / put throw MissingTableError naming createGridSchemasTableDDL when the table was never created", async () => {
+    const { store } = storeOver(() => {
+      throw noSuchTable();
+    });
+    await expect(store.get("leads")).rejects.toBeInstanceOf(MissingTableError);
+    await expect(store.put("leads", schema)).rejects.toMatchObject({
+      code: "MISSING_TABLE",
+      details: { table: "grid_schemas", ddl: "createGridSchemasTableDDL" },
+    });
+  });
+
+  it("other driver errors pass through (raw on drizzle 0.41, wrapped with `cause` on newer drizzle)", async () => {
+    const boom = new Error("connection lost");
+    const { store } = storeOver(() => {
+      throw boom;
+    });
+    const rejection = await store.get("leads").then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(rejection).not.toBeInstanceOf(MissingTableError);
+    expect(rejection === boom || (rejection as { cause?: unknown })?.cause === boom).toBe(true);
   });
 });

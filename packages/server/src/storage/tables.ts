@@ -16,19 +16,42 @@ function rowsTableFor(name: string) {
   });
 }
 
+const changeLogColumns = {
+  id: bigint("id", { mode: "number", unsigned: true }).autoincrement().primaryKey(),
+  gridId: varchar("grid_id", { length: 64 }).notNull(),
+  rowId: varchar("row_id", { length: 36 }).notNull(),
+  columnId: varchar("column_id", { length: 64 }),
+  kind: varchar("kind", { length: 16, enum: ["cell", "create", "delete"] }).notNull(),
+  prev: json("prev"),
+  next: json("next"),
+  actor: varchar("actor", { length: 64 }).notNull(),
+  at: datetime("at", { mode: "date", fsp: 3 }).notNull(),
+  batchId: varchar("batch_id", { length: 64 }),
+};
+
 function changeLogTableFor(name: string) {
   return mysqlTable(name, {
-    id: bigint("id", { mode: "number", unsigned: true }).autoincrement().primaryKey(),
-    gridId: varchar("grid_id", { length: 64 }).notNull(),
-    rowId: varchar("row_id", { length: 36 }).notNull(),
-    columnId: varchar("column_id", { length: 64 }),
-    kind: varchar("kind", { length: 16, enum: ["cell", "create", "delete"] }).notNull(),
-    prev: json("prev"),
-    next: json("next"),
-    actor: varchar("actor", { length: 64 }).notNull(),
-    at: datetime("at", { mode: "date", fsp: 3 }).notNull(),
-    batchId: varchar("batch_id", { length: 64 }),
+    ...changeLogColumns,
+    /** v0.3: the change's input-only `meta` (NULL when absent). Missing on pre-v0.3 tables. */
+    meta: json("meta").$type<Record<string, unknown>>(),
   });
+}
+
+function legacyTableFor(name: string) {
+  return mysqlTable(name, { ...changeLogColumns });
+}
+
+export type LegacyChangeLogTable = ReturnType<typeof legacyTableFor>;
+const legacyCache = new Map<string, LegacyChangeLogTable>();
+
+/** The change_log table WITHOUT the v0.3 `meta` column (tables created before v0.3). */
+export function legacyChangeLogTableFor(name: string): LegacyChangeLogTable {
+  let t = legacyCache.get(name);
+  if (!t) {
+    t = legacyTableFor(name);
+    legacyCache.set(name, t);
+  }
+  return t;
 }
 
 export type RowsTable = ReturnType<typeof rowsTableFor>;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  alterChangeLogTableMetaDDL,
   alterRowsTableIdCollationDDL,
   createChangeLogTableDDL,
   createRowsTableDDL,
@@ -108,6 +109,7 @@ describe("createChangeLogTableDDL", () => {
         \`actor\` VARCHAR(64) NOT NULL,
         \`at\` DATETIME(3) NOT NULL,
         \`batch_id\` VARCHAR(64) NULL,
+        \`meta\` JSON NULL,
         PRIMARY KEY (\`id\`),
         KEY \`idx_grid_change_log_grid_id\` (\`grid_id\`, \`id\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci"
@@ -116,6 +118,15 @@ describe("createChangeLogTableDDL", () => {
 
   it("rejects an unsafe table name", () => {
     expect(() => createChangeLogTableDDL({ table: "a;b" })).toThrow();
+  });
+});
+
+describe("alterChangeLogTableMetaDDL", () => {
+  it("adds the nullable meta JSON column (v0.3 upgrade for existing tables)", () => {
+    const stmt = alterChangeLogTableMetaDDL({ table: "grid_change_log" });
+    expect(stmt.sql).toBe("ALTER TABLE `grid_change_log` ADD COLUMN `meta` JSON NULL");
+    expect(stmt.description).toContain("meta");
+    expect(() => alterChangeLogTableMetaDDL({ table: "a b" })).toThrow();
   });
 });
 

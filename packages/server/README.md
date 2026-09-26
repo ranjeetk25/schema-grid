@@ -90,7 +90,7 @@ Declare each grid once and serve all of them from one endpoint. `defineGrid` tak
 
 | option | meaning |
 |---|---|
-| `permission(ctx, op)` | gate for every op incl. `getSchema` / `updateSchema`; false → `PERMISSION_DENIED` 403. Default: allow all. |
+| `permission(ctx, op)` | **the per-grid permission gate**: called for every op on this grid incl. `getSchema` / `updateSchema` / `capabilities`; false → `PERMISSION_DENIED` 403. Default: allow all. One-liner: `permission: (ctx, op) => op === "fetch" \|\| ctx.user.roles.includes("admin")` (read-only for everyone but admins). The `capabilities` answer reports `schema: { read: permission("getSchema"), write: schemaStore && permission("updateSchema") }` so the workbench can hide column editing up front (v0.3). |
 | `schemaStore` | `{ get(gridId), put(gridId, schema) }`. A stored schema wins over `schema`. Without one, `updateSchema` → `UNSUPPORTED_OPERATION` 501. `createMemorySchemaStore()` is the in-process default. |
 | `onSchemaChange(ctx, prev, next)` | runs after validation and **before** the new schema is persisted (DDL diff for generated / extension columns); throwing aborts the update. |
 | `registry`, `validation` | field types and `assertValidSchema` options (e.g. `isFormulaTranslatable: formulaTranslatability()` from `./drizzle`). |
@@ -121,8 +121,9 @@ the grids whose `getSchema` the context may run. Unknown grid → `UNKNOWN_GRID`
 (else `SCHEMA_CONFLICT` 409 with `details.currentVersion`), bumps it, runs `onSchemaChange`, persists — serialised
 per grid within the process.
 
-Adapters (structural types, no framework dependency), all with the routes `POST /:gridId/:op`,
-`GET /:gridId/schema` and `GET /` (list):
+Adapters (structural types, no framework dependency), all with the routes `POST /:gridId/:op`
+(incl. `getSchema` / `updateSchema` — the schema has exactly one route since v0.3; the old
+`GET /:gridId/schema` alias answers 405) and `GET /` (list):
 
 ```ts
 // Web Request → Response: Hono, Bun.serve, Next.js route handlers, Workers
@@ -132,7 +133,7 @@ app.all("/api/grid/*", (c) => endpoint(c.req.raw));
 // Express middleware (unmatched paths go to next())
 app.use("/api/grid", express.json(), toExpressRouter(grids, { context: (req) => ({ user: req.user }) }));
 
-// API Gateway: POST /grid/{gridId}/{op}, GET /grid/{gridId}/schema (or GET /grid/{gridId}), GET /grid
+// API Gateway: POST /grid/{gridId}/{op} (incl. getSchema), GET /grid
 export const handler = toLambdaHandler(grids, { context: (event) => ctxFromClaims(event) });
 ```
 
@@ -249,3 +250,54 @@ Notes:
   server only stores and returns it (never sorts or compares it in SQL), so
   migrating it is optional; if you want identical schemas, run
   ``ALTER TABLE `grid_change_log` MODIFY `row_id` VARCHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL``.
+
+## v0.3 additions
+
+### Computed columns (`createSqlViewDataSource`)
+
+A column derived in JavaScript from the fetched row — no SQL expression:
+
+```ts
+columns: {
+  name: { expr: t.name },
+  email: { expr: t.email },
+  contact: { compute: (row) => `${row.cells.name} <${row.cells.email}>` },
+}
+```
+
+`compute(row)` runs after hydration on every read (`fetch`, `getChanges`, `createRows`). The column needs no
+extension store, is read-only (writes answer "Column is read-only"), is excluded from free-text search and is
+reported as neither sortable nor filterable in `capabilities` (`sort` / `filter` become explicit column-id
+lists without it), so the grid turns those affordances off; the server rejects them anyway
+(`UNSORTABLE_COLUMN` / `FILTER_INVALID`). Grouping by a computed column is a `FILTER_INVALID` 400.
+
+### Per-option write rules
+
+`Option.settableBy` (`"all"` | `{ roles }`) on select / multiSelect / creatableSelect options is enforced in
+`applyChanges` and `createRows`: a change that INTRODUCES an option the user may not set fails with
+`Option “Verified” can only be set by Admin`; option ids the row already holds are never re-checked.
+
+### Change meta and `rejected`
+
+`ChangeBatch.meta` / `CellChange.meta` travel through `planChanges` unvalidated. The JSON-cells source echoes
+the change's meta on its `applied` / `conflicts` entry and stores it in `change_log.meta`; the SQL view hands
+it to `write.update` (`input.changes[i].meta`, `input.meta` = the batch's) and passes a hook's `rejected`
+changes through to `ChangeResult.rejected`.
+
+`change_log` tables created before v0.3 lack the `meta` column. Writes still succeed (the first
+`ER_BAD_FIELD_ERROR` makes the process fall back to the legacy column list — `meta` is then simply not
+logged); add the column once with
+
+```ts
+import { alterChangeLogTableMetaDDL } from "@ranjeetk25/schema-grid-server/ddl";
+alterChangeLogTableMetaDDL({ table: "grid_change_log" }).sql; // ALTER TABLE `grid_change_log` ADD COLUMN `meta` JSON NULL
+```
+
+### Missing tables
+
+When a table this package reads was never created — the grid rows / change log tables
+(`createDrizzleDataSource`), the schema store table (`createDrizzleSchemaStore`) or the extension cells
+table (`createSqlViewDataSource({ extension })`) — the MySQL `ER_NO_SUCH_TABLE` becomes a
+`MissingTableError` (wire code `MISSING_TABLE`, HTTP 500) whose message names the table and the DDL helper
+to run, e.g. ``Table `grid_schemas` does not exist. Create it with createGridSchemasTableDDL({ table: "grid_schemas" }) …``
+(`details: { table, ddl }`). Run the DDL once at deploy / boot (the demo-api does this in `ensureLeadsStorage`).

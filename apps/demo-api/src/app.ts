@@ -44,7 +44,7 @@ export type { GridRequestContext } from "./context";
 export interface AppDeps {
   db: GridDb;
   tables: GridTables;
-  /** Id of the JSON-cells fixture grid (also served by the legacy `/grid/:op` and `/schema` routes). */
+  /** Id of the JSON-cells fixture grid (also served by the legacy single-grid `/grid/:op` route). */
   gridId: string;
   store: SchemaStore;
   /** IANA zone for relative dates. */
@@ -88,14 +88,6 @@ function parseJsonParam<T>(value: string | undefined, name: string): T | undefin
   }
 }
 
-async function readJson(c: Context): Promise<unknown> {
-  try {
-    return await c.req.json();
-  } catch {
-    throw new HttpError(400, "InputValidationError", "Request body must be JSON");
-  }
-}
-
 export function createApp(deps: AppDeps): CreatedApp {
   const registry = deps.registry ?? createDefaultRegistry();
   const resolver = deps.resolver ?? createRolePermissionResolver();
@@ -112,7 +104,7 @@ export function createApp(deps: AppDeps): CreatedApp {
     deps.leads?.schemaStore ?? createDrizzleSchemaStore({ db: deps.db, table: leadsStorage.schemasTable });
   const leadsExtension = createExtensionCellStore({ db: deps.db, table: leadsStorage.extensionTable });
 
-  /** Both grids behind one endpoint: `POST /grid/:gridId/:op`, `GET /grid/:gridId/schema`, `GET /grid`. */
+  /** Both grids behind one endpoint: `POST /grid/:gridId/:op` (incl. `getSchema` / `updateSchema`), `GET /grid`. */
   const grids = createGridRegistry<GridRequestContext>(
     [
       admissionsGrid({ ...deps, registry, resolver }),
@@ -214,17 +206,6 @@ export function createApp(deps: AppDeps): CreatedApp {
   /** Multi-grid wire endpoint (docs/wire-contract.md "Multi-grid endpoint"). */
   app.all("/grid", (c) => gridEndpoint(c.req.raw));
   app.all("/grid/*", (c) => gridEndpoint(c.req.raw));
-
-  /** Legacy REST schema routes for the fixture grid (the registry's getSchema / updateSchema). */
-  app.get("/schema", async (c) => c.json(await gridOp<GridSchema>(deps.gridId, "getSchema", null, context(c))));
-
-  app.put("/schema", async (c) => {
-    const body = await readJson(c);
-    if (!body || typeof body !== "object" || !Array.isArray((body as GridSchema).columns)) {
-      throw new HttpError(400, "InputValidationError", "Body must be a GridSchema");
-    }
-    return c.json(await gridOp<GridSchema>(deps.gridId, "updateSchema", body, context(c)));
-  });
 
   app.post("/import", async (c) => {
     const form = await c.req.parseBody();

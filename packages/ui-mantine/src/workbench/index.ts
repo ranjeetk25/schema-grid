@@ -2,6 +2,16 @@ export { SchemaGridWorkbench } from "./SchemaGridWorkbench";
 export { deriveWorkbenchFeatures, isReadOnly, type DeriveFeaturesInput } from "./capabilities";
 export { classifyError, describeError, tapDataSource, toWorkbenchError } from "./errors";
 export { collectRows, type CollectRowsOptions } from "./exportRows";
+export { combineHostEvents, mergeWorkbenchEvents, type WorkbenchHostEvents } from "./events";
+export {
+  defaultExportFileName,
+  type ExportFileFormat,
+  type ExportFileNameContext,
+  type ExportFileNameOption,
+  resolveExportFileName,
+} from "./exportName";
+export { type ColumnPickerItem, columnSignature, listPickerColumns, toColumnState } from "./columnPicker";
+export { ColumnsButton } from "./ColumnsButton";
 export { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn, type WorkbenchInsertPosition } from "./schemaOps";
 export {
   ALL_ROWS_VIEW,
@@ -13,6 +23,7 @@ export {
 } from "./viewStore";
 export {
   clipboardSummary,
+  notSavedLine,
   renderSlot,
   useWorkbench,
   type UseWorkbenchOptions,

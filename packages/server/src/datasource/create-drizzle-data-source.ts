@@ -3,7 +3,7 @@ import { applyChanges } from "../changes/apply-changes";
 import type { GridDb } from "../changes/db";
 import { createRows, deleteRows } from "../changes/rows-crud";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
-import { PermissionError, SchemaGridServerError } from "../errors";
+import { PermissionError, SchemaGridServerError, type TableDdlHelper, guardMissingTable } from "../errors";
 import { getChanges } from "../feed/get-changes";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import { formulaTranslatability, planFormulaColumns } from "../formula/formula-plan";
@@ -140,6 +140,12 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
   };
   const scope: GridSqlScope = { ...gridScope, rowSource, formulaPlans: planFormulaColumns(baseScope) };
   const deps = { db: options.db, tables, gridId: options.gridId };
+  /** `MISSING_TABLE` (naming the DDL helper) instead of a raw driver error when the grid tables were never created. */
+  const known: Record<string, TableDdlHelper> = {
+    [tables.rowsTableName]: "createRowsTableDDL",
+    [tables.changeLogTableName]: "createChangeLogTableDDL",
+  };
+  const guarded = <T>(fn: () => Promise<T>): Promise<T> => guardMissingTable(known, fn);
   const caps: DataSourceCapabilities = {
     ...DEFAULT_CAPABILITIES,
     lookup: Boolean(options.linkLookup),
@@ -155,22 +161,26 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
 
   const ds: DataSource<GridRow> = {
     capabilities: () => caps,
-    async fetch(input) {
-      const query = withDefaultSort(input);
-      if (query.groupBy && query.groupBy.length > 0) {
-        return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
-      }
-      return runRowQuery(query, scope, options.db, access);
-    },
-    applyChanges: (batch) => applyChanges(batch, ctx, deps),
-    createRows: (partials) =>
-      createRows(partials, ctx, deps, {
-        transformRows: (rows) => evaluateFormulaCells(rows, access, ctx),
-        ...(hasMap ? { mapRows } : {}),
-        ...hydrateOptions,
+    fetch: (input) =>
+      guarded(async () => {
+        const query = withDefaultSort(input);
+        if (query.groupBy && query.groupBy.length > 0) {
+          return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
+        }
+        return runRowQuery(query, scope, options.db, access);
       }),
-    deleteRows: (ids) => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {}),
-    getChanges: (since) => getChanges(since, ctx, deps, { ...(hasMap ? { mapRows } : {}), ...hydrateOptions }),
+    applyChanges: (batch) => guarded(() => applyChanges(batch, ctx, deps)),
+    createRows: (partials) =>
+      guarded(() =>
+        createRows(partials, ctx, deps, {
+          transformRows: (rows) => evaluateFormulaCells(rows, access, ctx),
+          ...(hasMap ? { mapRows } : {}),
+          ...hydrateOptions,
+        }),
+      ),
+    deleteRows: (ids) =>
+      guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {})),
+    getChanges: (since) => guarded(() => getChanges(since, ctx, deps, { ...(hasMap ? { mapRows } : {}), ...hydrateOptions })),
     async getOptions(columnId, search) {
       const column = readableColumn(columnId);
       if (column.type === "user") return options.userDirectory ? options.userDirectory(search) : [];

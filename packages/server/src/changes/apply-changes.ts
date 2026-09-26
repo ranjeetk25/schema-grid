@@ -101,8 +101,8 @@ async function loadRowsForUpdate(
  * Applies a ChangeBatch with optimistic version checks, in ONE transaction:
  * read current rows → `planChanges` → one UPDATE per row (version guard) →
  * rows that matched 0 rows become conflicts (with the server's current state),
- * never errors → change_log rows for applied cells only.
- * A conflict on one row does not block the others.
+ * never errors → change_log rows for applied cells only (with the change's
+ * `meta`, v0.3). A conflict on one row does not block the others.
  */
 export const MAX_BATCH_ID_LENGTH = 64;
 
@@ -128,9 +128,15 @@ export function conflictsFor(rowPlan: RowWritePlan, fresh: CurrentRow | undefine
       updatedAt: fresh.updatedAt,
     };
     if (fresh.updatedBy) conflict.updatedBy = fresh.updatedBy;
+    if (s.meta) conflict.meta = s.meta;
     conflicts.push(conflict);
   }
   return { conflicts, errors };
+}
+
+/** The `applied` entry for a planned set: prev / next plus the change's `meta` when it had one. */
+export function appliedChange(rowId: string, s: PlannedSet): CellChange {
+  return { rowId, columnId: s.column.id, prev: s.prev, next: s.next, ...(s.meta ? { meta: s.meta } : {}) };
 }
 
 export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps: WriteDeps): Promise<ChangeResult> {
@@ -172,8 +178,15 @@ export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps:
       // The UPDATE is guarded by `version = baseVersion` and bumps it by exactly one.
       versions[rowPlan.rowId] = rowPlan.baseVersion + 1;
       for (const s of rowPlan.sets) {
-        applied.push({ rowId: rowPlan.rowId, columnId: s.column.id, prev: s.prev, next: s.next });
-        log.push({ rowId: rowPlan.rowId, columnId: s.column.id, kind: "cell", prev: s.prev, next: s.remove ? null : s.serialized });
+        applied.push(appliedChange(rowPlan.rowId, s));
+        log.push({
+          rowId: rowPlan.rowId,
+          columnId: s.column.id,
+          kind: "cell",
+          prev: s.prev,
+          next: s.remove ? null : s.serialized,
+          ...(s.meta ? { meta: s.meta } : {}),
+        });
       }
     }
 

@@ -14,6 +14,7 @@ export {
   toHttpResponse,
   toWireFailure,
   type WireFailure,
+  withServerErrorMapping,
 } from "./adapter";
 export {
   createGridRegistry,

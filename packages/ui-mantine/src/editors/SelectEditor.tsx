@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
-import { getSelectOptions, resolveOptionColor } from "../internal/options";
+import { getSelectOptions, pickableOptions, resolveOptionColor } from "../internal/options";
 import { useEditorStyles } from "./EditorCard";
 import { OptionColorDot, PickerDivider, PickerEmpty, PickerOption, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 
@@ -48,9 +48,13 @@ export function SelectEditor(props: UiEditorProps<string, SelectEditorConfig>) {
   return props.autoFocus === false ? <SelectField {...props} /> : <SelectPicker {...props} />;
 }
 
-function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource }: UiEditorProps<string, SelectEditorConfig>) {
+function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user }: UiEditorProps<string, SelectEditorConfig>) {
   useEditorStyles();
-  const options = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource);
+  // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = pickable.map((p) => p.option);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const combobox = useCombobox({ defaultOpened: true });
@@ -101,7 +105,14 @@ function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dat
         <PickerDivider />
         <Combobox.Options className="sg-ed-list">
           {visible.map((o) => (
-            <PickerOption key={o.id} value={o.id} selected={o.id === value} leading={<OptionColorDot option={o} />}>
+            <PickerOption
+              key={o.id}
+              value={o.id}
+              selected={o.id === value}
+              disabled={lockOf(o.id) !== null}
+              title={lockOf(o.id) ?? undefined}
+              leading={<OptionColorDot option={o} />}
+            >
               {o.label}
             </PickerOption>
           ))}
@@ -113,12 +124,14 @@ function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dat
 }
 
 /** Form / filter mode: a regular Mantine Select (dropdown kept inside the component). */
-function SelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error }: UiEditorProps<string, SelectEditorConfig>) {
+function SelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user }: UiEditorProps<string, SelectEditorConfig>) {
   const theme = useMantineTheme();
-  const options = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource);
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = pickable.map((p) => p.option);
   return (
     <Select
-      data={options.map((o) => ({ value: o.id, label: o.label }))}
+      data={pickable.map((p) => ({ value: p.option.id, label: p.option.label, disabled: p.lockReason !== null }))}
       value={value}
       error={error}
       searchable

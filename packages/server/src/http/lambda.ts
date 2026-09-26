@@ -44,8 +44,8 @@ function decodeBody(event: LambdaLikeEvent): string | undefined {
  * AWS Lambda handler for API Gateway proxy integrations. Never rejects.
  *
  * - Single data source: `toLambdaHandler(createGridRouterAdapter(ds))` on `POST /grid/{op}`.
- * - Grid registry: `toLambdaHandler(registry, { context })` on `POST /grid/{gridId}/{op}`,
- *   `GET /grid/{gridId}/schema` (or `GET /grid/{gridId}`) and `GET /grid` (list).
+ * - Grid registry: `toLambdaHandler(registry, { context })` on `POST /grid/{gridId}/{op}`
+ *   (incl. `getSchema`) and `GET /grid` (list).
  */
 export function toLambdaHandler<Ctx = undefined, Event extends LambdaLikeEvent = LambdaLikeEvent>(
   target: GridRegistry<Ctx>,
@@ -74,8 +74,7 @@ export function toLambdaHandler<Ctx, Event extends LambdaLikeEvent>(
     return async (event) => {
       const method = event.httpMethod ?? event.requestContext?.http?.method ?? "POST";
       const gridId = event.pathParameters?.[gridParam];
-      let op = event.pathParameters?.[opParam];
-      if (gridId !== undefined && op === undefined && method.toUpperCase() === "GET") op = "schema";
+      const op = event.pathParameters?.[opParam];
       const segments = gridId === undefined ? [] : [gridId, op ?? ""];
       const res =
         (await runRegistryRoute(

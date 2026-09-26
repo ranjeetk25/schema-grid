@@ -36,6 +36,7 @@ import {
   type FilterOperatorDef,
   type GridRow,
   type Option,
+  type PermissionUser,
   createDefaultRegistry,
 } from "./core-contracts";
 
@@ -71,6 +72,8 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
   autoFocus?: boolean;
   error?: string;
   onOptionCreate?(option: Option): void;
+  /** The signed-in user (from the grid context); option pickers hide options they cannot set (`Option.settableBy`). */
+  user?: PermissionUser;
   /**
    * Where the widget renders: `"cell"` = inside the AG Grid cell (inline
    * editor), `"popup"` = inside the popup card, `"form"` = a form / filter
@@ -128,6 +131,7 @@ function contextExtras(context: unknown, column: ColumnDef | undefined) {
   const ctx = getSchemaGridContext(context);
   return {
     dataSource: ctx?.dataSource as DataSource | undefined,
+    ...(ctx?.user ? { user: ctx.user as PermissionUser } : {}),
     onOptionCreate: (option: Option) => {
       if (column) ctx?.events()?.onOptionCreate?.(column.id, option);
     },

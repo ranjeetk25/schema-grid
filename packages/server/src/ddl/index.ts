@@ -1,4 +1,6 @@
 export {
+  alterChangeLogTableMetaDDL,
+  type AlterChangeLogTableMetaDDLOptions,
   alterRowsTableIdCollationDDL,
   type AlterRowsTableIdCollationDDLOptions,
   createChangeLogTableDDL,

@@ -1,24 +1,47 @@
-import { ActionIcon, Button, ColorSwatch, Group, Input, Popover, SimpleGrid, Stack, TextInput, UnstyledButton } from "@mantine/core";
-import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../../internal/icons";
+import {
+  ActionIcon,
+  Button,
+  ColorSwatch,
+  Group,
+  Input,
+  MultiSelect,
+  Popover,
+  SegmentedControl,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  UnstyledButton,
+} from "@mantine/core";
+import { IconChevronDown, IconChevronUp, IconLock, IconPlus, IconX } from "../../internal/icons";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { RoleRule } from "../../internal/core-contracts";
 import { MANTINE_NAMED_COLORS } from "../../internal/options";
+import { roleLabel } from "../PermissionsStep";
 
 export interface OptionListItem {
   label: string;
   value: string;
   color?: string;
+  /** Who may SET this option (core `Option.settableBy`, v0.3). Absent = everyone. */
+  settableBy?: RoleRule;
 }
 
 export interface OptionListFieldProps {
   label: ReactNode;
   description?: ReactNode;
   value: unknown;
-  /** Emits options keyed by `valueKey` (e.g. core `{id, label, color?}`). */
-  onChange: (next: Record<string, string>[]) => void;
+  /** Emits options keyed by `valueKey` (e.g. core `{id, label, color?, settableBy?}`). */
+  onChange: (next: Record<string, unknown>[]) => void;
   /** Whether the schema's option object has a `color` field. */
   hasColor: boolean;
   /** Key of the stored value: `"id"` for core options (default `"value"`). */
   valueKey?: "id" | "value";
+  /**
+   * Roles offered by the per-option "Who can set" control (core options only,
+   * i.e. `valueKey: "id"`). Absent → the control is not shown.
+   */
+  roles?: string[];
   error?: string;
   /** Dot-path of the list (e.g. `options`); rows' inputs carry `data-sg-path` for blur tracking. */
   path?: string;
@@ -31,9 +54,13 @@ interface Row {
   label: string;
   value: string;
   color?: string;
+  settableBy?: RoleRule;
   /** Once true, editing the label no longer re-derives the value. */
   valueEdited: boolean;
 }
+
+const isRoleRule = (v: unknown): v is RoleRule =>
+  v === "all" || (!!v && typeof v === "object" && Array.isArray((v as { roles?: unknown }).roles));
 
 /** "In Progress!" → "in_progress": lowercase, non-alphanumerics → "_", trimmed underscores. */
 export function slugifyOptionValue(label: string): string {
@@ -51,8 +78,87 @@ const readOptions = (value: unknown, valueKey: "id" | "value"): OptionListItem[]
           label: typeof o.label === "string" ? o.label : "",
           value: typeof o[valueKey] === "string" ? (o[valueKey] as string) : "",
           ...(typeof o.color === "string" && o.color ? { color: o.color } : {}),
+          ...(isRoleRule(o.settableBy) ? { settableBy: o.settableBy } : {}),
         }))
     : [];
+
+const list = (roles: string[]) => {
+  const labels = roles.map(roleLabel);
+  return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+};
+
+/** "Everyone" / "Only Admin and Finance team" / "Nobody yet". */
+export function settableBySummary(rule: RoleRule | undefined): string {
+  if (rule === undefined || rule === "all") return "Everyone";
+  return rule.roles.length === 0 ? "Nobody yet" : `Only ${list(rule.roles)}`;
+}
+
+/**
+ * Per-option "Who can set" (v0.3): a subtle pill that opens a small popover
+ * with the same "Everyone | Only roles…" control as the column's access
+ * section. Absent `settableBy` = everyone (never written as `"all"` unless it
+ * already was).
+ */
+function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: RoleRule | undefined; roles: string[]; onChange(rule: RoleRule | undefined): void }) {
+  const [opened, setOpened] = useState(false);
+  const restricted = rule !== undefined && rule !== "all";
+  const summary = settableBySummary(rule);
+  return (
+    <Popover opened={opened} onChange={setOpened} withinPortal={false} position="bottom-end" shadow="md" radius="lg" width={320}>
+      <Popover.Target>
+        <Button
+          size="compact-xs"
+          variant="subtle"
+          color="gray"
+          aria-label={`Who can set ${label || "this option"}: ${summary}`}
+          aria-expanded={opened}
+          data-testid="option-settable-by"
+          leftSection={restricted ? <IconLock size={12} stroke={1.75} /> : undefined}
+          styles={{ root: { fontWeight: 400, color: restricted ? "var(--mantine-color-text)" : "var(--mantine-color-dimmed)" } }}
+          onClick={() => setOpened((o) => !o)}
+        >
+          {summary}
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown p={12}>
+        <Stack gap={8}>
+          <Group justify="space-between" wrap="nowrap" gap="sm">
+            <Text size="sm" style={{ whiteSpace: "nowrap" }}>
+              Who can set
+            </Text>
+            <SegmentedControl
+              aria-label={`Who can set ${label || "this option"}`}
+              size="xs"
+              value={restricted ? "roles" : "all"}
+              onChange={(v) => onChange(v === "all" ? (rule === "all" ? "all" : undefined) : { roles: restricted ? rule.roles : [] })}
+              data={[
+                { value: "all", label: "Everyone" },
+                { value: "roles", label: "Only roles…" },
+              ]}
+            />
+          </Group>
+          {restricted ? (
+            <MultiSelect
+              aria-label={`Roles that can set ${label || "this option"}`}
+              placeholder="Pick roles"
+              size="xs"
+              data={roles.map((r) => ({ value: r, label: roleLabel(r) }))}
+              value={rule.roles}
+              onChange={(next) => onChange({ roles: next })}
+              error={rule.roles.length === 0 ? "Pick at least one role" : undefined}
+              searchable
+              comboboxProps={{ withinPortal: false }}
+            />
+          ) : (
+            <Text size="xs" c="dimmed">
+              Anyone who can edit the column can pick this option.
+            </Text>
+          )}
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
 
 const swatchColor = (color: string | undefined) => (color ? `var(--mantine-color-${color}-filled, ${color})` : "transparent");
 
@@ -106,10 +212,15 @@ function ColourPicker({ color, onPick, error }: { color?: string; onPick: (color
   );
 }
 
-function projectRows(rows: Row[], hasColor: boolean | undefined, valueKey: "id" | "value"): Record<string, string>[] {
+function projectRows(rows: Row[], hasColor: boolean | undefined, valueKey: "id" | "value"): Record<string, unknown>[] {
   return rows.map((r) =>
     valueKey === "id"
-      ? { id: r.value, label: r.label, ...(hasColor && r.color ? { color: r.color } : {}) }
+      ? {
+          id: r.value,
+          label: r.label,
+          ...(hasColor && r.color ? { color: r.color } : {}),
+          ...(r.settableBy !== undefined ? { settableBy: r.settableBy } : {}),
+        }
       : { label: r.label, value: r.value, ...(hasColor && r.color ? { color: r.color } : {}) },
   );
 }
@@ -125,7 +236,9 @@ export function OptionListField({
   error,
   path,
   rowError,
+  roles,
 }: OptionListFieldProps) {
+  const showSettableBy = valueKey === "id" && roles !== undefined;
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
     options.map((o) => ({ id: nextId.current++, ...o, valueEdited: o.value !== slugifyOptionValue(o.label) }));
@@ -206,6 +319,11 @@ export function OptionListField({
               styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)", fontSize: 12, color: "var(--mantine-color-dimmed)" } }}
               onChange={(e) => update(index, { value: e.currentTarget.value, valueEdited: true })}
             />
+            {showSettableBy ? (
+              <Group h={32} align="center" style={{ flex: "none" }}>
+                <WhoCanSet label={row.label} rule={row.settableBy} roles={roles ?? []} onChange={(settableBy) => update(index, { settableBy })} />
+              </Group>
+            ) : null}
             <Group gap={0} wrap="nowrap" h={32} align="center">
               <ActionIcon className="sg-cp-icon-btn" size="sm" variant="subtle" color="gray" aria-label="Move option up" disabled={index === 0} onClick={() => move(index, -1)}>
                 <IconChevronUp size={14} stroke={1.75} />

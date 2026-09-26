@@ -181,7 +181,7 @@ export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) =>
 });
 ```
 
-Serve every grid from one endpoint (`POST /grid/:gridId/:op`, `GET /grid/:gridId/schema`, `GET /grid`):
+Serve every grid from one endpoint (`POST /grid/:gridId/:op` — the schema is the `getSchema` op — and `GET /grid` to list grids):
 
 ```ts
 import { createExtensionCellsTableDDL, createGridSchemasTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
@@ -203,8 +203,8 @@ app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js rou
 ```
 
 `toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json(), …)`) and
-`toLambdaHandler(grids, { context })` (routes `POST /grid/{gridId}/{op}`, `GET /grid/{gridId}/schema`) serve the
-same routes. In the browser, one client per grid:
+`toLambdaHandler(grids, { context })` (routes `POST /grid/{gridId}/{op}`) serve the same routes. There is exactly one
+way to read a schema: `POST /grid/:gridId/getSchema` (v0.3 removed the `GET /grid/:gridId/schema` alias). In the browser, one client per grid:
 
 ```ts
 import { createGridClient } from "@ranjeetk25/schema-grid-ag-grid";
@@ -234,6 +234,53 @@ export const LeadsPage = ({ user }) => (
 
 Toolbar features follow the grid's capabilities; see the "One-component page"
 section of the ui-mantine / ui-shadcn READMEs for the props.
+
+### Hooking into the workbench (v0.3)
+
+The page keeps its own logic through `events` — the same `SchemaGridEvents` the bare grid takes, merged with the
+workbench's built-in handlers rather than replacing them:
+
+```tsx
+<SchemaGridWorkbench
+  client={leads}
+  user={user}
+  events={{
+    // host → internal: return false to veto, or a reduced / transformed batch. Changes you drop are
+    // reported as `rejected` (never sent); `meta` you attach travels to the data source untouched.
+    beforeCellsChange: async (batch) => ({
+      ...batch,
+      meta: { decisionMessage: "Approved from the review page" },
+      changes: batch.changes.filter((c) => c.columnId !== "locked"),
+    }),
+    onCellsChange: (result) => audit(result.applied),     // fans out: host AND the workbench see it
+    onConflict: (conflict) => log(conflict),               // the built-in conflict prompt still opens
+  }}
+  exportFileName={({ view, date }) => `leads-${view?.name ?? "all"}-${date.toISOString().slice(0, 10)}`}
+/>
+```
+
+- **Schema editability is known up front.** `capabilities().schema` is `{ read, write }`; a grid registry answers it
+  from `permission(ctx, "getSchema" | "updateSchema")` and whether the grid has a `schemaStore`. When `write` is
+  false the workbench shows no "+ Add column", no header "Edit column… / Insert…" and no column panel
+  (`features.addColumn` can still only turn it off).
+- **Columns picker.** The toolbar's "Columns" button shows/hides and reorders columns; the result is the current
+  view's `columnState`, so "Save view" persists it and switching views undoes it. Columns the user cannot read are
+  never listed.
+- **Per-option rules.** `Option.settableBy: "all" | { roles }` restricts who may SET a select option (existing
+  values stay readable). Editors hide such options, paste/fill count them as errors, and both the in-memory source
+  and the server reject them with `Option “Verified” can only be set by Admin`. Set it from the column panel's
+  Options editor ("Who can set") or in the schema.
+- **Silent rejection.** A data source (or a `beforeCellsChange` that drops changes) may answer
+  `ChangeResult.rejected: CellChange[]`: not applied, not an error. The grid reverts the value with no error state;
+  the status bar reads "N changes not saved"; `ClipboardReport.rejected` counts them. The "saved" counter counts
+  applied cells only.
+- **Change metadata.** `ChangeBatch.meta` / `CellChange.meta` (JSON) are ignored by validation and the client write
+  check, reach `applyChanges` / `write.update`, and are echoed on `applied` / `rejected` / `conflicts`. The server
+  change log stores `meta` when present (existing installs: `ALTER TABLE <change_log> ADD COLUMN meta JSON NULL`).
+- **Export.** Quick export names the file `${gridId}-${view}-${YYYY-MM-DD}.csv` (slugified); `exportFileName`
+  (string or function) overrides it. Export failures reach `onError` and an inline banner with Retry.
+- **Bundle.** io, the Import wizard and the Export dialog load on first use; exceljs sits in its own chunk
+  (`docs/bundle.md`).
 
 ## CI / AWS CodePipeline + CodeBuild
 

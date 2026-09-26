@@ -1,7 +1,7 @@
 import { type AnyColumn, SQL, type SQLWrapper, and, eq, inArray, is, sql } from "drizzle-orm";
 import { projectRow } from "../access/project-row";
 import { type AccessMap, isReadable, resolveAccess } from "../access/query-access";
-import { MAX_BATCH_ID_LENGTH, cellsUpdateExpr, conflictsFor } from "../changes/apply-changes";
+import { MAX_BATCH_ID_LENGTH, appliedChange, cellsUpdateExpr, conflictsFor } from "../changes/apply-changes";
 import { type GridDb, affectedRowsOf } from "../changes/db";
 import { type CurrentRow, type PlannedSet, planChanges, validateCellValue } from "../changes/plan-changes";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
@@ -10,7 +10,9 @@ import {
   RowValidationError,
   SchemaGridServerError,
   SchemaValidationError,
+  type TableDdlHelper,
   UnsupportedOperatorError,
+  guardMissingTable,
 } from "../errors";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import { formulaTranslatability, planFormulaColumns } from "../formula/formula-plan";
@@ -20,6 +22,7 @@ import {
   type ChangeConflict,
   type ChangeError,
   type ChangeFeedEntry,
+  type ChangeMeta,
   type ChangeResult,
   type ColumnDef,
   DEFAULT_CAPABILITIES,
@@ -76,7 +79,7 @@ export interface SqlViewContext extends ServerContext {
 
 export interface SqlViewUpdateInput {
   rowId: string;
-  /** Validated changes to MAPPED columns only; `next` is the client-shape value (`null` = empty). */
+  /** Validated changes to MAPPED columns only; `next` is the client-shape value (`null` = empty). Each keeps its `meta` (v0.3). */
   changes: CellChange[];
   /**
    * The base-table part of the row version the client edited: the `version`
@@ -91,6 +94,8 @@ export interface SqlViewUpdateInput {
    * these in your UPDATE so DATETIME columns keep their zone.
    */
   values: Record<string, unknown>;
+  /** The batch's input-only `meta` (v0.3), when the client sent one. */
+  meta?: ChangeMeta;
 }
 
 /** A per-cell failure the write hook reports instead of applying the cell. */
@@ -150,14 +155,22 @@ export interface SqlViewWriteHooks {
  */
 export interface ComputedColumn {
   expr?: undefined;
-  /** Fills the cell from the hydrated row (hidden cells included). Empty results leave the cell absent. */
-  compute?: (row: GridRow) => unknown;
+  /**
+   * Derives the cell from the hydrated row (hidden cells included, formulas
+   * evaluated). Runs before `mapRows`. Empty results leave the cell absent.
+   */
+  compute?: (row: { id: string; cells: Record<string, unknown> }) => unknown;
   /** Storage kind hint (unused in SQL). */
   kind?: StorageKind;
 }
 
 /** A mapped column (an SQL expression) or a computed one. */
 export type SqlViewColumn = MappedColumn | ComputedColumn;
+
+/** True for a `columns` entry without an SQL expression (`{ compute }` or a bare declaration). */
+export function isComputedColumn(column: SqlViewColumn): column is ComputedColumn {
+  return column.expr === undefined;
+}
 
 /** Post-read hook over a page of rows (see `RowSource.mapRows`). */
 export type SqlViewRowsMapper = (rows: GridRow[], ctx: SqlViewContext) => Promise<GridRow[]> | GridRow[];
@@ -324,10 +337,6 @@ function toUtcExpr(expr: SQL, naiveZone: string): SQL {
   return offset ? sql`CONVERT_TZ(${expr}, ${offset}, '+00:00')` : sql`CONVERT_TZ(${expr}, ${naiveZone}, 'UTC')`;
 }
 
-function isComputed(c: SqlViewColumn): c is ComputedColumn {
-  return c.expr === undefined;
-}
-
 function unsupported(op: string): SchemaGridServerError {
   return new SchemaGridServerError("UNSUPPORTED_OPERATION", `This SQL view does not support "${op}"`);
 }
@@ -347,12 +356,12 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
   const gridId = options.gridId ?? options.schema.id;
   const extension = options.extension;
   const write = options.write;
-  const mappedEntries = Object.entries(options.columns).filter((e): e is [string, MappedColumn] => !isComputed(e[1]));
+  const mappedEntries = Object.entries(options.columns).filter((e): e is [string, MappedColumn] => !isComputedColumn(e[1]));
   const mappedKeys = new Set(mappedEntries.map(([k]) => k));
   const computeFns = new Map<string, (row: GridRow) => unknown>();
   const computedKeys = new Set<string>(Object.keys(options.computed ?? {}));
   for (const [key, c] of Object.entries(options.columns)) {
-    if (!isComputed(c)) continue;
+    if (!isComputedColumn(c)) continue;
     computedKeys.add(key);
     if (c.compute) computeFns.set(key, c.compute);
   }
@@ -578,13 +587,23 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
   const sqlColumnIds = ctx.schema.columns.filter((c) => !computedIdSet.has(c.id)).map((c) => c.id);
   const caps: DataSourceCapabilities = {
     ...DEFAULT_CAPABILITIES,
-    ...(computedIds.length > 0 ? { sort: { columnIds: sqlColumnIds }, filter: { columnIds: sqlColumnIds } } : {}),
     changeFeed: effectiveUpdatedAt && userUpdatedAt ? "updates-only" : false,
     write: { cells: Boolean(write?.update), createRows: Boolean(write?.create), deleteRows: Boolean(write?.delete) },
     lookup: Boolean(options.linkLookup),
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
     ...options.defaultCapabilities,
   };
+  if (computedIds.length > 0) {
+    // Computed columns drop out of the sort / filter scopes whatever the caller declared.
+    const without = (scope: DataSourceCapabilities["sort"]): DataSourceCapabilities["sort"] => ({
+      columnIds: (scope === "all" ? sqlColumnIds : scope.columnIds).filter((id) => !computedIdSet.has(id)),
+    });
+    caps.sort = without(caps.sort);
+    caps.filter = without(caps.filter);
+  }
+  /** Tables this source reads that the app must have created (for `MISSING_TABLE` errors). */
+  const knownTables: Record<string, TableDdlHelper> = extension ? { [extension.tableName]: "createExtensionCellsTableDDL" } : {};
+  const guarded = <T>(fn: () => Promise<T>): Promise<T> => (extension ? guardMissingTable(knownTables, fn) : fn());
 
   // ---- reads -------------------------------------------------------------------
   const idsIn = (ids: string[]) => sql`${rowIdSql} IN (${sql.join(
@@ -613,8 +632,6 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     (await postRead(evaluateFormulaCells(rows, access, ctx), db)).map((r) => projectRow(r, ctx.schema, access));
 
   // ---- writes ------------------------------------------------------------------
-  const changeOf = (rowId: string, s: PlannedSet): CellChange => ({ rowId, columnId: s.column.id, prev: s.prev, next: s.next });
-
   async function writeExtension(db: GridDb, rowId: string, sets: PlannedSet[], ext: LoadedRow["ext"], now: Date): Promise<boolean> {
     if (!extension) return false;
     const t = extension.table;
@@ -639,7 +656,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       throw new SchemaGridServerError("INVALID_BATCH", `ChangeBatch.id must be 1..${MAX_BATCH_ID_LENGTH} characters`);
     }
     const rowIds = [...new Set(batch.changes.map((c) => c.rowId))].sort();
-    return options.db.transaction(async (tx) => {
+    return guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       const vctx = viewCtx(db);
       const now = ctx.now();
@@ -683,9 +700,10 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         if (baseSets.length > 0 && write?.update) {
           const res = await write.update(vctx, {
             rowId: rowPlan.rowId,
-            changes: baseSets.map((s) => changeOf(rowPlan.rowId, s)),
+            changes: baseSets.map((s) => appliedChange(rowPlan.rowId, s)),
             baseVersion: l.baseVersion,
             values: Object.fromEntries(baseSets.map((s) => [s.column.key, storageValue(s, kindOf(s.column), naiveZone)])),
+            ...(batch.meta ? { meta: batch.meta } : {}),
           });
           if (res.conflict) {
             await reportConflicts(rowPlan.rowId, rowPlan.baseVersion, sets, res.conflict);
@@ -705,7 +723,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
             mentioned.add(e.columnId);
           }
           // Cells the hook said nothing about were not written: report them as quietly rejected.
-          for (const s of baseSets) if (!mentioned.has(s.column.id)) rejected.push(changeOf(rowPlan.rowId, s));
+          for (const s of baseSets) if (!mentioned.has(s.column.id)) rejected.push(appliedChange(rowPlan.rowId, s));
           if ((res.applied ?? []).length > 0) {
             wrote = true;
             if (typeof res.version === "number") baseVersion = res.version;
@@ -723,7 +741,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
             extVersion = l.ext.exists ? l.ext.version + 1 : 1;
           }
           wrote = true;
-          for (const s of extSets) applied.push(changeOf(rowPlan.rowId, s));
+          for (const s of extSets) applied.push(appliedChange(rowPlan.rowId, s));
         }
         if (!wrote) continue;
         if (options.version && versionKnown) versions[rowPlan.rowId] = toNumber(baseVersion) + extVersion;
@@ -739,7 +757,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       const result: ChangeResult = { applied, conflicts, errors, versions };
       if (rejected.length > 0) result.rejected = rejected;
       return result;
-    });
+    }));
   }
 
   async function createRows(partials: RowPartial[]): Promise<GridRow[]> {
@@ -773,7 +791,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       storageRows.push(storage);
       extCellsByRow.push(ext);
     });
-    return options.db.transaction(async (tx) => {
+    return guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       const answer = await create(viewCtx(db), mappedPartials, storageRows);
       const outcome = Array.isArray(answer) ? { rows: answer } : answer;
@@ -794,7 +812,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         ids.map((id) => loaded.get(id)?.row).filter((r): r is CurrentRow => r !== undefined),
         db,
       );
-    });
+    }));
   }
 
   async function deleteRows(ids: string[]): Promise<void> {
@@ -803,14 +821,14 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     if (options.canDeleteRows && !options.canDeleteRows(ctx.user)) throw new PermissionError([], "edit", "Row deletion denied");
     const unique = [...new Set(ids)];
     if (unique.length === 0) return;
-    await options.db.transaction(async (tx) => {
+    await guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       await del(viewCtx(db), unique);
       if (extension) {
         const t = extension.table;
         await db.delete(t).where(and(eq(t.gridId, gridId), inArray(t.rowId, unique)));
       }
-    });
+    }));
   }
 
   // ---- updated_at change feed (§C8) -------------------------------------------
@@ -868,13 +886,14 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
 
   const ds: SqlViewDataSource = {
     capabilities: () => caps,
-    async fetch(input) {
-      const query = withDefaultSort(clampPage(input));
-      if (query.groupBy && query.groupBy.length > 0) {
-        return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
-      }
-      return runRowQuery(query, scope, options.db, access);
-    },
+    fetch: (input) =>
+      guarded(async () => {
+        const query = withDefaultSort(clampPage(input));
+        if (query.groupBy && query.groupBy.length > 0) {
+          return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
+        }
+        return runRowQuery(query, scope, options.db, access);
+      }),
     applyChanges,
     createRows,
     deleteRows,
@@ -886,7 +905,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       return term ? all.filter((o) => o.label.toLowerCase().includes(term)) : [...all];
     },
   };
-  if (caps.changeFeed !== false && effectiveUpdatedAt) ds.getChanges = getChanges;
+  if (caps.changeFeed !== false && effectiveUpdatedAt) ds.getChanges = (since) => guarded(() => getChanges(since));
   if (options.linkLookup) {
     const lookup = options.linkLookup;
     ds.lookup = async (columnId, search) => {

@@ -14,6 +14,9 @@ export {
   FilterValidationError,
   FormulaQueryLimitError,
   GroupingError,
+  guardMissingTable,
+  isNoSuchTableError,
+  MissingTableError,
   PermissionError,
   type PermissionErrorCode,
   type PermissionUsage,
@@ -21,6 +24,8 @@ export {
   SchemaGridServerError,
   type SchemaIssue,
   SchemaValidationError,
+  type TableDdlHelper,
+  translateMissingTable,
   UnsupportedOperatorError,
 } from "./errors";
 export {

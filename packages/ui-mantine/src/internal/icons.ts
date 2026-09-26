@@ -34,6 +34,7 @@ import IconCirclePlusModule from "@tabler/icons-react/dist/esm/icons/IconCircleP
 import IconCoinModule from "@tabler/icons-react/dist/esm/icons/IconCoin.mjs";
 import IconColumnInsertLeftModule from "@tabler/icons-react/dist/esm/icons/IconColumnInsertLeft.mjs";
 import IconColumnInsertRightModule from "@tabler/icons-react/dist/esm/icons/IconColumnInsertRight.mjs";
+import IconColumnsModule from "@tabler/icons-react/dist/esm/icons/IconColumns.mjs";
 import IconCurrencyRupeeModule from "@tabler/icons-react/dist/esm/icons/IconCurrencyRupee.mjs";
 import IconDeviceFloppyModule from "@tabler/icons-react/dist/esm/icons/IconDeviceFloppy.mjs";
 import IconDownloadModule from "@tabler/icons-react/dist/esm/icons/IconDownload.mjs";
@@ -89,6 +90,7 @@ export const IconCirclePlus: TablerIcon = IconCirclePlusModule;
 export const IconCoin: TablerIcon = IconCoinModule;
 export const IconColumnInsertLeft: TablerIcon = IconColumnInsertLeftModule;
 export const IconColumnInsertRight: TablerIcon = IconColumnInsertRightModule;
+export const IconColumns: TablerIcon = IconColumnsModule;
 export const IconCurrencyRupee: TablerIcon = IconCurrencyRupeeModule;
 export const IconDeviceFloppy: TablerIcon = IconDeviceFloppyModule;
 export const IconDownload: TablerIcon = IconDownloadModule;

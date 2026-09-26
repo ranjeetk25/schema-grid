@@ -40,7 +40,7 @@ CORS allows any origin and exposes `content-disposition`.
 
 ## Routes
 
-`POST /grid/:gridId/:op`, `GET /grid/:gridId/schema` and `GET /grid` are the multi-grid endpoint
+`POST /grid/:gridId/:op` (incl. `getSchema` / `updateSchema`) and `GET /grid` are the multi-grid endpoint
 (`createGridRegistry` + `toFetchHandler`; browser: `createGridClient({ baseUrl: ".../grid", gridId })`).
 Only admins (`x-roles: admin`) may `updateSchema` the leads grid; its schema store is in memory for now.
 
@@ -62,10 +62,11 @@ Drizzle data source. The browser side is `createHttpDataSource({ baseUrl: ".../g
 | `POST /grid/createOption` | `{ columnId, label }` | `{ data: Option }` (schemaVersion bumped) |
 | `POST /grid/lookup` | `{ columnId, search }` | `{ data: LinkRef[] }` |
 | `POST /grid/:gridId/:op` | op input | `{ data }` (any op above, plus `getSchema` / `updateSchema`) |
-| `GET /grid/:gridId/schema` | | `{ data: GridSchema }` |
 | `GET /grid` | | `{ data: [{ id: "admissions" }, { id: "leads" }] }` |
-| `GET /schema` | | `GridSchema` (admissions) |
-| `PUT /schema` | `GridSchema` | new `GridSchema` (409 if `schemaVersion` is not current) |
+
+The schema is read and written ONLY through the wire ops (`POST /grid/:gridId/getSchema` with an empty body,
+`POST /grid/:gridId/updateSchema` with the current `schemaVersion`; 409 `SCHEMA_CONFLICT` when stale). v0.3 removed
+the `GET /schema` / `PUT /schema` aliases and the `GET /grid/:gridId/schema` route.
 | `POST /import` | multipart `file`, `grid?` (default `admissions`), `mapping?` (JSON header→columnId), `mode?` (`create`/`upsert`), `keyColumnId?` | 202 `{ jobId }` |
 | `GET /import/:id` | | `{ state, processed, total, errorCount, errorReportUrl?, report? }` |
 | `GET /import/:id/errors.csv` | | CSV of failed rows |

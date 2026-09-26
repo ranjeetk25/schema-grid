@@ -1,3 +1,4 @@
+import { MissingTableError } from "../errors";
 import {
   createDataSourceHandler,
   type DataSource,
@@ -10,6 +11,24 @@ import {
   type WireOutputOf,
   type WireResult,
 } from "../internal/core";
+
+/**
+ * Server-side additions to core's error mapping: `MissingTableError` keeps its
+ * `MISSING_TABLE` code, message and `{ table, ddl }` details on the wire (HTTP
+ * 500) instead of collapsing into "Internal error". A caller's `mapError` runs first.
+ */
+export function withServerErrorMapping(options: DataSourceHandlerOptions = {}): DataSourceHandlerOptions {
+  const inner = options.mapError;
+  return {
+    ...options,
+    mapError: (err, op) => {
+      const mapped = inner?.(err, op);
+      if (mapped) return mapped;
+      if (err instanceof MissingTableError) return { code: err.code, message: err.message, details: err.details };
+      return undefined;
+    },
+  };
+}
 
 /** Builds the data source for one request (bind the user, tenant, db handle, ...). */
 export type GridDataSourceFactory<Ctx> = (ctx: Ctx) => DataSource<GridRow> | Promise<DataSource<GridRow>>;
@@ -34,8 +53,9 @@ export interface GridRouterAdapter<Ctx = undefined> {
  */
 export function createGridRouterAdapter<Ctx = undefined>(
   source: DataSource<GridRow> | GridDataSourceFactory<Ctx>,
-  options: DataSourceHandlerOptions = {},
+  rawOptions: DataSourceHandlerOptions = {},
 ): GridRouterAdapter<Ctx> {
+  const options = withServerErrorMapping(rawOptions);
   const fixed: DataSourceHandler | undefined =
     typeof source === "function" ? undefined : createDataSourceHandler(source, options);
 
@@ -62,7 +82,7 @@ export function createGridRouterAdapter<Ctx = undefined>(
 export function toWireFailure(err: unknown, op: string, options: DataSourceHandlerOptions = {}): WireFailure {
   let error: WireError | undefined;
   try {
-    error = options.mapError?.(err, op as never);
+    error = withServerErrorMapping(options).mapError?.(err, op as never);
   } catch {
     error = undefined;
   }

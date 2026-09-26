@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyChanges, buildRowUpdate } from "../../../src/changes/apply-changes";
+import { resetChangeLogLegacyDetection } from "../../../src/changes/change-log";
 import type { RowWritePlan } from "../../../src/changes/plan-changes";
 import type { ChangeBatch } from "../../../src/internal/core";
 import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
@@ -196,5 +197,76 @@ describe("physical column writes", () => {
       field: "email_addr",
       value: "2026-09-24 19:00:00.000",
     });
+  });
+});
+
+describe("applyChanges: change meta (v0.3)", () => {
+  const batch = (changes: ChangeBatch["changes"], baseVersions: Record<string, number>): ChangeBatch => ({
+    id: "batch-m",
+    changes,
+    baseVersions,
+    source: "edit",
+    meta: { reuploadDeadline: "2026-10-01" },
+  });
+  const script = (state: Record<string, ReturnType<typeof dbRow>>, conflictRows: Set<string>, failLogWithMeta = false) => {
+    return (c: FakeCall) => {
+      if (c.rowsAsArray && c.sql.startsWith("select")) {
+        const ids = c.params.filter((p): p is string => typeof p === "string" && p in state);
+        return asRows(ids.map((id) => state[id] as Record<string, unknown>), ORDER);
+      }
+      if (c.sql.startsWith("update")) {
+        const id = c.params.find((p) => typeof p === "string" && p in state) as string;
+        return { affectedRows: conflictRows.has(id) ? 0 : 1 };
+      }
+      if (failLogWithMeta && c.sql.startsWith("insert") && c.sql.includes("`meta`")) {
+        throw Object.assign(new Error("Unknown column 'meta' in 'field list'"), { errno: 1054, code: "ER_BAD_FIELD_ERROR" });
+      }
+      return undefined;
+    };
+  };
+
+  it("echoes meta on applied and conflict entries and stores it in the change log", async () => {
+    resetChangeLogLegacyDetection();
+    const state = { rA: dbRow("rA", 1, { name: "Old" }), rB: dbRow("rB", 2, { name: "Theirs" }) };
+    const { db, statements } = createFakeMysql(script(state, new Set()));
+    const result = await applyChanges(
+      batch(
+        [
+          { rowId: "rA", columnId: "name", prev: "Old", next: "New", meta: { decisionMessage: "ok" } },
+          { rowId: "rA", columnId: "fee", prev: null, next: 5 },
+          { rowId: "rB", columnId: "name", prev: "Theirs", next: "Mine", meta: { decisionMessage: "stale" } },
+        ],
+        { rA: 1, rB: 1 },
+      ),
+      ctx,
+      { db, tables, gridId: "grid1" },
+    );
+    expect(result.applied).toEqual([
+      { rowId: "rA", columnId: "name", prev: "Old", next: "New", meta: { decisionMessage: "ok" } },
+      { rowId: "rA", columnId: "fee", prev: null, next: 5 },
+    ]);
+    expect(result.conflicts[0]).toMatchObject({ rowId: "rB", meta: { decisionMessage: "stale" } });
+    const insert = statements().find((s) => s.sql.startsWith("insert")) as FakeCall;
+    expect(insert.sql).toContain("`meta`");
+    expect(insert.params).toContain(JSON.stringify({ decisionMessage: "ok" }));
+  });
+
+  it("a change_log table without the meta column: the insert is retried without it and the write succeeds", async () => {
+    resetChangeLogLegacyDetection();
+    const state = { rA: dbRow("rA", 1, { name: "Old" }) };
+    const { db, statements } = createFakeMysql(script(state, new Set(), true));
+    const deps = { db, tables, gridId: "grid1" };
+    const result = await applyChanges(batch([{ rowId: "rA", columnId: "name", prev: "Old", next: "New", meta: { a: 1 } }], { rA: 1 }), ctx, deps);
+    expect(result.applied).toHaveLength(1);
+    const inserts = statements().filter((s) => s.sql.startsWith("insert"));
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0]?.sql).toContain("`meta`");
+    expect(inserts[1]?.sql).not.toContain("`meta`");
+    // Remembered: the next batch goes straight to the legacy column list.
+    await applyChanges(batch([{ rowId: "rA", columnId: "name", prev: "New", next: "Newer" }], { rA: 1 }), ctx, deps);
+    const later = statements().filter((s) => s.sql.startsWith("insert"));
+    expect(later).toHaveLength(3);
+    expect(later[2]?.sql).not.toContain("`meta`");
+    resetChangeLogLegacyDetection();
   });
 });

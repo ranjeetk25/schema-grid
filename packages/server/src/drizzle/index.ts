@@ -55,6 +55,7 @@ export {
   type SqlViewCreateResult,
   type SqlViewDataSource,
   type SqlViewDataSourceOptions,
+  isComputedColumn,
   type SqlViewRowMapper,
   type SqlViewRowsMapper,
   type SqlViewUpdateInput,

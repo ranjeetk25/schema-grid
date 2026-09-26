@@ -39,6 +39,7 @@ describe("httpStatusFor", () => {
       SCHEMA_CONFLICT: 409,
       FORMULA_ROW_CAP: 413,
       INTERNAL: 500,
+      MISSING_TABLE: 500,
       OUTPUT_INVALID: 500,
       UNSUPPORTED_OPERATION: 501,
     });

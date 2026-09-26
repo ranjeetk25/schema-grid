@@ -222,3 +222,44 @@ describe("SelectEditor keyboard pick in grid mode", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 });
+
+describe("Option.settableBy in the pickers (v0.3)", () => {
+  const restricted: SelectEditorConfig = {
+    options: [
+      { id: "paid", label: "Paid", settableBy: { roles: ["admin"] } },
+      { id: "pending", label: "Pending" },
+      { id: "failed", label: "Failed", settableBy: { roles: ["finance_team"] } },
+    ],
+  };
+  const counsellor = { id: "u2", roles: ["counsellor"] };
+  const base = { onChange: vi.fn(), onCommit: vi.fn(), onCancel: vi.fn(), column: fixtureColumn(FIXTURE_IDS.payment), config: restricted };
+
+  it("SelectEditor offers only settable options, keeps the current one locked with a reason", () => {
+    const { getByRole, queryByRole, rerender } = renderWithMantine(<SelectEditor {...base} value={null} user={counsellor} />);
+    expect(getByRole("option", { name: "Pending" })).toBeInTheDocument();
+    expect(queryByRole("option", { name: "Paid" })).toBeNull();
+    expect(queryByRole("option", { name: "Failed" })).toBeNull();
+    rerender(<SelectEditor {...base} value="paid" user={counsellor} />);
+    const paid = getByRole("option", { name: "Paid" });
+    expect(paid).toHaveAttribute("aria-disabled", "true");
+    expect(paid).toHaveAttribute("title", "Only Admin can set this");
+  });
+
+  it("an admin sees the admin-only option; without a user every option is offered", () => {
+    const { getByRole, queryByRole, unmount } = renderWithMantine(<SelectEditor {...base} value={null} user={{ id: "u1", roles: ["admin"] }} />);
+    expect(getByRole("option", { name: "Paid" })).not.toHaveAttribute("aria-disabled");
+    expect(queryByRole("option", { name: "Failed" })).toBeNull();
+    unmount();
+    const { getByRole: get2 } = renderWithMantine(<SelectEditor {...base} value={null} />);
+    expect(get2("option", { name: "Failed" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("MultiSelectEditor hides non-settable options but keeps held ones (locked)", () => {
+    const { getByRole, queryByRole } = renderWithMantine(
+      <MultiSelectEditor {...base} config={restricted as MultiSelectEditorConfig} value={["paid"]} user={counsellor} />,
+    );
+    expect(getByRole("option", { name: "Paid" })).toHaveAttribute("aria-disabled", "true");
+    expect(getByRole("option", { name: "Pending" })).toBeInTheDocument();
+    expect(queryByRole("option", { name: "Failed" })).toBeNull();
+  });
+});

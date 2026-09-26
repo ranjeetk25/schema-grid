@@ -1,4 +1,5 @@
 import type { DataSource, GridQuery, GridRow, GridSchema } from "@ranjeetk25/schema-grid-core";
+import { getDataSourceCapabilities } from "@ranjeetk25/schema-grid-core";
 import { createInMemoryDataSource } from "@ranjeetk25/schema-grid-core/memory";
 import {
   createFixtureRows,
@@ -376,5 +377,45 @@ describe("createMemorySchemaStore", () => {
     (read?.columns[0] as { label: string }).label = "mutated again";
     expect((await store.get("a"))?.columns[0]?.label).not.toBe("mutated again");
     expect(await store.get("b")).toBeNull();
+  });
+});
+
+describe("capabilities.schema (v0.3)", () => {
+  const caps = async (registry: ReturnType<typeof createGridRegistry<Ctx>>, role: Role) => {
+    const res = await registry.handle("a", "capabilities", null, { role });
+    if (!res.ok) throw new Error(res.error.code);
+    return res.data as { schema: { read: boolean; write: boolean } };
+  };
+
+  it("write follows updateSchema permission on a grid with a schema store; read follows getSchema", async () => {
+    const permission = vi.fn((ctx: Ctx, op: string) => op !== "updateSchema" || ctx.role === "admin");
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: createMemorySchemaStore(), permission, source: () => memory("admin") }),
+    ]);
+    expect((await caps(registry, "counsellor")).schema).toEqual({ read: true, write: false });
+    expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: true });
+  });
+
+  it("no schema store → write is false even for an admin; no permission hook → read true", async () => {
+    const registry = createGridRegistry([defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), source: () => memory("admin") })]);
+    expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: false });
+  });
+
+  it("overrides whatever the source reported and evaluates each permission at most once per request", async () => {
+    const permission = vi.fn(async (_ctx: Ctx, _op: string) => true);
+    const source = (): DataSource<GridRow> => {
+      const inner = memory("admin");
+      return { ...inner, capabilities: async () => ({ ...(await getDataSourceCapabilities(inner)), schema: { read: false, write: false } }) };
+    };
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: createMemorySchemaStore(), permission, source }),
+    ]);
+    expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: true });
+    const ops = permission.mock.calls.map((c) => c[1]).sort();
+    expect(ops).toEqual(["capabilities", "getSchema", "updateSchema"]);
+    // A non-capabilities op only asks about itself.
+    permission.mockClear();
+    await registry.handle("a", "fetch", q(), { role: "admin" });
+    expect(permission.mock.calls.map((c) => c[1])).toEqual(["fetch"]);
   });
 });

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { datetime, int, json, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import type { GridDb } from "../changes/db";
-import { SchemaGridServerError } from "../errors";
+import { SchemaGridServerError, guardMissingTable } from "../errors";
 import type { GridSchema, SchemaStore } from "../internal/core";
 import { assertSafeColumnKey } from "../storage/keys";
 
@@ -47,29 +47,33 @@ function parseSchema(value: unknown): GridSchema {
  * single `INSERT … ON DUPLICATE KEY UPDATE`, so concurrent writers are safe and
  * the last write wins. Schema contents are not validated here (`defineGrid`
  * validates before calling `put`); grid ids must be 1–64 characters
- * (`INVALID_GRID_ID` otherwise).
+ * (`INVALID_GRID_ID` otherwise). A missing table is a `MissingTableError`
+ * (`MISSING_TABLE`) naming `createGridSchemasTableDDL`.
  */
 export function createDrizzleSchemaStore(options: DrizzleSchemaStoreOptions): SchemaStore {
   assertSafeColumnKey(options.table);
   const table = gridSchemasTableFor(options.table);
   const { db } = options;
   const now = options.now ?? (() => new Date());
+  const known = { [options.table]: "createGridSchemasTableDDL" } as const;
 
   return {
-    async get(gridId) {
-      assertGridId(gridId);
-      const rows = await db.select({ schema: table.schema }).from(table).where(eq(table.gridId, gridId)).limit(1);
-      const row = rows[0];
-      return row ? parseSchema(row.schema) : null;
-    },
+    get: (gridId) =>
+      guardMissingTable(known, async () => {
+        assertGridId(gridId);
+        const rows = await db.select({ schema: table.schema }).from(table).where(eq(table.gridId, gridId)).limit(1);
+        const row = rows[0];
+        return row ? parseSchema(row.schema) : null;
+      }),
 
-    async put(gridId, schema) {
-      assertGridId(gridId);
-      const values = { schema, schemaVersion: schema.schemaVersion, updatedAt: now() };
-      await db
-        .insert(table)
-        .values({ gridId, ...values })
-        .onDuplicateKeyUpdate({ set: values });
-    },
+    put: (gridId, schema) =>
+      guardMissingTable(known, async () => {
+        assertGridId(gridId);
+        const values = { schema, schemaVersion: schema.schemaVersion, updatedAt: now() };
+        await db
+          .insert(table)
+          .values({ gridId, ...values })
+          .onDuplicateKeyUpdate({ set: values });
+      }),
   };
 }

@@ -223,6 +223,7 @@ export function ColumnForm({
       onChange={(config) => dispatch({ type: "setConfig", config })}
       errors={visibleConfigErrors}
       onFieldBlur={(path) => setConfigTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
+      roles={roles}
     />
   ) : null;
   const labelError = touched.label && errors.label ? "Give the column a name" : undefined;

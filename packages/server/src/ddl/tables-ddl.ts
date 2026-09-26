@@ -148,6 +148,7 @@ export function createChangeLogTableDDL(options: CreateChangeLogTableDDLOptions)
     "  `actor` VARCHAR(64) NOT NULL,",
     "  `at` DATETIME(3) NOT NULL,",
     "  `batch_id` VARCHAR(64) NULL,",
+    "  `meta` JSON NULL,",
     "  PRIMARY KEY (`id`),",
     `  KEY ${quoteIdent(idxGridId)} (\`grid_id\`, \`id\`)`,
     `) ${ENGINE_CLAUSE}`,
@@ -156,5 +157,24 @@ export function createChangeLogTableDDL(options: CreateChangeLogTableDDLOptions)
   return {
     sql: lines.join("\n"),
     description: `Create change log table \`${table}\``,
+  };
+}
+
+export interface AlterChangeLogTableMetaDDLOptions {
+  table: string;
+}
+
+/**
+ * Upgrade for change-log tables created before v0.3: adds the nullable `meta`
+ * JSON column that stores a change's input-only side data. Until it runs,
+ * writes still succeed (the insert falls back to the legacy column list) but
+ * `meta` is not logged. Re-running it fails with a duplicate-column error, so
+ * check `information_schema.columns` first if you automate it.
+ */
+export function alterChangeLogTableMetaDDL(options: AlterChangeLogTableMetaDDLOptions): DdlStatement {
+  const table = assertSafeColumnKey(options.table);
+  return {
+    sql: `ALTER TABLE ${quoteIdent(table)} ADD COLUMN \`meta\` JSON NULL`,
+    description: `Add \`${table}\`.\`meta\` (v0.3 change meta)`,
   };
 }

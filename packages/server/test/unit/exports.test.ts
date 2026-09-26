@@ -11,6 +11,7 @@ describe("public entry points", () => {
         "FilterValidationError",
         "FormulaQueryLimitError",
         "GroupingError",
+        "MissingTableError",
         "PermissionError",
         "RowValidationError",
         "SCHEMA_GRID_SERVER_VERSION",
@@ -22,6 +23,8 @@ describe("public entry points", () => {
         "createServerContext",
         "decodeCursor",
         "encodeCursor",
+        "guardMissingTable",
+        "isNoSuchTableError",
         "isReadable",
         "iterateQuery",
         "pinGroupFilter",
@@ -30,6 +33,7 @@ describe("public entry points", () => {
         "resolveAccess",
         "runImportJob",
         "streamExport",
+        "translateMissingTable",
         "validateSchema",
       ]
     `);
@@ -63,6 +67,7 @@ describe("public entry points", () => {
         "getChanges",
         "gridRowsSource",
         "hydrateRow",
+        "isComputedColumn",
         "isEmptyExpr",
         "isoToNaiveDatetime",
         "jsonCellsResolver",
@@ -86,6 +91,7 @@ describe("public entry points", () => {
     const mod = await import("../../src/ddl/index");
     expect(Object.keys(mod).sort()).toMatchInlineSnapshot(`
       [
+        "alterChangeLogTableMetaDDL",
         "alterRowsTableIdCollationDDL",
         "createChangeLogTableDDL",
         "createExtensionCellsTableDDL",
@@ -117,6 +123,7 @@ describe("public entry points", () => {
         "toHttpResponse",
         "toLambdaHandler",
         "toWireFailure",
+        "withServerErrorMapping",
       ]
     `);
   });

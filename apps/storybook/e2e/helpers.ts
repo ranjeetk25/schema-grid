@@ -8,6 +8,7 @@ export const STORIES = {
   permissionsMatrix: "2-permissions--matrix",
   client: "3-client-grid--full-toolbar",
   clientFixture: "3-client-grid--fixture-only",
+  clientPersisted: "3-client-grid--persisted-views",
   server: "4-server-mode-demo-api--demo-api",
   leads: "4-server-mode-demo-api--leads",
   importExport: "5-import-and-export--import-and-export",

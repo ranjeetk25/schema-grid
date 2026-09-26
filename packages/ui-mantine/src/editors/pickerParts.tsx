@@ -34,6 +34,7 @@ export function PickerOption({
   leading,
   children,
   "aria-label": ariaLabel,
+  title,
 }: {
   value: string;
   selected?: boolean;
@@ -41,6 +42,8 @@ export function PickerOption({
   leading?: ReactNode;
   children: ReactNode;
   "aria-label"?: string;
+  /** Native tooltip (e.g. why a locked option cannot be picked). */
+  title?: string;
 }) {
   return (
     <Combobox.Option
@@ -49,6 +52,8 @@ export function PickerOption({
       disabled={disabled}
       className="sg-ed-option"
       aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
+      title={title}
     >
       {leading}
       <span className="sg-ed-option-label">{children}</span>
