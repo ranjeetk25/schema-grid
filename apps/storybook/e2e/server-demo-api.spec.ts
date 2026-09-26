@@ -220,7 +220,8 @@ test("§14 server-mode 'Export CSV' pages the current view through the data sour
   const download = page.waitForEvent("download", { timeout: 10_000 });
   await page.getByRole("button", { name: "Export CSV" }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toBe("schema-grid.csv");
+  // v0.3 default name: `${gridId}-${view}-${YYYY-MM-DD}.csv`, slugified.
+  expect(file.suggestedFilename()).toMatch(/^admissions-all-rows-\d{4}-\d{2}-\d{2}\.csv$/);
   const path = await file.path();
   const csv = (await readFile(path, "utf8")).replace(/^\uFEFF/, "");
   const lines = csv.split("\r\n");
