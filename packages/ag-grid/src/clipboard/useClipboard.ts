@@ -62,7 +62,9 @@
  *    controller's read-only rejections). Planning errors are
  *    set on the cell status store in one `setErrors` call (the controller
  *    marks the data source's). Handed to `onClipboardReport` and announced:
- *    "Paste: N pasted, M skipped, K errors" (+ ", C conflicts" when C > 0).
+ *    "Paste: N pasted, M skipped, K errors" (+ ", C conflicts" when C > 0,
+ *    + ", R not saved" when R > 0 — `rejected`, v0.3 silent rejection: cells
+ *    the data source or a `beforeCellsChange` hook quietly declined).
  *    An unexpected failure logs `console.error` and announces "Paste failed".
  *    After unmount, pending async work stops at the next await.
  */
@@ -153,7 +155,7 @@ export { pasteSummaryMessage };
  */
 export function pasteOutcomeCounts(
   outcome: SubmitOutcome,
-): Pick<ClipboardReport, "pastedCells" | "conflicts" | "skippedReadOnly" | "errors"> {
+): Pick<ClipboardReport, "pastedCells" | "conflicts" | "skippedReadOnly" | "errors" | "rejected"> {
   const readOnly = new Set((outcome.readOnly ?? []).map((c) => pairKey(c.rowId, c.columnId)));
   const errors: ClipboardReport["errors"] = [];
   let rejected = 0;
@@ -164,11 +166,13 @@ export function pasteOutcomeCounts(
     }
     if (!outcome.vetoed) errors.push({ rowId: e.rowId, columnId: e.columnId, message: e.message });
   }
+  const quiet = outcome.vetoed ? [] : (outcome.rejected ?? outcome.result.rejected ?? []);
   return {
     pastedCells: outcome.vetoed ? 0 : outcome.result.applied.length,
     conflicts: outcome.vetoed ? 0 : outcome.result.conflicts.length,
     skippedReadOnly: rejected,
     errors,
+    rejected: new Set(quiet.map((c) => pairKey(c.rowId, c.columnId))).size,
   };
 }
 
@@ -390,6 +394,7 @@ export function useClipboard<Row extends GridRow = GridRow>(options: UseClipboar
         const errors = [...planningErrors];
         let pastedCells = 0;
         let conflicts = 0;
+        let rejected = 0;
         let skippedReadOnly = plan.skippedReadOnly;
         if (resolved.changes.length > 0) {
           const outcome = await latest.current.controller.submit(resolved.changes, "paste");
@@ -397,10 +402,11 @@ export function useClipboard<Row extends GridRow = GridRow>(options: UseClipboar
           pastedCells = counts.pastedCells;
           conflicts = counts.conflicts;
           skippedReadOnly += counts.skippedReadOnly;
+          rejected = counts.rejected;
           errors.push(...counts.errors);
         }
         if (!active) return null;
-        const report: ClipboardReport = { pastedCells, skippedReadOnly, conflicts, errors };
+        const report: ClipboardReport = { pastedCells, skippedReadOnly, conflicts, errors, rejected };
         latest.current.onClipboardReport?.(report);
         announce(pasteSummaryMessage(report));
         return report;

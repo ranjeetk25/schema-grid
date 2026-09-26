@@ -16,7 +16,8 @@
  *   - conflict (assertive): "Conflict on {column}, row {id}" / "Conflicts on N cells"
  *   - rejected (assertive): "Edit rejected on {column}: {reason}" / "N edits rejected"
  *   - veto (assertive):     "Edit cancelled"
- *   - paste (polite):       "Paste: N pasted, M skipped, K errors[, C conflicts]"
+ *   - not saved (polite):   "1 change not saved" / "N changes not saved" (v0.3 silent rejection)
+ *   - paste (polite):       "Paste: N pasted, M skipped, K errors[, C conflicts][, R not saved]"
  *   - fill (polite):        "Fill: N cells filled[, M read-only cells skipped][, saved]"
  *     (announced once the fill's save settles; fill batches get no separate "Saved")
  */
@@ -71,24 +72,33 @@ export function editsRejectedMessage(count: number): string {
 /** A `beforeCellsChange` veto. */
 export const EDIT_CANCELLED = "Edit cancelled";
 
-/** "Paste: N pasted, M skipped, K errors", plus ", C conflicts" when there were any. */
+/** v0.3: quietly rejected changes ("1 change not saved" / "N changes not saved"). Polite, never assertive. */
+export function notSavedMessage(count: number): string {
+  return count === 1 ? "1 change not saved" : `${count} changes not saved`;
+}
+
+/** "Paste: N pasted, M skipped, K errors", plus ", C conflicts" and ", R not saved" when there were any. */
 export function pasteSummaryMessage(report: ClipboardReport): string {
-  const base = `Paste: ${report.pastedCells} pasted, ${report.skippedReadOnly} skipped, ${report.errors.length} errors`;
-  return report.conflicts > 0 ? `${base}, ${report.conflicts} conflicts` : base;
+  let out = `Paste: ${report.pastedCells} pasted, ${report.skippedReadOnly} skipped, ${report.errors.length} errors`;
+  if (report.conflicts > 0) out += `, ${report.conflicts} conflicts`;
+  if (report.rejected > 0) out += `, ${report.rejected} not saved`;
+  return out;
 }
 
 /**
  * "Fill: 3 cells filled, 1 read-only cell skipped"; null when nothing happened.
+ * `rejected` (v0.3) adds ", N not saved" for cells the data source quietly declined.
  * With `saved` (cells the data source applied, once the fill's save settled)
  * the save is folded in — ", saved" when all were, ", N saved" when some
  * were — so ONE polite message carries both (a separate "Saved N cells"
  * would overwrite the summary in the live region).
  */
-export function fillMessage(filled: number, skipped: number, saved?: number): string | null {
-  if (filled === 0 && skipped === 0) return null;
+export function fillMessage(filled: number, skipped: number, saved?: number, rejected = 0): string | null {
+  if (filled === 0 && skipped === 0 && rejected === 0) return null;
   const parts = [`${filled} ${filled === 1 ? "cell" : "cells"} filled`];
   if (skipped > 0) parts.push(`${skipped} read-only ${skipped === 1 ? "cell" : "cells"} skipped`);
   if (saved !== undefined && saved > 0) parts.push(saved >= filled ? "saved" : `${saved} saved`);
+  if (rejected > 0) parts.push(`${rejected} not saved`);
   return `Fill: ${parts.join(", ")}`;
 }
 

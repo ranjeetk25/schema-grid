@@ -1,5 +1,5 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it, type vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   conflictMessage,
   conflictsMessage,
@@ -7,16 +7,19 @@ import {
   editRejectedMessage,
   editsRejectedMessage,
   fillMessage,
+  notSavedMessage,
   pasteSummaryMessage,
   savedAnnouncement,
   savedMessage,
   stripAnnouncementMarker,
 } from "../../src/a11y/announcer";
+import { editOutcomeMessage, withEditAnnouncements } from "../../src/a11y/editAnnouncements";
 import { pasteSummaryMessage as pasteSummaryFromClipboard } from "../../src/clipboard/useClipboard";
+import type { SubmitOutcome } from "../../src/editing/editController";
 import { fillMessage as fillMessageFromFill } from "../../src/fill/useFillHandle";
 import type { GridSchema } from "../../src/internal/core";
 import { createInMemoryDataSource } from "../fixtures/dataSource";
-import { AGENT, col, row } from "../fixtures/schema";
+import { AGENT, col, fixtureSchema, row } from "../fixtures/schema";
 import { renderGrid, type RenderGridResult } from "../renderGrid";
 
 type Clip = { readText: ReturnType<typeof vi.fn> };
@@ -62,10 +65,43 @@ describe("announcement builders", () => {
     expect(editRejectedMessage("Score", "Must be positive")).toBe("Edit rejected on Score: Must be positive");
     expect(editsRejectedMessage(2)).toBe("2 edits rejected");
     expect(EDIT_CANCELLED).toBe("Edit cancelled");
-    expect(pasteSummaryMessage({ pastedCells: 2, skippedReadOnly: 1, conflicts: 0, errors: [] })).toBe(
+    expect(pasteSummaryMessage({ pastedCells: 2, skippedReadOnly: 1, conflicts: 0, errors: [], rejected: 0 })).toBe(
       "Paste: 2 pasted, 1 skipped, 0 errors",
     );
     expect(fillMessage(3, 1)).toBe("Fill: 3 cells filled, 1 read-only cell skipped");
+  });
+
+  it("v0.3: quiet 'not saved' wording for silently rejected changes", () => {
+    expect(notSavedMessage(1)).toBe("1 change not saved");
+    expect(notSavedMessage(3)).toBe("3 changes not saved");
+    expect(pasteSummaryMessage({ pastedCells: 2, skippedReadOnly: 0, conflicts: 0, errors: [], rejected: 2 })).toBe(
+      "Paste: 2 pasted, 0 skipped, 0 errors, 2 not saved",
+    );
+  });
+
+  it("v0.3: a submit whose only non-applied cells are rejected announces nothing assertive, one polite 'not saved'", async () => {
+    const schema = fixtureSchema;
+    const announce = vi.fn();
+    const rejectedOnly: SubmitOutcome = {
+      vetoed: false,
+      batch: { id: "b", changes: [], baseVersions: {}, source: "edit" },
+      result: { applied: [], conflicts: [], errors: [], rejected: [{ rowId: "r1", columnId: "name", prev: 1, next: 2 }] },
+      rejected: [{ rowId: "r1", columnId: "name", prev: 1, next: 2 }],
+    };
+    expect(editOutcomeMessage(rejectedOnly, "edit", schema)).toBeNull();
+    const wrapped = withEditAnnouncements({ submit: async () => rejectedOnly, buildBatch: () => rejectedOnly.batch }, { getSchema: () => schema, announce });
+    await wrapped.submit([], "edit");
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith("1 change not saved", "polite");
+    // With an error too, the assertive error wins and nothing polite is added.
+    announce.mockClear();
+    const withError: SubmitOutcome = {
+      ...rejectedOnly,
+      result: { ...rejectedOnly.result, errors: [{ rowId: "r2", columnId: "name", message: "bad" }] },
+    };
+    await withEditAnnouncements({ submit: async () => withError, buildBatch: () => withError.batch }, { getSchema: () => schema, announce }).submit([], "edit");
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce.mock.calls[0]?.[1]).toBe("assertive");
   });
 
   it("a settled fill combines the summary and the save into ONE message", () => {

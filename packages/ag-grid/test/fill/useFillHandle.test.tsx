@@ -23,14 +23,15 @@ const ROWS: GridRow[] = [
   row("e", { name: "E", score: null, status: null, email: null }),
 ];
 
-function setup(opts: { readOnly?: string[]; applyNone?: boolean } = {}) {
+function setup(opts: { readOnly?: string[]; applyNone?: boolean; rejectAll?: boolean } = {}) {
   const fake = createFakeGridApi<GridRow>({ columns: COLS, rows: ROWS });
   const rangeStore = createRangeStore();
   const keyboard = createKeyboardRegistry<GridRow>();
   const submit = vi.fn(async (changes: ChangeBatch["changes"], source: ChangeBatch["source"]): Promise<SubmitOutcome> => {
     const batch: ChangeBatch = { id: "b", changes, baseVersions: {}, source };
-    const applied = opts.applyNone ? [] : changes;
-    return { batch, vetoed: false, result: { applied, conflicts: [], errors: [] } as never };
+    const applied = opts.applyNone || opts.rejectAll ? [] : changes;
+    const rejected = opts.rejectAll ? changes : [];
+    return { batch, vetoed: false, rejected, result: { applied, conflicts: [], errors: [], rejected } as never };
   });
   const announce = vi.fn();
   const onReport = vi.fn<(r: FillReport) => void>();
@@ -125,7 +126,7 @@ describe("useFillHandle", () => {
     // One combined message once the save settles (a separate "Saved 3 cells" would overwrite the summary).
     await waitFor(() => expect(announce).toHaveBeenCalledWith("Fill: 3 cells filled, saved", "polite"));
     expect(announce).toHaveBeenCalledTimes(1);
-    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 3, skippedReadOnly: 0 });
+    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 3, skippedReadOnly: 0, rejected: 0 });
     // A later pointerup is a no-op.
     pointerUp();
     expect(submit).toHaveBeenCalledTimes(1);
@@ -180,7 +181,7 @@ describe("useFillHandle", () => {
     await waitFor(() =>
       expect(announce).toHaveBeenCalledWith("Fill: 2 cells filled, 1 read-only cell skipped, saved", "polite"),
     );
-    expect(onReport).toHaveBeenCalledWith({ axis: "right", filledCells: 2, skippedReadOnly: 1 });
+    expect(onReport).toHaveBeenCalledWith({ axis: "right", filledCells: 2, skippedReadOnly: 1, rejected: 0 });
   });
 
   it("a fill the data source applies none of is announced without 'saved'", async () => {
@@ -199,7 +200,7 @@ describe("useFillHandle", () => {
     act(() => h().onCellMouseOver(over(fake.api, 2, "score")));
     pointerUp();
     expect(submit).not.toHaveBeenCalled();
-    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 0, skippedReadOnly: 2 });
+    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 0, skippedReadOnly: 2, rejected: 0 });
   });
 
   it("ignores non-primary buttons and mouse-over when not filling; release inside the source is a no-op", () => {
@@ -306,4 +307,18 @@ describe("<SchemaGrid> fill handle (integration)", () => {
   });
 
   it.todo("real drag of the fill handle, including fills that cross virtualised rows (Playwright: see playwright-scenarios.md)");
+});
+
+describe("useFillHandle — silent rejection (v0.3)", () => {
+  it("rejected cells are not counted as filled and are reported apart", async () => {
+    const { fake, rangeStore, announce, onReport, h } = setup({ rejectAll: true });
+    rangeStore.setAnchor({ rowIndex: 0, colId: "score" });
+    rangeStore.setFocus({ rowIndex: 1, colId: "score" });
+    act(() => h().onFillHandlePointerDown(pointerDown() as never, { rowIndex: 1, colId: "score" }));
+    act(() => h().onCellMouseOver(over(fake.api, 4, "score")));
+    pointerUp();
+    await waitFor(() => expect(onReport).toHaveBeenCalledTimes(1));
+    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 0, skippedReadOnly: 0, rejected: 3 });
+    expect(announce).toHaveBeenCalledWith("Fill: 0 cells filled, 3 not saved", "polite");
+  });
 });

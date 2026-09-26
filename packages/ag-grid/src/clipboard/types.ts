@@ -10,4 +10,9 @@ export interface ClipboardReport {
   /** Cells the data source reported as conflicts (resolved through `events.onConflict`). */
   conflicts: number;
   errors: { rowId: string; columnId: string; message: string }[];
+  /**
+   * v0.3: distinct cells quietly NOT saved (`ChangeResult.rejected`, or dropped
+   * by `beforeCellsChange`). Never also in `errors` or `skippedReadOnly`.
+   */
+  rejected: number;
 }

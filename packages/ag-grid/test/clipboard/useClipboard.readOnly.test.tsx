@@ -48,7 +48,7 @@ describe("paste read-only enforcement (C3)", () => {
     select(g, 0, "name");
     fireEvent.keyDown(root(g), ctrl("v"));
     await waitFor(() => expect(onClipboardReport).toHaveBeenCalledTimes(1));
-    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 2, skippedReadOnly: 1, conflicts: 0, errors: [] });
+    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 2, skippedReadOnly: 1, conflicts: 0, errors: [], rejected: 0 });
     expect(batches(g)).toHaveLength(1);
     expect(batches(g)[0]?.changes.map((c) => c.columnId)).toEqual(["name", "score"]);
     expect(ds.rows().find((r) => r.id === "r1")?.cells.notes).not.toBe("n1");
@@ -96,6 +96,7 @@ describe("pasteOutcomeCounts", () => {
       conflicts: 0,
       skippedReadOnly: 1,
       errors: [{ rowId: "r1", columnId: "score", message: "Too big" }],
+      rejected: 0,
     });
   });
 
@@ -115,6 +116,26 @@ describe("pasteOutcomeCounts", () => {
         readOnly: [{ rowId: "r1", columnId: "status" }],
       }),
     );
-    expect(counts).toEqual({ pastedCells: 0, conflicts: 0, skippedReadOnly: 1, errors: [] });
+    expect(counts).toEqual({ pastedCells: 0, conflicts: 0, skippedReadOnly: 1, errors: [], rejected: 0 });
+  });
+
+  it("v0.3: silently rejected cells are counted apart from errors and read-only skips", () => {
+    const counts = pasteOutcomeCounts(
+      outcome({
+        vetoed: false,
+        result: {
+          applied: [{ rowId: "r1", columnId: "name", prev: "a", next: "b" }],
+          conflicts: [],
+          errors: [],
+          rejected: [
+            { rowId: "r2", columnId: "name", prev: "a", next: "b" },
+            { rowId: "r2", columnId: "name", prev: "b", next: "c" },
+            { rowId: "r3", columnId: "name", prev: "a", next: "b" },
+          ],
+        },
+        readOnly: [],
+      }),
+    );
+    expect(counts).toEqual({ pastedCells: 1, conflicts: 0, skippedReadOnly: 0, errors: [], rejected: 2 });
   });
 });

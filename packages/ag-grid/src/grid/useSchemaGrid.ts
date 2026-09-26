@@ -320,7 +320,8 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   controller: EditController<Row>;
   undo: SchemaGridUndo;
   /** Client mode: AG Grid CSV of the displayed rows. Server mode: full current query through io, downloaded. */
-  exportCsv(fileName?: string): void;
+  /** v0.3: resolves when the file was handed to the browser; REJECTS on export failure (nothing is swallowed). */
+  exportCsv(fileName?: string): Promise<void>;
   /** Pages the full current query through `dataSource.fetch` and hands it to io's writer. */
   exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
@@ -1670,13 +1671,12 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   );
 
   const exportCsv = useCallback(
-    (fileName?: string) => {
+    async (fileName?: string): Promise<void> => {
       const api = apiRef.current;
       if (mode === "server") {
         const name = fileName ?? "export.csv";
-        exportCurrentView("csv", name)
-          .then((content) => download(content, name, "text/csv"))
-          .catch(() => {});
+        const content = await exportCurrentView("csv", name);
+        download(content, name, "text/csv");
         return;
       }
       if (!api) return;

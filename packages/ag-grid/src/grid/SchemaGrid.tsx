@@ -62,7 +62,8 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   redo(): Promise<void>;
   canUndo(): boolean;
   canRedo(): boolean;
-  exportCsv(fileName?: string): void;
+  /** v0.3: a promise that REJECTS when the export fails (io missing, fetch error, AG export throw). */
+  exportCsv(fileName?: string): Promise<void>;
   exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;

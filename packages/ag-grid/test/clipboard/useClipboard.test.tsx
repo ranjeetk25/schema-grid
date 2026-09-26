@@ -56,7 +56,7 @@ function batches(g: RenderGridResult): ChangeBatch[] {
 
 describe("pasteSummaryMessage", () => {
   it("uses the T30 standard wording", () => {
-    expect(pasteSummaryMessage({ pastedCells: 3, skippedReadOnly: 1, conflicts: 0, errors: [] })).toBe(
+    expect(pasteSummaryMessage({ pastedCells: 3, skippedReadOnly: 1, conflicts: 0, errors: [], rejected: 0 })).toBe(
       "Paste: 3 pasted, 1 skipped, 0 errors",
     );
   });
@@ -97,7 +97,7 @@ describe("useClipboard (integration)", () => {
       ["r2", "name", "Y"],
       ["r2", "notes", "n2"],
     ]);
-    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 4, skippedReadOnly: 0, conflicts: 0, errors: [] });
+    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 4, skippedReadOnly: 0, conflicts: 0, errors: [], rejected: 0 });
     await waitFor(() => expect(g.ds.rows().find((r) => r.id === "r2")?.cells.name).toBe("Y"));
     await waitFor(() => expect(politeText(g)).toBe("Paste: 4 pasted, 0 skipped, 0 errors"));
   });
@@ -109,7 +109,7 @@ describe("useClipboard (integration)", () => {
     select(g, [0, "total"]);
     fireEvent.keyDown(root(g), ctrl("v"));
     await waitFor(() => expect(onClipboardReport).toHaveBeenCalledTimes(1));
-    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 0, skippedReadOnly: 2, conflicts: 0, errors: [] });
+    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 0, skippedReadOnly: 2, conflicts: 0, errors: [], rejected: 0 });
     expect(batches(g)).toHaveLength(0);
     await waitFor(() => expect(politeText(g)).toBe("Paste: 0 pasted, 2 skipped, 0 errors"));
   });
@@ -207,7 +207,7 @@ describe("useClipboard (integration)", () => {
     expect(option.id).not.toBe("Referral");
     expect(batches(g)).toHaveLength(1);
     expect(batches(g)[0]?.changes.map((c) => c.next)).toEqual([option.id, option.id]);
-    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 2, skippedReadOnly: 0, conflicts: 0, errors: [] });
+    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 2, skippedReadOnly: 0, conflicts: 0, errors: [], rejected: 0 });
   });
 
   it("reports pending options as errors when the data source can't create options", async () => {
@@ -339,7 +339,7 @@ describe("useClipboard (integration)", () => {
     select(g, [0, "name"]);
     fireEvent.keyDown(root(g), ctrl("v"));
     await waitFor(() => expect(onClipboardReport).toHaveBeenCalledTimes(1));
-    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 0, skippedReadOnly: 0, conflicts: 1, errors: [] });
+    expect(onClipboardReport).toHaveBeenCalledWith({ pastedCells: 0, skippedReadOnly: 0, conflicts: 1, errors: [], rejected: 0 });
     await waitFor(() => expect(politeText(g)).toBe("Paste: 0 pasted, 0 skipped, 0 errors, 1 conflicts"));
   });
 

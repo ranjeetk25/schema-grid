@@ -9,6 +9,10 @@
  * Conflicts win over errors when a batch has both (one assertive message per
  * batch; the region would otherwise overwrite itself).
  *
+ * Silently rejected changes (v0.3, `outcome.rejected`) are never assertive:
+ * when a submit has nothing else to say, ONE polite "N changes not saved"
+ * (`notSavedMessage`) is announced instead; an assertive message wins.
+ *
  * Success ("Saved N cells") is announced politely by `<SchemaGrid>` through
  * the controller's `onApplied`, not here. `"paste"` submits are skipped:
  * `useClipboard` announces a paste summary that already counts conflicts and
@@ -24,6 +28,7 @@ import {
   EDIT_CANCELLED,
   editRejectedMessage,
   editsRejectedMessage,
+  notSavedMessage,
   type Politeness,
 } from "./announcer";
 
@@ -66,6 +71,9 @@ export function withEditAnnouncements<Row extends GridRow>(
       const outcome = await controller.submit(changes, source);
       const message = editOutcomeMessage(outcome, source, options.getSchema());
       if (message) options.announce(message, "assertive");
+      else if (source !== "paste" && source !== "fill" && (outcome.rejected?.length ?? 0) > 0) {
+        options.announce(notSavedMessage(outcome.rejected?.length ?? 0), "polite");
+      }
       return outcome;
     },
   };

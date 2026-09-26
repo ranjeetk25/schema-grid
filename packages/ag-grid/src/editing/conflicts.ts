@@ -21,7 +21,13 @@ export function groupConflictsByRow(conflicts: readonly CellConflict[]): Map<str
 
 /** Rebases our original change on top of the server's value (used by "overwrite"). */
 export function conflictToChange(conflict: CellConflict, ourChange: CellChange): CellChange {
-  return { rowId: conflict.rowId, columnId: conflict.columnId, prev: conflict.serverValue, next: ourChange.next };
+  return {
+    rowId: conflict.rowId,
+    columnId: conflict.columnId,
+    prev: conflict.serverValue,
+    next: ourChange.next,
+    ...(ourChange.meta ? { meta: ourChange.meta } : {}),
+  };
 }
 
 /** Finds the change in `changes` that a conflict (or error) refers to (last match wins, mirroring optimistic apply order). */

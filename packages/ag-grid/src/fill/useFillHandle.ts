@@ -66,6 +66,8 @@ export interface FillReport {
   axis: FillAxis;
   filledCells: number;
   skippedReadOnly: number;
+  /** v0.3: cells quietly not saved (`ChangeResult.rejected` / hook-dropped); not counted as filled. */
+  rejected: number;
 }
 
 export interface UseFillHandleOptions<Row extends GridRow = GridRow> {
@@ -206,19 +208,24 @@ export function useFillHandle<Row extends GridRow = GridRow>(
     }
     // Cells the controller rejected as read-only at submit time (v0.2 C3) move
     // from "filled" to "skipped" in both the announcement and the report.
-    const report = (rejected = 0, saved?: number) => {
-      const filled = Math.max(0, changes.length - rejected);
-      const skipped = skippedReadOnly + rejected;
-      const message = fillMessage(filled, skipped, saved);
+    // Quietly rejected cells (v0.3) are not filled either; they are reported apart (", N not saved").
+    const report = (readOnly = 0, saved?: number, rejected = 0) => {
+      const filled = Math.max(0, changes.length - readOnly - rejected);
+      const skipped = skippedReadOnly + readOnly;
+      const message = fillMessage(filled, skipped, saved, rejected);
       if (message) latest.current.announce?.(message, "polite");
-      latest.current.onReport?.({ axis, filledCells: filled, skippedReadOnly: skipped });
+      latest.current.onReport?.({ axis, filledCells: filled, skippedReadOnly: skipped, rejected });
     };
     if (changes.length > 0) {
       // Report once the save settles, folding it in: a separate "Saved N cells"
       // would overwrite the fill summary in the polite live region.
       void o.controller.submit(changes, "fill").then(
         (outcome) =>
-          report(countDistinctCells(outcome.readOnly ?? []), outcome.vetoed ? 0 : countDistinctCells(outcome.result.applied)),
+          report(
+            countDistinctCells(outcome.readOnly ?? []),
+            outcome.vetoed ? 0 : countDistinctCells(outcome.result.applied),
+            outcome.vetoed ? 0 : countDistinctCells(outcome.rejected ?? outcome.result.rejected ?? []),
+          ),
         () => report(),
       );
     } else {

@@ -75,6 +75,6 @@ describe("useFillHandle: controller read-only rejections (C3)", () => {
       expect(announce).toHaveBeenCalledWith("Fill: 2 cells filled, 2 read-only cells skipped, saved", "polite"),
     );
     expect(onReport).toHaveBeenCalledTimes(1);
-    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 2, skippedReadOnly: 2 });
+    expect(onReport).toHaveBeenCalledWith({ axis: "down", filledCells: 2, skippedReadOnly: 2, rejected: 0 });
   });
 });

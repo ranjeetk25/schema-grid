@@ -21,6 +21,10 @@
  *      applyChanges call). Never lower than the current version.
  *   5. errors: the cell reverts to the EARLIEST `prev` of that cell in the
  *      batch and gets the error message.
+ *   5b. rejected (v0.3, `ChangeResult.rejected`): the data source declined the
+ *      cell quietly. It reverts like an error but gets NO error status and no
+ *      assertive announcement (see `editAnnouncements`); it is reported in
+ *      `result.rejected` / `outcome.rejected`.
  *   6. conflicts: revert likewise, call `onRowStale(rowIds)` once, then
  *      `onConflict(conflict, resolve)` per cell:
  *      - "keepTheirs": write serverValue, version = max(current, serverVersion),
@@ -60,6 +64,19 @@
  * `READ_ONLY_MESSAGE`) and in `outcome.readOnly`. When nothing is left,
  * `beforeCellsChange` / `applyChanges` are skipped and `onCellsChange` still
  * fires with the rejections.
+ *
+ * Hook-dropped changes (v0.3): when `beforeCellsChange` returns a batch with
+ * FEWER (row, column) cells than it was given, the dropped cells are neither
+ * applied nor sent; they are reported in `result.rejected` / `outcome.rejected`
+ * alongside data-source rejections. A transform that only changes `next` is
+ * not a rejection; a veto (`false`) reports no rejections.
+ *
+ * Input-only meta (v0.3): `batch.meta` and `change.meta` (core `ChangeMeta`)
+ * ride along untouched — through the client write check (which reads only
+ * rowId/columnId), the send-time rebase and overwrite re-submits — and reach
+ * the data source as sent. A change whose `next` deep-equals its `prev` (a
+ * meta-only change) is dropped before the optimistic apply: it is never sent
+ * and is not counted as rejected or as an error.
  *
  * Ownership (who may settle a cell) is keyed on an internal submit counter,
  * never on `batch.id`, which a transform or idFactory may repeat.
@@ -127,6 +144,13 @@ export interface SubmitOutcome {
    * `createEditController`.
    */
   readOnly?: CellRef[];
+  /**
+   * v0.3: changes that were quietly not saved — dropped by `beforeCellsChange`
+   * or reported in the data source's `ChangeResult.rejected`. Not errors; the
+   * optimistic value (if any) was reverted with no error state. Also present
+   * as `result.rejected`. Always set by `createEditController`.
+   */
+  rejected?: CellChange[];
 }
 
 export interface EditController<Row extends GridRow = GridRow> {
@@ -158,6 +182,20 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 const emptyResult = (): ChangeResult => ({ applied: [], conflicts: [], errors: [] });
+
+/** Changes in `before` whose (row, column) cell no longer appears in `after`. */
+function droppedChanges(before: readonly CellChange[], after: readonly CellChange[]): CellChange[] {
+  const kept = new Set(after.map((c) => cellKey(c.rowId, c.columnId)));
+  const seen = new Set<string>();
+  const out: CellChange[] = [];
+  for (const c of before) {
+    const k = cellKey(c.rowId, c.columnId);
+    if (kept.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out;
+}
 
 interface CellSpan {
   rowId: string;
@@ -213,6 +251,9 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     baseVersions: baseVersionsFor(changes),
     source,
   });
+
+  /** Drops meta-only changes (`next` deep-equals `prev`): nothing to write. */
+  const withoutNoOps = (changes: readonly CellChange[]): CellChange[] => changes.filter((c) => !deepEqual(c.prev ?? null, c.next ?? null));
 
   const spansOf = (changes: readonly CellChange[]): Map<string, CellSpan> => {
     const spans = new Map<string, CellSpan>();
@@ -336,27 +377,44 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
 
   async function submit(changes: CellChange[], source: ChangeSource): Promise<SubmitOutcome> {
     const rejected = new Map<string, CellRef>();
-    const built = buildBatch(enforce(changes, rejected), source);
+    const built = buildBatch(enforce(withoutNoOps(changes), rejected), source);
     let batch = built;
+    /** Changes `beforeCellsChange` dropped (v0.3): reported as rejected, never sent. */
+    let hookDropped: CellChange[] = [];
     const readOnlyErrors = (): ChangeResult["errors"] =>
       [...rejected.values()].map((c) => ({ ...c, message: READ_ONLY_MESSAGE }));
-    const withReadOnly = (r: ChangeResult): ChangeResult =>
-      rejected.size === 0 ? r : { ...r, errors: [...readOnlyErrors(), ...r.errors] };
+    const finalize = (r: ChangeResult): ChangeResult => {
+      let out = rejected.size === 0 ? r : { ...r, errors: [...readOnlyErrors(), ...r.errors] };
+      const allRejected = [...hookDropped, ...(r.rejected ?? [])];
+      if (allRejected.length > 0 || r.rejected) out = { ...out, rejected: allRejected };
+      return out;
+    };
     const readOnly = (): CellRef[] => [...rejected.values()];
+    const outcome = (result: ChangeResult, b: ChangeBatch, vetoed: boolean): SubmitOutcome => ({
+      result,
+      batch: b,
+      vetoed,
+      readOnly: readOnly(),
+      rejected: vetoed ? [] : (result.rejected ?? []),
+    });
 
     // 1. Veto / transform.
-    const allRejected = built.changes.length === 0 && rejected.size > 0;
-    const before = allRejected ? undefined : getEvents()?.beforeCellsChange;
+    const allReadOnly = built.changes.length === 0 && rejected.size > 0;
+    const before = allReadOnly ? undefined : getEvents()?.beforeCellsChange;
     if (before) {
       const decided = await before(built);
-      if (decided === false) return { result: withReadOnly(emptyResult()), batch: built, vetoed: true, readOnly: readOnly() };
-      if (decided) batch = { ...decided, changes: enforce(decided.changes, rejected) };
+      if (decided === false) return outcome(finalize(emptyResult()), built, true);
+      if (decided) {
+        const kept = withoutNoOps(decided.changes);
+        hookDropped = droppedChanges(built.changes, kept);
+        batch = { ...decided, changes: enforce(kept, rejected) };
+      }
     }
 
-    if (batch.changes.length === 0 && rejected.size > 0) {
-      const result = withReadOnly(emptyResult());
+    if (batch.changes.length === 0 && (rejected.size > 0 || hookDropped.length > 0 || changes.length > 0)) {
+      const result = finalize(emptyResult());
       getEvents()?.onCellsChange?.(result, batch);
-      return { result, batch, vetoed: false, readOnly: readOnly() };
+      return outcome(result, batch, false);
     }
 
     // 2. Optimistic apply (immediate).
@@ -407,9 +465,9 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
         release(ticket, spans);
         finish();
         if (reverted.length > 0) opts.onReverted?.(reverted);
-        result = withReadOnly(result);
+        result = finalize(result);
         getEvents()?.onCellsChange?.(result, batch);
-        return { result, batch, vetoed: false, readOnly: readOnly() };
+        return outcome(result, batch, false);
       }
 
       // 4. Applied.
@@ -435,18 +493,22 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
       const revertedErrors = revertCells(ticket, result.errors.map(kOf), spans, batch.changes);
       if (result.errors.length > 0) cellStatus.setErrors(result.errors.map((err) => ({ cell: ref(err), message: err.message })));
 
+      // 5b. Rejected (v0.3): revert quietly — pending clears, no error status.
+      const rejectedByServer = result.rejected ?? [];
+      const revertedRejected = revertCells(ticket, rejectedByServer.map(kOf), spans, batch.changes);
+
       // 6a. Conflicts: revert first.
       const revertedConflicts = revertCells(ticket, result.conflicts.map(kOf), spans, batch.changes);
 
       // Cells the server did not mention: settle pending, keep the value.
-      const mentioned = new Set([...result.applied, ...result.errors, ...result.conflicts].map(kOf));
+      const mentioned = new Set([...result.applied, ...result.errors, ...result.conflicts, ...rejectedByServer].map(kOf));
       const unmentioned = [...spans.entries()].filter(([k]) => !mentioned.has(k) && owners.get(k) === ticket);
       if (unmentioned.length > 0) cellStatus.clearPending(unmentioned.map(([, s]) => ref(s)));
 
       release(ticket, spans);
       finish();
 
-      const reverted = [...revertedErrors, ...revertedConflicts];
+      const reverted = [...revertedErrors, ...revertedRejected, ...revertedConflicts];
       if (reverted.length > 0) opts.onReverted?.(reverted);
       if (result.applied.length > 0) opts.onApplied?.(collectApplied(batch, result));
     } catch (e) {
@@ -466,11 +528,11 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     await Promise.all(defaults);
 
     // 7. Notify.
-    result = withReadOnly(result);
+    result = finalize(result);
     events?.onCellsChange?.(result, batch);
 
     // 8.
-    return { result, batch, vetoed: false, readOnly: readOnly() };
+    return outcome(result, batch, false);
   }
 
   return { submit, buildBatch };
