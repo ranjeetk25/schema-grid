@@ -72,3 +72,28 @@ describe("dateFieldType", () => {
     expect(schema.safeParse("2026-13-01").success).toBe(false);
   });
 });
+
+describe("dateFieldType.parse with a JS Date", () => {
+  it("reads the calendar day in the configured zone, not the UTC fields", () => {
+    // 18:30Z on the 24th is already the 25th in Asia/Kolkata (a mysql2 `Date` for DATE '2026-09-25' read in IST).
+    const d = new Date("2026-09-24T18:30:00.000Z");
+    expect(dateFieldType.parse(d, dateFieldType.defaultConfig)).toEqual({ ok: true, value: "2026-09-25" });
+    expect(dateFieldType.parse(d, { ...dateFieldType.defaultConfig, timeZone: "UTC" })).toEqual({
+      ok: true,
+      value: "2026-09-24",
+    });
+    expect(dateFieldType.parse(d, { ...dateFieldType.defaultConfig, timeZone: "America/New_York" })).toEqual({
+      ok: true,
+      value: "2026-09-24",
+    });
+  });
+
+  it("a UTC-midnight Date (driver `timezone: 'Z'`) keeps its day in every zone east of UTC", () => {
+    const d = new Date("2026-09-25T00:00:00.000Z");
+    expect(dateFieldType.parse(d, dateFieldType.defaultConfig)).toEqual({ ok: true, value: "2026-09-25" });
+  });
+
+  it("rejects an invalid Date", () => {
+    expect(dateFieldType.parse(new Date(Number.NaN), dateFieldType.defaultConfig).ok).toBe(false);
+  });
+});

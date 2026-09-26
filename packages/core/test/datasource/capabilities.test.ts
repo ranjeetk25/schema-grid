@@ -155,3 +155,14 @@ describe("applyEffectiveCapabilities", () => {
     expect(name?.filterable).toBeUndefined();
   });
 });
+
+describe("defaultSort (v0.3)", () => {
+  it("is absent by default and passes through normalizeCapabilities / mergeCapabilities", () => {
+    expect(normalizeCapabilities({})).not.toHaveProperty("defaultSort");
+    const sort = [{ columnId: C.name, dir: "asc" as const }];
+    const normalized = normalizeCapabilities({ defaultSort: sort });
+    expect(normalized.defaultSort).toEqual(sort);
+    expect(mergeCapabilities(createFixtureSchema(), normalized).defaultSort).toEqual(sort);
+    expect(mergeCapabilities(createFixtureSchema(), caps())).not.toHaveProperty("defaultSort");
+  });
+});

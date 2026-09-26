@@ -1,3 +1,4 @@
+import type { SortSpec } from "../query/types";
 import type { GridRow } from "../rows/types";
 import type { ColumnDef, GridSchema } from "../schema/types";
 import type { DataSource } from "./types";
@@ -32,6 +33,12 @@ export interface DataSourceCapabilities {
    * every column-editing entry point when `write` is false.
    */
   schema: { read: boolean; write: boolean };
+  /**
+   * v0.3: the order the source applies when a query has `sort: []` (also the
+   * keyset paging tie-break order). Informational for clients: the grid may
+   * show it as the "default" header state. Absent = row id order.
+   */
+  defaultSort?: SortSpec[];
 }
 
 /** Everything allowed except schema writes; `maxPageSize` 500. */
@@ -65,6 +72,7 @@ export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> =
     schema: { ...DEFAULT_CAPABILITIES.schema, ...(partial.schema ?? {}) },
   };
   if (partial.operators) out.operators = partial.operators;
+  if (partial.defaultSort) out.defaultSort = partial.defaultSort.map((s) => ({ ...s }));
   return out;
 }
 
@@ -120,7 +128,7 @@ export function mergeCapabilities(schema: GridSchema, caps: DataSourceCapabiliti
     if (ops) entry.operators = [...ops];
     columns[column.id] = entry;
   }
-  return {
+  const out: EffectiveCapabilities = {
     maxPageSize: caps.maxPageSize,
     groupBy: caps.groupBy,
     search: caps.search,
@@ -132,6 +140,8 @@ export function mergeCapabilities(schema: GridSchema, caps: DataSourceCapabiliti
     schema: { ...caps.schema },
     columns,
   };
+  if (caps.defaultSort) out.defaultSort = caps.defaultSort.map((s) => ({ ...s }));
+  return out;
 }
 
 /**

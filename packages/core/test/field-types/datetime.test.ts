@@ -56,3 +56,26 @@ describe("datetimeFieldType", () => {
     expect(datetimeFieldType.parse("not a date", datetimeFieldType.defaultConfig).ok).toBe(false);
   });
 });
+
+describe("datetimeFieldType.parse of naive (zone-less) strings", () => {
+  const kolkata = { ...datetimeFieldType.defaultConfig, timeZone: "Asia/Kolkata" };
+  const utc = { ...datetimeFieldType.defaultConfig, timeZone: "UTC" };
+
+  it("interprets an ISO string without offset in config.timeZone", () => {
+    expect(datetimeFieldType.parse("2026-09-24T10:30", kolkata)).toEqual({ ok: true, value: "2026-09-24T05:00:00.000Z" });
+    expect(datetimeFieldType.parse("2026-09-24T10:30:15", utc)).toEqual({ ok: true, value: "2026-09-24T10:30:15.000Z" });
+  });
+
+  it("accepts the MySQL DATETIME shape (space separator, optional fraction) the same way", () => {
+    expect(datetimeFieldType.parse("2026-09-24 10:30:00", kolkata)).toEqual({ ok: true, value: "2026-09-24T05:00:00.000Z" });
+    expect(datetimeFieldType.parse("2026-09-24 10:30:00.250", utc)).toEqual({ ok: true, value: "2026-09-24T10:30:00.250Z" });
+    expect(datetimeFieldType.parse("2026-09-24 10:30:00.250000", kolkata)).toEqual({
+      ok: true,
+      value: "2026-09-24T05:00:00.250Z",
+    });
+  });
+
+  it("a date-only string is local midnight in config.timeZone", () => {
+    expect(datetimeFieldType.parse("2026-09-24", kolkata)).toEqual({ ok: true, value: "2026-09-23T18:30:00.000Z" });
+  });
+});
