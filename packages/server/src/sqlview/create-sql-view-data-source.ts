@@ -225,8 +225,9 @@ export interface SqlViewDataSourceOptions {
   /**
    * Post-read hook, batched: runs after hydration, `compute` and formula
    * evaluation and BEFORE projection (hidden cells are still there) on every
-   * row-returning path — fetch, the change feed, `createRows`. Typical use:
-   * signing file URLs. Must return one row per input row, in order.
+   * row-returning path — fetch, the change feed, `createRows`, `getRows` and the
+   * rows `applyChanges` returns (v0.3.1). Typical use: signing file URLs. Must
+   * return one row per input row, in order.
    */
   mapRows?: SqlViewRowsMapper;
   /** Per-row form of `mapRows` (applied after it when both are given). */
@@ -259,6 +260,8 @@ export interface SqlViewDataSourceOptions {
 
 export interface SqlViewDataSource extends DataSource<GridRow> {
   capabilities(): DataSourceCapabilities;
+  /** The current state of `ids` (order kept, unknown ids skipped), read like `fetch` — compute, `mapRows`, projection (v0.3.1). */
+  getRows(ids: string[]): Promise<GridRow[]>;
 }
 
 interface LoadedRow {
@@ -655,7 +658,8 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     if (typeof batch.id !== "string" || batch.id.length === 0 || batch.id.length > MAX_BATCH_ID_LENGTH) {
       throw new SchemaGridServerError("INVALID_BATCH", `ChangeBatch.id must be 1..${MAX_BATCH_ID_LENGTH} characters`);
     }
-    const rowIds = [...new Set(batch.changes.map((c) => c.rowId))].sort();
+    const batchOrder = [...new Set(batch.changes.map((c) => c.rowId))];
+    const rowIds = [...batchOrder].sort();
     return guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       const vctx = viewCtx(db);
@@ -747,17 +751,40 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         if (options.version && versionKnown) versions[rowPlan.rowId] = toNumber(baseVersion) + extVersion;
         else reload.push(rowPlan.rowId);
       }
-      if (reload.length > 0) {
-        const fresh = await loadRows(db, reload);
-        for (const id of reload) {
-          const f = fresh.get(id);
-          if (f) versions[id] = f.row.version;
-        }
+      // v0.3.1: one re-read AFTER the writes, still inside the transaction — it settles the
+      // versions of rows whose hook omitted `version` and yields `rows` (live batch rows, in
+      // batch order, conflict / error rows included) with compute / mapRows / projection applied.
+      const fresh = await loadRows(db, rowIds);
+      for (const id of reload) {
+        const f = fresh.get(id);
+        if (f) versions[id] = f.row.version;
       }
-      const result: ChangeResult = { applied, conflicts, errors, versions };
+      const rows = await finish(
+        batchOrder.flatMap((id) => {
+          const f = fresh.get(id);
+          return f ? [f.row] : [];
+        }),
+        db,
+      );
+      const result: ChangeResult = { applied, conflicts, errors, versions, rows };
       if (rejected.length > 0) result.rejected = rejected;
       return result;
     }));
+  }
+
+  /** `DataSource.getRows` (v0.3.1): the rows as `fetch` would serve them, in the order of `ids`; unknown ids skipped. */
+  async function getRows(ids: string[]): Promise<GridRow[]> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return [];
+    return guarded(async () => {
+      const loaded = await loadRows(options.db, unique);
+      return finish(
+        ids.flatMap((id) => {
+          const l = loaded.get(id);
+          return l ? [l.row] : [];
+        }),
+      );
+    });
   }
 
   async function createRows(partials: RowPartial[]): Promise<GridRow[]> {
@@ -897,6 +924,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     applyChanges,
     createRows,
     deleteRows,
+    getRows,
     async getOptions(columnId, search) {
       const column = readableColumn(columnId);
       if (column.type === "user") return options.userDirectory ? options.userDirectory(search) : [];

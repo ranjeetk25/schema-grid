@@ -314,7 +314,54 @@ describe("regressions", () => {
   it("v0.2 hook shapes still work: { applied, version } and no `values` reads", async () => {
     const { ds } = make({ write: { update: async (_c, i) => ({ applied: i.changes, version: i.baseVersion + 1 }) } });
     const res = await ds.applyChanges({ id: "b7", source: "edit", changes: [change("name", "Asha", "Z")], baseVersions: { "7": 3 } });
-    expect(res).toEqual({ applied: [change("name", "Asha", "Z")], conflicts: [], errors: [], versions: { "7": 4 } });
+    expect(res).toMatchObject({ applied: [change("name", "Asha", "Z")], conflicts: [], errors: [], versions: { "7": 4 } });
+    expect(Object.keys(res).sort()).toEqual(["applied", "conflicts", "errors", "rows", "versions"]);
     expect(new PermissionError([], "edit")).toBeInstanceOf(Error);
+  });
+});
+
+describe("rows after a save and getRows (v0.3.1)", () => {
+  const WRITTEN = [7, 4, "Asha K", "1500.00", "2026-09-24", "2026-09-24 10:30:00.000000", "docs/new.pdf"];
+
+  it("applyChanges returns the row re-read inside the transaction: the compute column reflects the just-written cell", async () => {
+    let reads = 0;
+    const { ds, statements } = make(
+      { write: { update: async (_ctx, input) => ({ applied: input.changes, version: 4 }) } },
+      () => [reads++ === 0 ? ROW : WRITTEN],
+    );
+    const res = await ds.applyChanges({ id: "r1", source: "edit", changes: [change("fileKey", "docs/7.pdf", "docs/new.pdf")], baseVersions: { "7": 3 } });
+    expect(res.versions).toEqual({ "7": 4 });
+    expect(res.rows).toEqual([expect.objectContaining({ id: "7", version: 4 })]);
+    expect(res.rows?.[0]?.cells).toMatchObject({ name: "Asha K", fileKey: "docs/new.pdf", url: "https://files/docs/new.pdf" });
+    // load → (hook UPDATE is the app's) → re-read, all between begin and commit
+    const kinds = statements().map((s) => s.sql.split(" ")[0]);
+    expect(kinds).toEqual(["select", "select"]);
+    const last = statements().at(-1);
+    expect(last?.sql).toContain("`sg_base`.`file_key`");
+    expect(last?.params).toContain("7");
+  });
+
+  it("rows are projected for the caller (hidden mapped cells stripped, computed cell kept); conflict-only rows are still returned", async () => {
+    const { ds } = make({
+      user: { id: "u2", roles: ["counsellor"] },
+      write: { update: async () => ({ conflict: { rowId: "7", columnId: "name", serverValue: "Other", serverVersion: 4, updatedAt: "2026-09-24T00:00:00.000Z" } }) },
+    });
+    const res = await ds.applyChanges({ id: "r2", source: "edit", changes: [change("name", "Asha", "Y")], baseVersions: { "7": 3 } });
+    expect(res.conflicts).toHaveLength(1);
+    expect(res.rows?.map((r) => r.id)).toEqual(["7"]);
+    expect(res.rows?.[0]?.cells).not.toHaveProperty("fileKey");
+    expect(res.rows?.[0]?.cells.url).toBe("https://files/docs/7.pdf");
+  });
+
+  it("getRows: order of ids, unknown ids skipped, same shape as fetch (compute + mapRows + projection); empty ids run no SQL", async () => {
+    const { ds, statements } = make({ mapRow: (row) => ({ ...row, cells: { ...row.cells, name: `${String(row.cells.name)}!` } }) });
+    const rows = await ds.getRows?.(["nope", "7"]);
+    expect(rows?.map((r) => r.id)).toEqual(["7"]);
+    expect(rows?.[0]?.cells).toMatchObject({ name: "Asha!", url: "https://files/docs/7.pdf", fileKey: "docs/7.pdf" });
+    const fetched = (await ds.fetch({ filter: null, sort: [], page })).rows[0] as GridRow;
+    expect(rows?.[0]?.cells).toEqual(fetched.cells);
+    expect(statements()).toHaveLength(2);
+    expect(await ds.getRows?.([])).toEqual([]);
+    expect(statements()).toHaveLength(2);
   });
 });

@@ -1,6 +1,7 @@
 import { resolveAccess } from "../access/query-access";
 import { applyChanges } from "../changes/apply-changes";
 import type { GridDb } from "../changes/db";
+import { readRowsById } from "../changes/read-rows";
 import { createRows, deleteRows } from "../changes/rows-crud";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
 import { PermissionError, SchemaGridServerError, type TableDdlHelper, guardMissingTable } from "../errors";
@@ -57,8 +58,9 @@ export interface DrizzleDataSourceOptions {
   userDirectory?: (search: string | undefined) => Promise<Option[]>;
   /**
    * Post-read hook, batched: after hydration and formula evaluation, BEFORE
-   * projection (hidden cells still present), on fetch, the change feed and
-   * `createRows`. Must return one row per input row, in order.
+   * projection (hidden cells still present), on fetch, the change feed,
+   * `createRows`, `getRows` and the rows `applyChanges` returns (v0.3.1). Must
+   * return one row per input row, in order.
    */
   mapRows?: (rows: GridRow[], ctx: ServerContext) => Promise<GridRow[]> | GridRow[];
   /** Per-row form of `mapRows` (applied after it when both are given). */
@@ -152,6 +154,9 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
   };
 
+  /** `mapRows` + hydrate options shared by every rows-by-id read (change feed, `ChangeResult.rows`, `getRows`). */
+  const readOptions = { ...(hasMap ? { mapRows } : {}), ...hydrateOptions };
+
   const readableColumn = (columnId: string) => {
     const column = byId.get(columnId);
     const a = column ? access.get(column.id) : undefined;
@@ -169,7 +174,7 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
         }
         return runRowQuery(query, scope, options.db, access);
       }),
-    applyChanges: (batch) => guarded(() => applyChanges(batch, ctx, deps)),
+    applyChanges: (batch) => guarded(() => applyChanges(batch, ctx, deps, readOptions)),
     createRows: (partials) =>
       guarded(() =>
         createRows(partials, ctx, deps, {
@@ -180,7 +185,8 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
       ),
     deleteRows: (ids) =>
       guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {})),
-    getChanges: (since) => guarded(() => getChanges(since, ctx, deps, { ...(hasMap ? { mapRows } : {}), ...hydrateOptions })),
+    getChanges: (since) => guarded(() => getChanges(since, ctx, deps, readOptions)),
+    getRows: (ids) => guarded(() => readRowsById(options.db, deps, ctx, ids, readOptions)),
     async getOptions(columnId, search) {
       const column = readableColumn(columnId);
       if (column.type === "user") return options.userDirectory ? options.userDirectory(search) : [];

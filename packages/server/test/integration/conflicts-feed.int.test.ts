@@ -197,4 +197,33 @@ describeMysql("conflicts, change feed and generated columns (MySQL 8.4)", () => 
     await mysql.db.execute(sql.raw(alterChangeLogTableMetaDDL({ table: "grid_change_log" }).sql));
     resetChangeLogLegacyDetection();
   });
+
+  it("v0.3.1 rows after a save: applyChanges returns the refreshed rows (formula recomputed, hidden cells stripped); getRows matches fetch", async () => {
+    const admin = as("adm", ["admin"]);
+    const before = (await version(admin, "r5")) as GridRow;
+    const paid = Number(before.cells.paid ?? 0);
+    const res = await admin.applyChanges({
+      id: "rows-json",
+      source: "edit",
+      changes: [
+        { rowId: "r5", columnId: FIXTURE_COLUMN_IDS.fee, prev: before.cells.fee ?? null, next: 90000 },
+        { rowId: "missing", columnId: FIXTURE_COLUMN_IDS.fee, prev: null, next: 1 },
+      ],
+      baseVersions: { r5: before.version, missing: 1 },
+    });
+    expect(res.applied).toHaveLength(1);
+    expect(res.rows?.map((r) => r.id)).toEqual(["r5"]);
+    const fresh = res.rows?.[0] as GridRow;
+    expect(fresh.version).toBe(before.version + 1);
+    expect(fresh.cells.fee).toBe(90000);
+    expect(fresh.cells.balance).toBe(90000 - paid);
+    expect(fresh).toEqual(await version(admin, "r5"));
+
+    const counsellor = as("cns", ["counsellor"]);
+    const rows = await counsellor.getRows?.(["missing", "r5", "r4"]);
+    expect(rows?.map((r) => r.id)).toEqual(["r5", "r4"]);
+    expect(rows?.[0]?.cells).not.toHaveProperty("notes");
+    expect(rows?.[0]?.cells.balance).toBe(90000 - paid);
+    expect(rows?.[0]).toEqual(await version(counsellor, "r5"));
+  });
 });

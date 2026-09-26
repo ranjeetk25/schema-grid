@@ -178,7 +178,8 @@ describe("applyChanges", () => {
     const { db, calls } = createFakeMysql(script(state, new Set()));
     const res = await applyChanges(batch([ch("r1", "secret", "x")], { r1: 1 }), ctx, { db, tables, gridId: "grid1" });
     expect(res.errors).toHaveLength(1);
-    expect(calls.map((c) => c.sql.split(" ")[0])).toEqual(["begin", "select", "commit"]);
+    // the locking read, then the v0.3.1 re-read of the batch's rows — no UPDATE, no INSERT
+    expect(calls.map((c) => c.sql.split(" ")[0])).toEqual(["begin", "select", "select", "commit"]);
   });
 });
 
@@ -268,5 +269,79 @@ describe("applyChanges: change meta (v0.3)", () => {
     expect(later).toHaveLength(3);
     expect(later[2]?.sql).not.toContain("`meta`");
     resetChangeLogLegacyDetection();
+  });
+});
+
+describe("applyChanges: rows after a save (v0.3.1)", () => {
+  const batch = (changes: ChangeBatch["changes"], baseVersions: Record<string, number>): ChangeBatch => ({
+    id: "batch-rows",
+    changes,
+    baseVersions,
+    source: "edit",
+  });
+  const ch = (rowId: string, columnId: string, next: unknown) => ({ rowId, columnId, prev: null, next });
+
+  /** Like `script`, but an UPDATE mutates the fake state so a re-read proves it happened AFTER the write. */
+  function liveScript(state: Record<string, ReturnType<typeof dbRow>>, conflictRows: Set<string>) {
+    return (c: FakeCall) => {
+      if (c.rowsAsArray && c.sql.startsWith("select")) {
+        const ids = c.params.filter((p): p is string => typeof p === "string" && p in state);
+        return asRows(ids.map((id) => state[id] as Record<string, unknown>), ORDER);
+      }
+      if (c.sql.startsWith("update")) {
+        const id = c.params.find((p) => typeof p === "string" && p in state) as string;
+        if (conflictRows.has(id)) return { affectedRows: 0 };
+        const row = state[id] as ReturnType<typeof dbRow>;
+        state[id] = { ...row, version: row.version + 1, cells: { ...row.cells, name: "Written" } };
+        return { affectedRows: 1 };
+      }
+      return undefined;
+    };
+  }
+
+  it("returns the post-write state of every existing batch row (conflict rows too), in batch order, hidden cells stripped", async () => {
+    const state = {
+      rA: dbRow("rA", 1, { name: "Old", fee: 1, secret: "s" }),
+      rB: dbRow("rB", 2, { name: "Theirs", secret: "s" }),
+      rD: dbRow("rD", 1, { name: "Gone" }, { deletedAt: "2026-09-24 11:00:00.000" }),
+    };
+    const { db, statements } = createFakeMysql(liveScript(state, new Set()));
+    const result = await applyChanges(
+      batch([ch("rB", "name", "Mine"), ch("rA", "name", "New"), ch("rX", "name", "x"), ch("rD", "name", "y"), ch("rA", "fee", 5)], {
+        rA: 1,
+        rB: 1,
+        rX: 1,
+        rD: 1,
+      }),
+      ctx,
+      { db, tables, gridId: "grid1" },
+    );
+    expect(result.versions).toEqual({ rA: 2 });
+    expect(result.conflicts.map((c) => c.rowId)).toEqual(["rB"]);
+    // rB (conflict) in its current state, rA after the write; rX (unknown) and rD (deleted) skipped.
+    expect(result.rows?.map((r) => [r.id, r.version, r.cells.name])).toEqual([
+      ["rB", 2, "Theirs"],
+      ["rA", 2, "Written"],
+    ]);
+    for (const r of result.rows ?? []) expect(r.cells).not.toHaveProperty("secret");
+    // The re-read happens inside the transaction, after the change_log insert.
+    const kinds = statements().map((s) => s.sql.split(" ")[0]);
+    expect(kinds.at(-1)).toBe("select");
+    expect(kinds.indexOf("insert")).toBeLessThan(kinds.length - 1);
+  });
+
+  it("applies mapRows to the refreshed rows and honours naiveDatetimeZone; an empty batch reads nothing", async () => {
+    const state = { rA: dbRow("rA", 1, { name: "Old" }) };
+    const { db } = createFakeMysql(liveScript(state, new Set()));
+    const result = await applyChanges(batch([ch("rA", "name", "New")], { rA: 1 }), ctx, { db, tables, gridId: "grid1" }, {
+      mapRows: (rows) => rows.map((r) => ({ ...r, cells: { ...r.cells, name: `${String(r.cells.name)}!` } })),
+      naiveDatetimeZone: "Asia/Kolkata",
+    });
+    expect(result.rows?.map((r) => r.cells.name)).toEqual(["Written!"]);
+
+    const empty = createFakeMysql(liveScript({}, new Set()));
+    const none = await applyChanges(batch([], {}), ctx, { db: empty.db, tables, gridId: "grid1" });
+    expect(none.rows).toEqual([]);
+    expect(empty.statements().filter((s) => s.sql.startsWith("select"))).toHaveLength(0);
   });
 });

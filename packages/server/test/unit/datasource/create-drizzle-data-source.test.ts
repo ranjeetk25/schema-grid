@@ -10,7 +10,7 @@ import {
   createRolePermissionResolver,
 } from "../../../src/internal/core";
 import { defineGridTables } from "../../../src/storage/tables";
-import { type FakeCall, createFakeMysql } from "../../helpers/fake-mysql";
+import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
 import { FIXTURE_COLUMN_IDS, FIXTURE_NOW, serverFixtureSchema } from "../../fixtures/admissions";
 
 const tables = defineGridTables({
@@ -112,5 +112,105 @@ describe("createDrizzleDataSource", () => {
     // viewers still have edit on unrestricted columns under the default role resolver
     await expect(ds.createOption?.(status, "X")).resolves.toMatchObject({ label: "X" });
     await expect(ds.createOption?.(notes, "X")).rejects.toBeInstanceOf(PermissionError);
+  });
+});
+
+describe("createDrizzleDataSource: rows after a save and getRows (v0.3.1)", () => {
+  const ORDER = ["id", "gridId", "version", "updatedAt", "updatedBy", "deletedAt", "cells", "email_addr"];
+  type State = Record<string, Record<string, unknown>>;
+  const dbRow = (id: string, cells: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    id,
+    gridId: "admissions",
+    version: 1,
+    updatedAt: "2026-09-24 10:00:00.000",
+    updatedBy: "u9",
+    deletedAt: null,
+    cells,
+    email_addr: null,
+    ...extra,
+  });
+  const freshState = (): State => ({
+    r1: dbRow("r1", { name: "Asha", fee: 100, paid: 40, notes: "hidden" }),
+    r2: dbRow("r2", { name: "Bhavesh", fee: 300, paid: 0 }),
+    r9: dbRow("r9", { name: "Deleted" }, { deletedAt: "2026-09-24 11:00:00.000" }),
+  });
+  /** Selects answer from `state`; an UPDATE writes fee = 500 and bumps the version (so a re-read proves read-after-write). */
+  const script = (state: State) => (c: FakeCall) => {
+    if (c.rowsAsArray && c.sql.startsWith("select")) {
+      const ids = c.params.filter((p): p is string => typeof p === "string" && p in state);
+      return asRows(ids.map((id) => state[id] as Record<string, unknown>), ORDER);
+    }
+    if (c.sql.startsWith("update")) {
+      const id = c.params.find((p) => typeof p === "string" && p in state) as string;
+      const row = state[id] as Record<string, unknown>;
+      state[id] = { ...row, version: (row.version as number) + 1, cells: { ...(row.cells as Record<string, unknown>), fee: 500 } };
+      return { affectedRows: 1 };
+    }
+    return undefined;
+  };
+  function live(extra: Partial<DrizzleDataSourceOptions> = {}, roles = ["admin"]) {
+    const state = freshState();
+    const fake = createFakeMysql(script(state));
+    const ds = createDrizzleDataSource({
+      db: fake.db as unknown as GridDb,
+      gridId: "admissions",
+      schema: serverFixtureSchema,
+      registry: createDefaultRegistry(),
+      resolver: createRolePermissionResolver(),
+      user: { id: "u1", roles },
+      now: () => new Date(FIXTURE_NOW),
+      tables,
+      ...extra,
+    });
+    return { ds, state, ...fake };
+  }
+  const balance = FIXTURE_COLUMN_IDS.balance;
+  const key = (id: string) => serverFixtureSchema.columns.find((c) => c.id === id)?.key as string;
+
+  it("applyChanges returns the rows read after the write with formulas recomputed and hidden cells stripped", async () => {
+    const { ds } = live({}, ["counsellor"]);
+    const res = await ds.applyChanges({
+      id: "b1",
+      source: "edit",
+      changes: [{ rowId: "r1", columnId: FIXTURE_COLUMN_IDS.name, prev: "Asha", next: "Asha K" }],
+      baseVersions: { r1: 1 },
+    });
+    expect(res.applied).toHaveLength(1);
+    const [r1] = res.rows ?? [];
+    expect(r1).toMatchObject({ id: "r1", version: 2 });
+    expect(r1?.cells[key(fee)]).toBe(500);
+    expect(r1?.cells[key(balance)]).toBe(460); // {fee} - {paid} on the post-write fee
+    expect(r1?.cells).not.toHaveProperty(key(notes));
+  });
+
+  it("applyChanges rows go through mapRows / mapRow; unknown and deleted ids are skipped", async () => {
+    const { ds } = live({
+      mapRows: (rows) => rows.map((r) => ({ ...r, cells: { ...r.cells, [key(FIXTURE_COLUMN_IDS.website)]: "https://mapped" } })),
+      mapRow: (row) => ({ ...row, cells: { ...row.cells, [key(FIXTURE_COLUMN_IDS.name)]: `${String(row.cells[key(FIXTURE_COLUMN_IDS.name)])}!` } }),
+    });
+    const res = await ds.applyChanges({
+      id: "b2",
+      source: "edit",
+      changes: [
+        { rowId: "r2", columnId: FIXTURE_COLUMN_IDS.name, prev: "Bhavesh", next: "B" },
+        { rowId: "nope", columnId: FIXTURE_COLUMN_IDS.name, prev: null, next: "x" },
+        { rowId: "r9", columnId: FIXTURE_COLUMN_IDS.name, prev: null, next: "y" },
+      ],
+      baseVersions: { r2: 1, nope: 1, r9: 1 },
+    });
+    expect(res.rows?.map((r) => r.id)).toEqual(["r2"]);
+    expect(res.rows?.[0]?.cells).toMatchObject({ [key(FIXTURE_COLUMN_IDS.website)]: "https://mapped", [key(FIXTURE_COLUMN_IDS.name)]: "Bhavesh!" });
+  });
+
+  it("getRows follows the order of ids, skips unknown / deleted ids, projects and evaluates formulas", async () => {
+    const { ds, statements } = live({}, ["counsellor"]);
+    const rows = await ds.getRows?.(["r2", "nope", "r9", "r1"]);
+    expect(rows?.map((r) => r.id)).toEqual(["r2", "r1"]);
+    expect(rows?.[1]?.cells[key(balance)]).toBe(60);
+    expect(rows?.[1]?.cells).not.toHaveProperty(key(notes));
+    expect(statements()).toHaveLength(1);
+    expect(statements()[0]?.sql).toMatch(/^select .* from `grid_rows` where \(`grid_rows`.`grid_id` = \? and `grid_rows`.`id` in \(\?, \?, \?, \?\)\)$/);
+    expect(await ds.getRows?.([])).toEqual([]);
+    expect(statements()).toHaveLength(1);
   });
 });

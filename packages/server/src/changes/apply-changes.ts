@@ -10,6 +10,10 @@ import { insertChangeLog, type ChangeLogEntry } from "./change-log";
 import { type GridDb, type WriteDeps, affectedRowsOf } from "./db";
 import { physicalWriteValue } from "./physical";
 import { type CurrentRow, type PlannedSet, type RowWritePlan, planChanges } from "./plan-changes";
+import { type ReadRowsOptions, readRowsById } from "./read-rows";
+
+/** Read-side options for the rows `applyChanges` returns (`ChangeResult.rows`, v0.3.1). */
+export type ApplyChangesOptions = ReadRowsOptions;
 
 const path = (key: string) => sql.raw(`'${jsonPath(key)}'`);
 
@@ -102,7 +106,10 @@ async function loadRowsForUpdate(
  * read current rows → `planChanges` → one UPDATE per row (version guard) →
  * rows that matched 0 rows become conflicts (with the server's current state),
  * never errors → change_log rows for applied cells only (with the change's
- * `meta`, v0.3). A conflict on one row does not block the others.
+ * `meta`, v0.3) → the batch's rows re-read in the same transaction
+ * (`ChangeResult.rows`, v0.3.1: every distinct live row id in batch order,
+ * conflict / error rows included, formulas + `mapRows` + projection applied).
+ * A conflict on one row does not block the others.
  */
 export const MAX_BATCH_ID_LENGTH = 64;
 
@@ -139,11 +146,17 @@ export function appliedChange(rowId: string, s: PlannedSet): CellChange {
   return { rowId, columnId: s.column.id, prev: s.prev, next: s.next, ...(s.meta ? { meta: s.meta } : {}) };
 }
 
-export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps: WriteDeps): Promise<ChangeResult> {
+export async function applyChanges(
+  batch: ChangeBatch,
+  ctx: ServerContext,
+  deps: WriteDeps,
+  options: ApplyChangesOptions = {},
+): Promise<ChangeResult> {
   if (typeof batch.id !== "string" || batch.id.length === 0 || batch.id.length > MAX_BATCH_ID_LENGTH) {
     throw new SchemaGridServerError("INVALID_BATCH", `ChangeBatch.id must be 1..${MAX_BATCH_ID_LENGTH} characters`);
   }
-  const rowIds = [...new Set(batch.changes.map((c) => c.rowId))].sort();
+  const batchOrder = [...new Set(batch.changes.map((c) => c.rowId))];
+  const rowIds = [...batchOrder].sort();
   const access = resolveAccess(ctx);
   return deps.db.transaction(async (tx) => {
     const txDeps: WriteDeps = { ...deps, db: tx as unknown as GridDb };
@@ -191,6 +204,7 @@ export async function applyChanges(batch: ChangeBatch, ctx: ServerContext, deps:
     }
 
     await insertChangeLog(txDeps.db, deps.tables, { gridId: deps.gridId, actor: ctx.user.id, at: now, batchId: batch.id }, log);
-    return { applied, conflicts, errors, versions };
+    const rows = await readRowsById(txDeps.db, txDeps, ctx, batchOrder, options);
+    return { applied, conflicts, errors, versions, rows };
   });
 }

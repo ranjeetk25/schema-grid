@@ -404,3 +404,38 @@ table (`createSqlViewDataSource({ extension })`) — the MySQL `ER_NO_SUCH_TABLE
 `MissingTableError` (wire code `MISSING_TABLE`, HTTP 500) whose message names the table and the DDL helper
 to run, e.g. ``Table `grid_schemas` does not exist. Create it with createGridSchemasTableDDL({ table: "grid_schemas" }) …``
 (`details: { table, ddl }`). Run the DDL once at deploy / boot (the demo-api does this in `ensureLeadsStorage`).
+## v0.3.1 additions
+
+### Rows after a save (`ChangeResult.rows`, `getRows`)
+
+Both sources answer `applyChanges` with `rows`: the current state of every distinct row id in the batch that
+still exists, read **after** the writes and **inside the same transaction** (after the `change_log` insert in
+`createDrizzleDataSource`; after the hooks' UPDATEs and the extension-store write in `createSqlViewDataSource`,
+where this single re-read also settles the versions of rows whose `write.update` omitted `version`). Rows that
+only had conflicts or errors are still returned, in their server state; unknown and soft-deleted ids are
+skipped; order follows the batch (first appearance of each row id).
+
+Every row is served exactly as `fetch` would serve it — formulas evaluated, `compute` columns derived from the
+just-written cells, `mapRows` / `mapRow` applied, `naiveDatetimeZone` honoured, and `projectRow` stripping the
+cells the user cannot read. Hidden cells still feed `compute` / `mapRows` (a hidden `fileKey` can refresh a
+visible `url`), as on every other read path.
+
+```ts
+const res = await ds.applyChanges(batch);
+res.rows; // [{ id, version, updatedAt, cells: { fee: 500, balance: 460, url: "https://signed/…" } }]
+```
+
+`ds.getRows(ids)` (wire op `getRows`, `{ ids }` → `GridRow[]`) reads the same shape on demand: order of `ids`,
+unknown / deleted ids skipped, one `SELECT … WHERE id IN (…)` (none for `[]`). It is implemented by both
+sources — `createSqlViewDataSource` declares it on `SqlViewDataSource` — and served automatically by
+`createGridRegistry` and every HTTP adapter through `createDataSourceHandler`. There is no capability flag for
+it; a custom source that lacks it gets a 501 from the handler.
+
+The client upserts `ChangeResult.rows` into the grid after a save, so derived values (formulas, computed
+columns, signed URLs) update without a refetch; `refetchAfterSave` falls back to `getRows` for the batch's
+row ids when a source omits `rows`. `createDrizzleDataSource` exposes the shared read as
+`readRowsById(db, deps, ctx, ids, { mapRows, naiveDatetimeZone })` (`changes/read-rows.ts`), which the change
+feed now uses too — `getChanges` reports every id the read skipped as deleted.
+
+<!-- v0.3.1: further subsections go here -->
+

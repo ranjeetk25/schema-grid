@@ -448,6 +448,56 @@ describeMysql("SQL view over a plain table (MySQL 8.4)", () => {
     expect(feed?.cursor).toBeTruthy();
   });
 
+  it("v0.3.1 rows after a save: applyChanges returns the refreshed rows (compute + extension cells) and getRows matches fetch", async () => {
+    const contact: ColumnDef = { id: "col_contact", key: "contact", label: "Contact", type: "text", config: {}, order: 30, createdAt: T, updatedAt: T };
+    const source = withExt({
+      schema: { ...extSchema, columns: [...extSchema.columns, contact] },
+      columns: {
+        name: { expr: leads.name },
+        email: { expr: leads.email },
+        status: { expr: leads.paymentStatus },
+        callDate: { expr: leads.callDate },
+        isActive: { expr: leads.aiVerified },
+        fee: { expr: leads.fee },
+        contact: { compute: (r) => (r.cells.name ? `${r.cells.name} <${r.cells.email ?? "?"}>` : null) },
+      },
+    });
+    const r1 = await row(source, "1");
+    if (!r1) throw new Error("row 1");
+    const res = await source.applyChanges({
+      id: "rows-1",
+      source: "edit",
+      changes: [
+        { rowId: "1", columnId: col.name, prev: r1.cells.name, next: "Renamed Lead" },
+        { rowId: "1", columnId: noteColumn.id, prev: null, next: "first note" },
+        { rowId: "404", columnId: col.name, prev: null, next: "ghost" },
+      ],
+      baseVersions: { "1": r1.version, "404": 1 },
+    });
+    expect(res.applied).toHaveLength(2);
+    // Only the live row comes back; the compute column already reflects the just-written name and the extension cell is there.
+    expect(res.rows?.map((r) => r.id)).toEqual(["1"]);
+    const fresh = res.rows?.[0] as GridRow;
+    expect(fresh.version).toBe(res.versions?.["1"]);
+    expect(fresh.cells).toMatchObject({ name: "Renamed Lead", note: "first note", contact: `Renamed Lead <${String(r1.cells.email)}>` });
+
+    const viaGetRows = await source.getRows(["404", "1"]);
+    expect(viaGetRows).toEqual([await row(source, "1")]);
+    expect(viaGetRows[0]).toEqual(fresh);
+    expect(await source.getRows([])).toEqual([]);
+
+    // A counsellor never sees hidden cells in `rows`, and a conflict-only batch still returns the row's current state.
+    const counsellor = make({ user: { id: "c1", roles: ["counsellor"] } });
+    const stale = await counsellor.applyChanges({
+      id: "rows-2",
+      source: "edit",
+      changes: [{ rowId: "1", columnId: col.name, prev: "x", next: "y" }],
+      baseVersions: { "1": r1.version },
+    });
+    expect(stale.conflicts).toHaveLength(1);
+    expect(stale.rows?.map((r) => [r.id, r.cells.name])).toEqual([["1", "Renamed Lead"]]);
+  });
+
   it("v0.3 meta reaches write.update (change + batch) and a hook's `rejected` is passed through", async () => {
     const seen: unknown[] = [];
     const base = hooks();

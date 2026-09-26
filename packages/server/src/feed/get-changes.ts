@@ -1,20 +1,13 @@
-import { and, asc, eq, gt, inArray, max } from "drizzle-orm";
-import { projectRow } from "../access/projection";
-import { resolveAccess } from "../access/query-access";
+import { and, asc, eq, gt, max } from "drizzle-orm";
 import type { WriteDeps } from "../changes/db";
+import { type ReadRowsOptions, readRowsById } from "../changes/read-rows";
 import type { ServerContext } from "../context";
 import { CursorError } from "../errors";
-import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import type { ChangeFeedEntry, GridRow } from "../internal/core";
-import { type DbRow, hydrateRow } from "../storage/hydrate";
 
-export interface GetChangesOptions {
+export interface GetChangesOptions extends ReadRowsOptions {
   /** Max change_log entries to read per call. Default 1000, clamped to 1..10000. */
   maxEntries?: number;
-  /** Post-read hook (see `RowSource.mapRows`): after formula evaluation, before projection. */
-  mapRows?: (rows: GridRow[]) => Promise<GridRow[]> | GridRow[];
-  /** Zone of naive DATETIME wall times in physical `datetime` columns. Default UTC. */
-  naiveDatetimeZone?: string;
 }
 
 const DEFAULT_MAX_ENTRIES = 1000;
@@ -47,7 +40,6 @@ export async function getChanges(
 ): Promise<ChangeFeedEntry<GridRow>> {
   const { db, tables, gridId } = deps;
   const maxEntries = clampMaxEntries(options.maxEntries);
-  const hydrateOptions = options.naiveDatetimeZone ? { naiveDatetimeZone: options.naiveDatetimeZone } : {};
   const schemaVersion = ctx.schema.schemaVersion;
 
   if (since === undefined || since === "") {
@@ -83,27 +75,10 @@ export async function getChanges(
     }
   }
 
-  const found = (await db
-    .select()
-    .from(tables.rows)
-    .where(and(eq(tables.rows.gridId, gridId), inArray(tables.rows.id, rowIds)))) as unknown as DbRow[];
-  const byId = new Map(found.map((r) => [r.id, r]));
-
-  const access = resolveAccess(ctx);
-  const deletedRowIds: string[] = [];
-  const liveRows: GridRow[] = [];
-  for (const rowId of rowIds) {
-    const dbRow = byId.get(rowId);
-    if (!dbRow || dbRow.deletedAt) {
-      deletedRowIds.push(rowId);
-      continue;
-    }
-    liveRows.push(hydrateRow(dbRow, ctx.schema, ctx.registry, hydrateOptions));
-  }
-
-  const evaluated = evaluateFormulaCells(liveRows, access, ctx);
-  const mapped = options.mapRows ? await options.mapRows(evaluated) : evaluated;
-  const rows = mapped.map((row) => projectRow(row, ctx.schema, access));
+  // Live rows in log order; ids the read skipped were deleted (or never existed).
+  const rows = await readRowsById(db, deps, ctx, rowIds, options);
+  const live = new Set(rows.map((r) => r.id));
+  const deletedRowIds = rowIds.filter((id) => !live.has(id));
 
   return { cursor, rows, deletedRowIds, schemaVersion };
 }
