@@ -9,7 +9,16 @@ export interface Option {
   id: string;
   label: string;
   color?: string;
+  /**
+   * Who may SET this option (default `"all"`). A value already holding a
+   * restricted option stays readable; only introducing it is refused
+   * ("Option “Verified” can only be set by Admin"). See `resolveSettableOptions`.
+   */
+  settableBy?: RoleRule;
 }
+
+/** `"all"` or an explicit role list (column permissions, `Option.settableBy`). */
+export type RoleRule = "all" | { roles: string[] };
 
 /** A reference to a record in another table (link field). */
 export interface LinkRef {

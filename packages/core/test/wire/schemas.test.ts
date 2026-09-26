@@ -143,6 +143,20 @@ describe("wireSchemas inputs", () => {
     expect(wireSchemas.applyChanges.input.safeParse({ ...batch, source: "magic" }).success).toBe(false);
     expect(wireSchemas.applyChanges.input.safeParse({ ...batch, baseVersions: { r1: "1" } }).success).toBe(false);
   });
+
+  it("carries batch and per-change meta through (v0.3)", () => {
+    const batch = {
+      id: "b1",
+      changes: [{ rowId: "r1", columnId: C.name, prev: "A", next: "B", meta: { decisionMessage: "ok" } }],
+      baseVersions: { r1: 1 },
+      source: "edit",
+      meta: { reuploadDeadline: "2026-10-01" },
+    };
+    const parsed = wireSchemas.applyChanges.input.safeParse(batch);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual(batch);
+    expect(wireSchemas.applyChanges.input.safeParse({ ...batch, meta: "nope" }).success).toBe(false);
+  });
 });
 
 describe("wireSchemas outputs", () => {
@@ -181,11 +195,22 @@ describe("wireSchemas outputs", () => {
         errors: [{ rowId: "r1", columnId: C.name, message: "bad" }],
       }).success,
     ).toBe(true);
+    const withRejected = {
+      applied: [{ rowId: "r1", columnId: C.name, prev: "A", next: "B", meta: { note: 1 } }],
+      conflicts: [{ rowId: "r2", columnId: C.name, serverValue: "x", serverVersion: 2, updatedAt: "t", meta: { note: 2 } }],
+      errors: [],
+      rejected: [{ rowId: "r3", columnId: C.name, prev: "A", next: "B" }],
+    };
+    const parsedRejected = wireSchemas.applyChanges.output.safeParse(withRejected);
+    expect(parsedRejected.success).toBe(true);
+    expect(parsedRejected.data).toEqual(withRejected);
     expect(
       wireSchemas.getChanges.output.safeParse({ cursor: "1", rows: [], deletedRowIds: ["r3"], schemaVersion: 1 })
         .success,
     ).toBe(true);
     expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", color: "red" }]).success).toBe(true);
+    expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: { roles: ["admin"] } }]).success).toBe(true);
+    expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: "some" }]).success).toBe(false);
     expect(wireSchemas.createOption.output.safeParse({ id: "a", label: "A" }).success).toBe(true);
     expect(wireSchemas.lookup.output.safeParse([{ id: "p1", label: "P" }]).success).toBe(true);
     expect(wireSchemas.createRows.output.safeParse([]).success).toBe(true);
@@ -264,5 +289,13 @@ describe("wireSchemas.capabilities", () => {
     expect(wireSchemas.capabilities.output.safeParse({ ...full, changeFeed: "sometimes" }).success).toBe(false);
     expect(wireSchemas.capabilities.output.safeParse({ ...full, maxPageSize: 0 }).success).toBe(false);
     expect(wireSchemas.capabilities.output.safeParse({ ...full, sort: "some" }).success).toBe(false);
+  });
+
+  it("takes the v0.3 schema flags and tolerates a v0.2 answer without them", () => {
+    const withSchema = { ...full, schema: { read: true, write: true } };
+    const parsed = wireSchemas.capabilities.output.safeParse(withSchema);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual(withSchema);
+    expect(wireSchemas.capabilities.output.safeParse({ ...full, schema: { read: true } }).success).toBe(false);
   });
 });

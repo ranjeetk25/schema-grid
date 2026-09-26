@@ -1,9 +1,9 @@
-import type { ISODateTimeString } from "../common/types";
+import type { ISODateTimeString, RoleRule } from "../common/types";
 import type { FieldTypeId } from "../field-types/ids";
 import type { FilterNode } from "../filter/types";
 import type { GroupSpec, SortSpec } from "../query/types";
 
-export type RoleRule = "all" | { roles: string[] };
+export type { RoleRule };
 
 export interface ColumnPermissions {
   read: RoleRule;

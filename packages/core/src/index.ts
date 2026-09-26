@@ -4,6 +4,7 @@ export type {
   ISODateTimeString,
   LinkRef,
   Option,
+  RoleRule,
   UserRef,
 } from "./common/types";
 export {
@@ -17,7 +18,6 @@ export type {
   ColumnState,
   ColumnValidation,
   GridSchema,
-  RoleRule,
   ViewDef,
 } from "./schema/types";
 export type {
@@ -36,6 +36,7 @@ export type {
   ChangeConflict,
   ChangeError,
   ChangeFeedEntry,
+  ChangeMeta,
   ChangeResult,
   ChangeSource,
   GridRow,
@@ -82,6 +83,13 @@ export {
   readableColumnIds,
   resolveColumnAccess,
 } from "./permissions/column-access";
+export {
+  canSetOption,
+  OPTION_COLUMN_TYPES,
+  optionNotSettableMessage,
+  optionRuleViolation,
+  resolveSettableOptions,
+} from "./permissions/option-rules";
 export type { AnyFieldType, FieldType, ParseResult } from "./field-types/types";
 export type { FieldTypeRegistry } from "./field-types/registry";
 export {

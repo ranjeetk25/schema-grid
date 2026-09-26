@@ -9,11 +9,21 @@ export interface GridRow {
   cells: Record<string, unknown>;
 }
 
+/** JSON-serialisable side data travelling with a change (never a cell value). */
+export type ChangeMeta = Record<string, unknown>;
+
 export interface CellChange {
   rowId: string;
   columnId: string;
   prev: unknown;
   next: unknown;
+  /**
+   * v0.3: input-only data for this change (e.g. a decision message a
+   * `beforeCellsChange` hook attached). Ignored by validation and the client
+   * write check; data sources receive it and echo it on the matching
+   * `applied` / `rejected` / `conflicts` entry.
+   */
+  meta?: ChangeMeta;
 }
 
 export type ChangeSource = "edit" | "paste" | "fill" | "undo" | "redo" | "import";
@@ -23,6 +33,8 @@ export interface ChangeBatch {
   changes: CellChange[];
   baseVersions: Record<string, number>;
   source: ChangeSource;
+  /** v0.3: input-only data for the whole batch (see `CellChange.meta`). */
+  meta?: ChangeMeta;
 }
 
 export interface ChangeConflict {
@@ -32,6 +44,8 @@ export interface ChangeConflict {
   serverVersion: number;
   updatedBy?: ActorRef;
   updatedAt: ISODateTimeString;
+  /** The conflicting change's `meta`, echoed back. */
+  meta?: ChangeMeta;
 }
 
 export interface ChangeError {
@@ -52,6 +66,13 @@ export interface ChangeResult {
    * the server always populate it.
    */
   versions?: Record<string, number>;
+  /**
+   * v0.3: changes that were NOT applied and are NOT errors — the data source
+   * (or a `beforeCellsChange` hook that dropped them) declined them quietly.
+   * Clients revert the optimistic value with no error state; a status line
+   * may say "N changes not saved". Optional: absent means none.
+   */
+  rejected?: CellChange[];
 }
 
 export interface ChangeFeedEntry<Row extends GridRow = GridRow> {

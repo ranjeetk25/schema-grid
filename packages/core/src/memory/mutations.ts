@@ -3,7 +3,8 @@ import type { RowPartial } from "../datasource/types";
 import { isEmptyValue } from "../field-types/empty";
 import type { FieldTypeRegistry } from "../field-types/registry";
 import type { FormulaEnv } from "../formula/types";
-import type { Access } from "../permissions/types";
+import { optionRuleViolation } from "../permissions/option-rules";
+import type { Access, PermissionUser } from "../permissions/types";
 import type {
   CellChange,
   ChangeBatch,
@@ -22,16 +23,30 @@ export interface MutationDeps<Row extends GridRow> {
   access: ReadonlyMap<string, Access>;
   env: FormulaEnv;
   actor?: ActorRef;
+  /** The acting user, for per-option `settableBy` rules. Absent → every option is settable. */
+  user?: PermissionUser;
   generateId: () => string;
   /** Called once per row that changed (created, updated or deleted). */
   onRowChanged?: (rowId: string, deleted: boolean) => void;
 }
 
-/** Validates a value for a column: required, field-type valueSchema and ColumnDef.validation. */
+/** What `validateCellValue` needs beyond the value for user-aware rules. */
+export interface ValidateCellContext {
+  /** The acting user; enables `Option.settableBy` checks. */
+  user?: PermissionUser;
+  /** The cell's current value: option ids already present are never re-checked. */
+  prev?: unknown;
+}
+
+/**
+ * Validates a value for a column: required, field-type valueSchema,
+ * ColumnDef.validation and (with `ctx.user`) per-option `settableBy` rules.
+ */
 export function validateCellValue(
   column: ColumnDef,
   value: unknown,
   registry: FieldTypeRegistry,
+  ctx: ValidateCellContext = {},
 ): string | null {
   if (column.required && isEmptyValue(value)) return "A value is required";
   const type = registry.get(column.type);
@@ -57,7 +72,7 @@ export function validateCellValue(
       // An invalid pattern in the schema is ignored rather than blocking edits.
     }
   }
-  return null;
+  return optionRuleViolation(column, value, ctx.user, { prev: ctx.prev });
 }
 
 function pickLimits(v: NonNullable<ColumnDef["validation"]>): Record<string, number> {
@@ -125,7 +140,10 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
         fail(change, "Missing base version for row");
         continue;
       }
-      const invalid = validateCellValue(column, change.next, deps.registry);
+      const invalid = validateCellValue(column, change.next, deps.registry, {
+        ...(deps.user ? { user: deps.user } : {}),
+        prev: row.cells[column.key],
+      });
       if (invalid) {
         fail(change, invalid);
         continue;
@@ -144,6 +162,7 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
           updatedAt: row.updatedAt,
         };
         if (row.updatedBy) conflict.updatedBy = structuredClone(row.updatedBy);
+        if (change.meta) conflict.meta = structuredClone(change.meta);
         conflicts.push(conflict);
       }
       continue;
@@ -153,7 +172,13 @@ export function applyChangeBatch<Row extends GridRow>(batch: ChangeBatch, deps: 
       const prev = structuredClone(row.cells[column.key] ?? null);
       const next = structuredClone(change.next ?? null);
       row.cells[column.key] = next;
-      applied.push({ rowId, columnId: change.columnId, prev, next: structuredClone(next) });
+      applied.push({
+        rowId,
+        columnId: change.columnId,
+        prev,
+        next: structuredClone(next),
+        ...(change.meta ? { meta: structuredClone(change.meta) } : {}),
+      });
     }
     row.version += 1;
     versions[rowId] = row.version;
@@ -202,7 +227,7 @@ export function createStoreRows<Row extends GridRow>(partials: RowPartial<Row>[]
       // Only editable columns are validated: the user can't supply values for
       // the others, and errors must not reveal hidden columns.
       if (access === "edit") {
-        const invalid = validateCellValue(column, value, deps.registry);
+        const invalid = validateCellValue(column, value, deps.registry, deps.user ? { user: deps.user } : {});
         if (invalid) throw new InMemoryMutationError(`Row ${i}, column "${column.key}": ${invalid}`);
       }
       cells[column.key] = value ?? null;

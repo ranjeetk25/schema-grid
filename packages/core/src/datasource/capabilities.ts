@@ -25,9 +25,16 @@ export interface DataSourceCapabilities {
   options: boolean;
   lookup: boolean;
   export: { maxRows?: number };
+  /**
+   * v0.3: can THIS user read / change the grid's schema (`getSchema` /
+   * `updateSchema`)? Defaults `read: true`, `write: false`; a grid registry
+   * answers from its `permission` hook and schema store. The workbench hides
+   * every column-editing entry point when `write` is false.
+   */
+  schema: { read: boolean; write: boolean };
 }
 
-/** Everything allowed; `maxPageSize` 500. */
+/** Everything allowed except schema writes; `maxPageSize` 500. */
 export const DEFAULT_CAPABILITIES: Readonly<DataSourceCapabilities> = Object.freeze({
   maxPageSize: 500,
   sort: "all",
@@ -39,9 +46,10 @@ export const DEFAULT_CAPABILITIES: Readonly<DataSourceCapabilities> = Object.fre
   options: true,
   lookup: true,
   export: Object.freeze({}),
+  schema: Object.freeze({ read: true, write: false }),
 }) as Readonly<DataSourceCapabilities>;
 
-/** A partial capabilities object filled from `DEFAULT_CAPABILITIES` (`write`/`export` merged field by field). */
+/** A partial capabilities object filled from `DEFAULT_CAPABILITIES` (`write`/`export`/`schema` merged field by field). */
 export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> = {}): DataSourceCapabilities {
   const out: DataSourceCapabilities = {
     maxPageSize: partial.maxPageSize ?? DEFAULT_CAPABILITIES.maxPageSize,
@@ -54,6 +62,7 @@ export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> =
     options: partial.options ?? DEFAULT_CAPABILITIES.options,
     lookup: partial.lookup ?? DEFAULT_CAPABILITIES.lookup,
     export: { ...DEFAULT_CAPABILITIES.export, ...(partial.export ?? {}) },
+    schema: { ...DEFAULT_CAPABILITIES.schema, ...(partial.schema ?? {}) },
   };
   if (partial.operators) out.operators = partial.operators;
   return out;
@@ -120,6 +129,7 @@ export function mergeCapabilities(schema: GridSchema, caps: DataSourceCapabiliti
     options: caps.options,
     lookup: caps.lookup,
     export: { ...caps.export },
+    schema: { ...caps.schema },
     columns,
   };
 }

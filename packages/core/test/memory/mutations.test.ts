@@ -169,3 +169,67 @@ describe("in-memory createRows / deleteRows", () => {
     expect(ids).toEqual(["r1", "r3", "r4", "r5"]);
   });
 });
+
+describe("in-memory applyChanges: option rules and meta (v0.3)", () => {
+  const restrict = (schema: ReturnType<typeof createFixtureSchema>) => {
+    const status = schema.columns.find((c) => c.id === C.status);
+    const tags = schema.columns.find((c) => c.id === C.tags);
+    if (!status || !tags) throw new Error("fixture columns");
+    status.config = {
+      options: [
+        { id: "paid", label: "Paid", settableBy: { roles: ["admin"] } },
+        { id: "pending", label: "Pending" },
+        { id: "partial", label: "Partial" },
+      ],
+    };
+    tags.config = {
+      options: [
+        { id: "scholar", label: "Scholarship" },
+        { id: "referral", label: "Referral" },
+        { id: "vip", label: "VIP", settableBy: { roles: ["admin"] } },
+      ],
+      allowCreate: true,
+    };
+  };
+
+  it("rejects an option the user cannot set, with the option message", async () => {
+    const ds = source("counsellor", restrict);
+    const res = await ds.applyChanges(batch([change("r2", C.status, "paid")], { r2: 1 }));
+    expect(res.applied).toEqual([]);
+    expect(res.errors).toEqual([{ rowId: "r2", columnId: C.status, message: "Option “Paid” can only be set by Admin" }]);
+  });
+
+  it("lets an allowed role set it and keeps existing restricted values on other edits", async () => {
+    const admin = source("admin", restrict);
+    expect((await admin.applyChanges(batch([change("r2", C.status, "paid")], { r2: 1 }))).applied).toHaveLength(1);
+
+    const ds = source("counsellor", restrict);
+    const before = await row(ds, "r1");
+    const tags = (before?.cells.tags as string[] | undefined) ?? [];
+    const res = await ds.applyChanges(batch([change("r1", C.tags, [...tags, "vip"])], { r1: 1 }));
+    expect(res.errors[0]?.message).toBe("Option “VIP” can only be set by Admin");
+    // A row already holding "vip" may gain another tag without re-checking "vip".
+    await admin.applyChanges(batch([change("r1", C.tags, ["vip"])], { r1: 1 }));
+    const other = createInMemoryDataSource({
+      schema: admin.getSchema(),
+      rows: admin.snapshot(),
+      user: { id: FIXTURE_USERS.counsellor.id, roles: [...FIXTURE_USERS.counsellor.roles] },
+    });
+    const keep = await other.applyChanges(batch([change("r1", C.tags, ["vip", "referral"])], { r1: 2 }));
+    expect(keep.errors).toEqual([]);
+    expect(keep.applied[0]?.next).toEqual(["vip", "referral"]);
+  });
+
+  it("echoes change meta on applied and conflict entries and ignores batch meta", async () => {
+    const ds = source();
+    const ok = await ds.applyChanges({
+      ...batch([{ rowId: "r1", columnId: C.name, prev: null, next: "Meta", meta: { decisionMessage: "why" } }], { r1: 1 }),
+      meta: { reuploadDeadline: "2026-10-01" },
+    });
+    expect(ok.applied[0]).toMatchObject({ next: "Meta", meta: { decisionMessage: "why" } });
+    const stale = await ds.applyChanges(
+      batch([{ rowId: "r1", columnId: C.name, prev: null, next: "Stale", meta: { decisionMessage: "again" } }], { r1: 1 }),
+    );
+    expect(stale.conflicts[0]).toMatchObject({ rowId: "r1", meta: { decisionMessage: "again" } });
+  });
+});

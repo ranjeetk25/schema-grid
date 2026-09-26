@@ -73,6 +73,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       generateId,
       onRowChanged: (rowId, deleted) => log.recordRow(rowId, deleted),
       ...(options.actor ? { actor: options.actor } : {}),
+      ...(options.user ? { user: options.user } : {}),
     };
   }
 

@@ -107,13 +107,15 @@ const groupResult: WireSchema<GroupResult> = z.lazy(() =>
   ),
 );
 
-const cellChange = z.object({ rowId: id, columnId: id, prev: z.unknown(), next: z.unknown() });
+const changeMeta = z.record(z.string(), z.unknown()).optional();
+const cellChange = z.object({ rowId: id, columnId: id, prev: z.unknown(), next: z.unknown(), meta: changeMeta });
 
 const changeBatch = z.object({
   id,
   changes: z.array(cellChange),
   baseVersions: z.record(z.string(), z.number()),
   source: z.enum(["edit", "paste", "fill", "undo", "redo", "import"]),
+  meta: changeMeta,
 });
 
 const changeResult = z.object({
@@ -126,10 +128,12 @@ const changeResult = z.object({
       serverVersion: z.number(),
       updatedBy: actorRef.optional(),
       updatedAt: z.string(),
+      meta: changeMeta,
     }),
   ),
   errors: z.array(z.object({ rowId: id, columnId: id, message: z.string() })),
   versions: z.record(z.string(), z.number()).optional(),
+  rejected: z.array(cellChange).optional(),
 });
 
 const columnScope = z.union([z.literal("all"), z.object({ columnIds: z.array(id) })]);
@@ -146,9 +150,12 @@ const capabilities = z.object({
   options: z.boolean(),
   lookup: z.boolean(),
   export: z.object({ maxRows: z.number().int().positive().optional() }),
+  // Optional on the wire: a v0.2 server omits it and `normalizeCapabilities` fills the default.
+  schema: z.object({ read: z.boolean(), write: z.boolean() }).optional(),
 });
 
-const option = z.object({ id, label: z.string(), color: z.string().optional() });
+const roleRule = z.union([z.literal("all"), z.object({ roles: z.array(z.string()) })]);
+const option = z.object({ id, label: z.string(), color: z.string().optional(), settableBy: roleRule.optional() });
 const linkRef = z.object({ id, label: z.string() });
 
 /**

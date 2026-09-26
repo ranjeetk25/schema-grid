@@ -1,10 +1,13 @@
 import { z, type ZodType } from "zod";
 import type { Option } from "../../common/types";
 
+const roleRuleSchema = z.union([z.literal("all"), z.object({ roles: z.array(z.string()) })]);
+
 export const optionSchema: ZodType<Option> = z.object({
   id: z.string().min(1),
   label: z.string(),
   color: z.string().optional(),
+  settableBy: roleRuleSchema.optional(),
 });
 
 export interface OptionsConfig {

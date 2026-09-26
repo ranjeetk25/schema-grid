@@ -38,6 +38,7 @@ describe("DEFAULT_CAPABILITIES", () => {
       options: true,
       lookup: true,
       export: {},
+      schema: { read: true, write: false },
     });
     expect(Object.isFrozen(DEFAULT_CAPABILITIES)).toBe(true);
   });
@@ -50,6 +51,11 @@ describe("normalizeCapabilities", () => {
       maxPageSize: 200,
       write: { cells: false, createRows: true, deleteRows: true },
     });
+  });
+
+  it("fills schema read/write field by field (v0.3)", () => {
+    expect(normalizeCapabilities({}).schema).toEqual({ read: true, write: false });
+    expect(normalizeCapabilities({ schema: { write: true } as never }).schema).toEqual({ read: true, write: true });
   });
 
   it("accepts the updates-only change feed", () => {
@@ -95,6 +101,8 @@ describe("mergeCapabilities", () => {
     expect(eff.search).toBe(true);
     expect(eff.maxPageSize).toBe(500);
     expect(eff.write).toEqual({ cells: true, createRows: true, deleteRows: true });
+    expect(eff.schema).toEqual({ read: true, write: false });
+    expect(mergeCapabilities(schema, caps({ schema: { read: true, write: true } })).schema).toEqual({ read: true, write: true });
   });
 
   it("intersects column options with the source's sort/filter lists", () => {
