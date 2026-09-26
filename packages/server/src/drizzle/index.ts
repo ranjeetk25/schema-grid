@@ -66,7 +66,7 @@ export {
   type SqlViewWriteHooks,
   createSqlViewDataSource,
 } from "../sqlview/create-sql-view-data-source";
-export { type AfterCommitHook, type CommitOp, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
+export type { AfterCommitHook, CommitOp, CommitOutcome } from "../changes/after-commit";
 export {
   type ExtensionCellStore,
   type ExtensionCellStoreOptions,
