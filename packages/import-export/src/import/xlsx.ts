@@ -1,5 +1,6 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import { SheetNotFoundError } from "../internal/errors";
+import { loadExcelJS } from "../internal/exceljs";
 import { fromZonedWallClock, isMidnightUtc, toIsoDate } from "../internal/tz";
 import { shapeTable } from "./table";
 import type { ParseFileOptions, ParsedTable } from "./types";
@@ -101,6 +102,7 @@ export async function parseXlsxBytes(
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
 
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   // exceljs types only declare Buffer, but it accepts an ArrayBuffer at runtime.
   await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);

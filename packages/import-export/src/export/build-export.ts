@@ -2,14 +2,18 @@
  * Export entry points: `buildExport` picks the browser (Blob) or Node
  * (Readable) writer at runtime; `buildExportBlob` / `buildExportStream` force
  * one path. Every builder checks column access before doing any work.
+ * exceljs is loaded lazily (XLSX only); CSV exports never evaluate it.
  */
 import type { Readable } from "node:stream";
 import { assertNoHiddenColumns } from "../internal/access";
 import { buildCsvBlob, buildCsvStream } from "./csv";
 import type { ExportFormat, ExportOptions } from "./types";
-import { buildXlsxBlob } from "./xlsx-memory";
 import { XLSX_MIME } from "./xlsx-shared";
-import { buildXlsxStream } from "./xlsx-stream";
+
+// The XLSX writers (and exceljs behind them) are loaded only when an XLSX
+// export is requested, so the CSV path costs no exceljs bytes (v0.3).
+const xlsxBlob = async (opts: ExportOptions): Promise<Blob> => (await import("./xlsx-memory")).buildXlsxBlob(opts);
+const xlsxStream = async (opts: ExportOptions): Promise<Readable> => (await import("./xlsx-stream")).buildXlsxStream(opts);
 
 /**
  * True in a browser-like runtime (a `window` and a `document` exist). A Web
@@ -31,13 +35,13 @@ export const runtime = {
 /** Export as a Blob: CSV via `buildCsvBlob`, XLSX via the in-memory writer. */
 export async function buildExportBlob(opts: ExportOptions): Promise<Blob> {
   assertNoHiddenColumns(opts.columns, opts.access);
-  return opts.format === "csv" ? buildCsvBlob(opts) : buildXlsxBlob(opts);
+  return opts.format === "csv" ? buildCsvBlob(opts) : xlsxBlob(opts);
 }
 
 /** Export as a Node Readable: CSV via `buildCsvStream`, XLSX via the streaming writer. */
 export async function buildExportStream(opts: ExportOptions): Promise<Readable> {
   assertNoHiddenColumns(opts.columns, opts.access);
-  return opts.format === "csv" ? buildCsvStream(opts) : buildXlsxStream(opts);
+  return opts.format === "csv" ? buildCsvStream(opts) : xlsxStream(opts);
 }
 
 /** A Blob in a browser, a Node Readable elsewhere. */

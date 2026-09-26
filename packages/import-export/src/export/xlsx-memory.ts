@@ -2,8 +2,8 @@
  * Browser-side XLSX export: builds the whole workbook in memory and returns a Blob.
  * For large Node exports use the streaming writer instead.
  */
-import ExcelJS from "exceljs";
 import { assertNoHiddenColumns } from "../internal/access";
+import { loadExcelJS } from "../internal/exceljs";
 import { columnWidthChars, toExcelCell } from "./cells";
 import { toAsyncIterable } from "./rows";
 import type { ExportOptions } from "./types";
@@ -18,6 +18,7 @@ export async function buildXlsxBlob(opts: ExportOptions): Promise<Blob> {
   const { columns, registry, rows, tz, access, sheetName } = opts;
   assertNoHiddenColumns(columns, access);
 
+  const ExcelJS = await loadExcelJS();
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(sanitizeSheetName(sheetName));
   ws.columns = columns.map((c) => ({

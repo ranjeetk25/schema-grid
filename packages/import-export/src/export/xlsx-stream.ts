@@ -4,8 +4,9 @@
  * in-memory `buildXlsxBlob` instead.
  */
 import type { PassThrough, Readable } from "node:stream";
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import { assertNoHiddenColumns } from "../internal/access";
+import { loadExcelJS } from "../internal/exceljs";
 import { columnWidthChars, toExcelCell } from "./cells";
 import { toAsyncIterable } from "./rows";
 import type { ExportOptions } from "./types";
@@ -85,7 +86,7 @@ export async function buildXlsxStream(opts: ExportOptions): Promise<Readable> {
   // Surface an invalid tz as a rejection now, not as a stream error later.
   new Intl.DateTimeFormat("en-US", { timeZone: opts.tz });
 
-  const { PassThrough: PassThroughCtor } = await import("node:stream");
+  const [{ PassThrough: PassThroughCtor }, ExcelJS] = await Promise.all([import("node:stream"), loadExcelJS()]);
   const pass: PassThrough = new PassThroughCtor();
 
   const wb = new ExcelJS.stream.xlsx.WorkbookWriter({

@@ -2,7 +2,6 @@ import { type ImportInput, decodeUtf8, readInputBytes } from "../internal/bytes"
 import { parseCsvText } from "./csv";
 import { detectFileType } from "./detect";
 import type { ParseFileOptions, ParsedTable } from "./types";
-import { parseXlsxBytes } from "./xlsx";
 
 /** Reads a CSV/TSV or XLSX input (type detected from name, signature or `opts.type`). */
 export async function parseFile(
@@ -14,5 +13,7 @@ export async function parseFile(
   if (type === "csv") {
     return parseCsvText(decodeUtf8(bytes), { headerRow: opts.headerRow, maxRows: opts.maxRows });
   }
+  // The XLSX reader (exceljs) is loaded only for XLSX input (v0.3).
+  const { parseXlsxBytes } = await import("./xlsx");
   return parseXlsxBytes(bytes, { ...opts, tz: opts.tz ?? "UTC" });
 }
