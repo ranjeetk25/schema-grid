@@ -3,16 +3,21 @@
  * (Readable) writer at runtime; `buildExportBlob` / `buildExportStream` force
  * one path. Every builder checks column access before doing any work.
  * exceljs is loaded lazily (XLSX only); CSV exports never evaluate it.
+ *
+ * The Blob builder and the name / MIME helpers live in `./export-blob` so the
+ * browser entry (`./index.browser`) can share them without this file's
+ * `node:stream` references.
  */
 import type { Readable } from "node:stream";
 import { assertNoHiddenColumns } from "../internal/access";
-import { buildCsvBlob, buildCsvStream } from "./csv";
-import type { ExportFormat, ExportOptions } from "./types";
-import { XLSX_MIME } from "./xlsx-shared";
+import { buildCsvStream } from "./csv";
+import { buildExportBlob } from "./export-blob";
+import type { ExportOptions } from "./types";
 
-// The XLSX writers (and exceljs behind them) are loaded only when an XLSX
-// export is requested, so the CSV path costs no exceljs bytes (v0.3).
-const xlsxBlob = async (opts: ExportOptions): Promise<Blob> => (await import("./xlsx-memory")).buildXlsxBlob(opts);
+export { buildExportBlob, exportFileName, exportMimeType } from "./export-blob";
+
+// The streaming XLSX writer (and exceljs behind it) is loaded only when an
+// XLSX export is requested, so the CSV path costs no exceljs bytes (v0.3).
 const xlsxStream = async (opts: ExportOptions): Promise<Readable> => (await import("./xlsx-stream")).buildXlsxStream(opts);
 
 /**
@@ -32,12 +37,6 @@ export const runtime = {
   isBrowser: isBrowserRuntime,
 };
 
-/** Export as a Blob: CSV via `buildCsvBlob`, XLSX via the in-memory writer. */
-export async function buildExportBlob(opts: ExportOptions): Promise<Blob> {
-  assertNoHiddenColumns(opts.columns, opts.access);
-  return opts.format === "csv" ? buildCsvBlob(opts) : xlsxBlob(opts);
-}
-
 /** Export as a Node Readable: CSV via `buildCsvStream`, XLSX via the streaming writer. */
 export async function buildExportStream(opts: ExportOptions): Promise<Readable> {
   assertNoHiddenColumns(opts.columns, opts.access);
@@ -48,34 +47,4 @@ export async function buildExportStream(opts: ExportOptions): Promise<Readable> 
 export async function buildExport(opts: ExportOptions): Promise<Blob | Readable> {
   assertNoHiddenColumns(opts.columns, opts.access);
   return runtime.isBrowser() ? buildExportBlob(opts) : buildExportStream(opts);
-}
-
-const EXTENSIONS: Record<ExportFormat, string> = { csv: ".csv", xlsx: ".xlsx" };
-
-/**
- * `fileName` with the extension for `format`: kept when already present (any
- * case), swapped when it carries the other format's extension, else appended.
- * A blank name becomes "export".
- */
-export function exportFileName(fileName: string, format: ExportFormat): string {
-  const want = EXTENSIONS[format];
-  // Path separators, quotes and control characters are unsafe in a
-  // Content-Disposition header or a download name.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-  let name = fileName.replace(/[\u0000-\u001f\u007f/\\"]+/g, "_").trim();
-  const lower = name.toLowerCase();
-  if (lower.endsWith(want) && lower.length > want.length) return name;
-  for (const ext of Object.values(EXTENSIONS)) {
-    if (lower.endsWith(ext)) {
-      name = name.slice(0, -ext.length);
-      break;
-    }
-  }
-  name = name.replace(/\.+$/, "").trim();
-  return `${name === "" ? "export" : name}${want}`;
-}
-
-/** MIME type of an export in `format`. */
-export function exportMimeType(format: ExportFormat): string {
-  return format === "csv" ? "text/csv;charset=utf-8" : XLSX_MIME;
 }

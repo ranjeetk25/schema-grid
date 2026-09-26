@@ -206,3 +206,40 @@ renders 1,521.7 KB before minification and `@mantine/core` 414 KB, so the
 remaining reduction has to come from AG Grid module selection or from the
 host splitting Mantine, not from schema-grid code (`packages/ui-mantine`
 390 KB, `packages/ag-grid` 292 KB, `packages/core` 152 KB rendered).
+
+## v0.3.1: browser export entry
+
+Even with lazy loading, a Vite consumer saw
+`Module "node:stream" has been externalized for browser compatibility` because
+the browser path of `@ranjeetk25/schema-grid-io` could still *see* the
+`await import("node:stream")` inside `src/export/csv.ts` and
+`xlsx-stream.ts`. v0.3.1 adds a browser build with no `node:` reference at all:
+
+| Condition | `.` | `./export` |
+|---|---|---|
+| `development` + browser (Storybook, vitest with client conditions) | `src/index.browser.ts` | `src/export/index.browser.ts` |
+| `browser` (Vite, webpack, esbuild `platform: browser`) | `dist/index.browser.{js,cjs}` | `dist/export/index.browser.{js,cjs}` |
+| `import` / `require` (Node) | `dist/index.{js,cjs}` | `dist/export/index.{js,cjs}` |
+
+The browser entry exports the same names as the Node one, built only from the
+Blob writers (`src/export/csv-blob.ts`, `src/export/export-blob.ts`, and the
+still-lazy `xlsx-memory.ts`). `buildExport` always returns a Blob and
+`buildExportStream` throws
+`"buildExportStream is not available in the browser; use buildExportBlob"`.
+The Node entry is unchanged (`csv.ts` keeps `buildCsvStream`). Note that tsup
+strips the `node:` prefix in dist (`removeNodeProtocol`), so the Node dist
+reads `import('stream')`; Vite warns on that spelling too, which is why the
+browser build must not reach it at all.
+
+How to verify:
+
+- `cd packages/import-export && bun run build && bunx vitest run test/browser-dist.test.ts`
+  greps the four browser dist files and every chunk they reach for
+  `node:` / bare `stream` specifiers, and checks the Node entries still reach
+  the stream writers.
+- Manual check (both Storybooks are real Vite production builds of the
+  source): `bun scripts/check-storybook-node-warnings.ts`. It runs
+  `bun run build-storybook` and `bun run build-storybook:shadcn`, captures
+  their output, and exits 1 if either matches
+  `/node:stream|externalized for browser compatibility/` or if any
+  `storybook-static/assets/*.js` contains `node:stream`.
