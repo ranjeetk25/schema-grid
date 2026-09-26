@@ -516,5 +516,43 @@ forbidden caller.
   the stored schema is not read, so there is no `MISSING_TABLE` 500 on the read path). `get` / `put` outside the
   registry still throw `MissingTableError` (see *Missing tables*).
 
+### Post-commit hook (`afterCommit`)
+
+Both sources take a hook that runs once a write has **committed** (v0.3.1):
+
+```ts
+// createSqlViewDataSource — inside `write`, ctx is the SqlViewContext (ctx.db = the plain db, NOT a transaction)
+write: {
+  update, create, delete,
+  afterCommit: async (ctx, outcome) => { … },
+}
+// createDrizzleDataSource — top-level option, ctx is the request's ServerContext
+afterCommit: async (ctx, outcome) => { … },
+
+type CommitOutcome =
+  | { kind: "applyChanges"; applied: CellChange[]; rejected: CellChange[]; errors: ChangeError[];
+      conflicts: ChangeConflict[]; meta?: ChangeMeta; rows: GridRow[] }
+  | { kind: "createRows"; created: GridRow[] }
+  | { kind: "deleteRows"; deletedIds: string[] };
+```
+
+- **When it runs.** Strictly after `db.transaction(...)` resolved — never inside it — for `applyChanges`,
+  `createRows` and `deleteRows`; the call awaits it before answering. It does **not** run when the transaction
+  rolled back (the write threw: a failing `write.update`, a `write.create` error, `ROW_INVALID`, a driver error),
+  nor when nothing was attempted (empty `partials` / `ids`, no transaction). Re-reading inside the hook —
+  `ctx.db` on a SQL view, or `ds.getRows(ids)` — sees the committed state.
+- **What it receives.** `applyChanges` → the same arrays the `ChangeResult` carries (`applied`, `rejected`
+  defaulting to `[]`, `errors`, `conflicts`, `rows` — the post-write rows, `[]` when none survived) plus the batch's
+  input `meta`; `createRows` → the created rows (ids included); `deleteRows` → the ids deleted (the SQL view
+  passes the deduplicated ids it gave `write.delete`; the JSON grid the ids that were actually live).
+- **Error policy.** The hook can never change or fail the answer. A sync throw or a rejection is caught and
+  reported as `onWarning({ code: "AFTER_COMMIT_FAILED", op, error })` (`op` is the write kind; `ServerWarning`
+  is now a union with `FORMULA_FALLBACK`), or `console.error` when the source has no `onWarning`.
+- **Typical uses.** Notify the LMS / a webhook, enqueue a job, invalidate a cache, emit analytics — anything that
+  must only happen once the data is durable and must not hold the row locks.
+- **Not a transactional hook.** It cannot veto or roll back the write. Validation, cross-table writes and anything
+  that must fail together with the save belong in `write.update` / `write.create` / `write.delete` (SQL view) or
+  in the storage layer, which run inside the transaction.
+
 <!-- v0.3.1: further subsections go here -->
 

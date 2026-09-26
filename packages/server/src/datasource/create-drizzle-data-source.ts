@@ -1,4 +1,5 @@
 import { resolveAccess } from "../access/query-access";
+import { type AfterCommitHook, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
 import { applyChanges } from "../changes/apply-changes";
 import type { GridDb } from "../changes/db";
 import { readRowsById } from "../changes/read-rows";
@@ -72,6 +73,14 @@ export interface DrizzleDataSourceOptions {
    * (what the server writes); reads only — physical writes stay UTC.
    */
   naiveDatetimeZone?: string;
+  /**
+   * Post-commit hook (v0.3.1): runs strictly AFTER the write's transaction
+   * committed (`applyChanges`, `createRows`, `deleteRows`), with the request's
+   * `ServerContext`, and is awaited. Never runs on a rollback; can never change
+   * or fail the answer — a throw / rejection becomes `onWarning({ code:
+   * "AFTER_COMMIT_FAILED", op, error })` (or `console.error` without a sink).
+   */
+  afterCommit?: AfterCommitHook<ServerContext>;
 }
 
 /**
@@ -156,6 +165,8 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
 
   /** `mapRows` + hydrate options shared by every rows-by-id read (change feed, `ChangeResult.rows`, `getRows`). */
   const readOptions = { ...(hasMap ? { mapRows } : {}), ...hydrateOptions };
+  /** v0.3.1: `afterCommit`, strictly after the transaction resolved; failures only warn. */
+  const afterCommit = (outcome: CommitOutcome) => runAfterCommit(options.afterCommit, ctx, outcome, options.onWarning);
 
   const readableColumn = (columnId: string) => {
     const column = byId.get(columnId);
@@ -174,17 +185,36 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
         }
         return runRowQuery(query, scope, options.db, access);
       }),
-    applyChanges: (batch) => guarded(() => applyChanges(batch, ctx, deps, readOptions)),
-    createRows: (partials) =>
-      guarded(() =>
+    applyChanges: async (batch) => {
+      const result = await guarded(() => applyChanges(batch, ctx, deps, readOptions));
+      await afterCommit({
+        kind: "applyChanges",
+        applied: result.applied,
+        rejected: result.rejected ?? [],
+        errors: result.errors,
+        conflicts: result.conflicts,
+        ...(batch.meta ? { meta: batch.meta } : {}),
+        rows: result.rows ?? [],
+      });
+      return result;
+    },
+    createRows: async (partials) => {
+      if (partials.length === 0) return [];
+      const created = await guarded(() =>
         createRows(partials, ctx, deps, {
           transformRows: (rows) => evaluateFormulaCells(rows, access, ctx),
           ...(hasMap ? { mapRows } : {}),
           ...hydrateOptions,
         }),
-      ),
-    deleteRows: (ids) =>
-      guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {})),
+      );
+      await afterCommit({ kind: "createRows", created });
+      return created;
+    },
+    deleteRows: async (ids) => {
+      if (new Set(ids).size === 0) return;
+      const deletedIds = await guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {}));
+      await afterCommit({ kind: "deleteRows", deletedIds });
+    },
     getChanges: (since) => guarded(() => getChanges(since, ctx, deps, readOptions)),
     getRows: (ids) => guarded(() => readRowsById(options.db, deps, ctx, ids, readOptions)),
     async getOptions(columnId, search) {

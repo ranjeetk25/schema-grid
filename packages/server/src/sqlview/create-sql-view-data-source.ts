@@ -2,6 +2,7 @@ import { type AnyColumn, SQL, type SQLWrapper, and, eq, inArray, is, sql } from 
 import { projectRow } from "../access/project-row";
 import { type AccessMap, isReadable, resolveAccess } from "../access/query-access";
 import { MAX_BATCH_ID_LENGTH, appliedChange, cellsUpdateExpr, conflictsFor } from "../changes/apply-changes";
+import { type AfterCommitHook, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
 import { type GridDb, affectedRowsOf } from "../changes/db";
 import { type CurrentRow, type PlannedSet, planChanges, validateCellValue } from "../changes/plan-changes";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
@@ -136,6 +137,9 @@ export interface SqlViewCreateError {
 /** `write.create` answer: the created ids in input order, or `{ rows, errors }` (any `errors` fail the whole call). */
 export type SqlViewCreateResult = Pick<GridRow, "id">[] | { rows?: Pick<GridRow, "id">[]; errors?: SqlViewCreateError[] };
 
+/** What a write committed, as handed to `write.afterCommit` (v0.3.1; shared with `createDrizzleDataSource`). */
+export type SqlViewCommitOutcome = CommitOutcome;
+
 export interface SqlViewWriteHooks {
   /** Writes mapped cells of one row. Runs inside the batch transaction (`ctx.db`). */
   update?: (ctx: SqlViewContext, input: SqlViewUpdateInput) => Promise<SqlViewUpdateResult>;
@@ -146,6 +150,15 @@ export interface SqlViewWriteHooks {
   create?: (ctx: SqlViewContext, partials: RowPartial[], storage: Record<string, unknown>[]) => Promise<SqlViewCreateResult>;
   /** Deletes rows (hard or soft — the base query decides what is visible). */
   delete?: (ctx: SqlViewContext, ids: string[]) => Promise<void>;
+  /**
+   * Post-commit hook (v0.3.1): runs strictly AFTER the write's transaction
+   * committed — `ctx.db` is the plain (non-transactional) db — and is awaited.
+   * It never runs when the transaction rolled back, and it can never change or
+   * fail the answer: a throw / rejection becomes `onWarning({ code:
+   * "AFTER_COMMIT_FAILED", op, error })` (or `console.error` without a sink).
+   * Not a transactional hook — anything that must roll back belongs in `update`.
+   */
+  afterCommit?: AfterCommitHook<SqlViewContext>;
 }
 
 /**
@@ -645,6 +658,9 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     (await postRead(evaluateFormulaCells(rows, access, ctx), db)).map((r) => projectRow(r, ctx.schema, access));
 
   // ---- writes ------------------------------------------------------------------
+  /** v0.3.1: `write.afterCommit`, strictly after the transaction resolved, on the outer db; failures only warn. */
+  const afterCommit = (outcome: CommitOutcome) => runAfterCommit(write?.afterCommit, viewCtx(options.db), outcome, options.onWarning);
+
   async function writeExtension(db: GridDb, rowId: string, sets: PlannedSet[], ext: LoadedRow["ext"], now: Date): Promise<boolean> {
     if (!extension) return false;
     const t = extension.table;
@@ -670,7 +686,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     }
     const batchOrder = [...new Set(batch.changes.map((c) => c.rowId))];
     const rowIds = [...batchOrder].sort();
-    return guarded(() => options.db.transaction(async (tx) => {
+    const result = await guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       const vctx = viewCtx(db);
       const now = ctx.now();
@@ -780,6 +796,16 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       if (rejected.length > 0) result.rejected = rejected;
       return result;
     }));
+    await afterCommit({
+      kind: "applyChanges",
+      applied: result.applied,
+      rejected: result.rejected ?? [],
+      errors: result.errors,
+      conflicts: result.conflicts,
+      ...(batch.meta ? { meta: batch.meta } : {}),
+      rows: result.rows ?? [],
+    });
+    return result;
   }
 
   /** `DataSource.getRows` (v0.3.1): the rows as `fetch` would serve them, in the order of `ids`; unknown ids skipped. */
@@ -828,7 +854,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       storageRows.push(storage);
       extCellsByRow.push(ext);
     });
-    return guarded(() => options.db.transaction(async (tx) => {
+    const created = await guarded(() => options.db.transaction(async (tx) => {
       const db = tx as unknown as GridDb;
       const answer = await create(viewCtx(db), mappedPartials, storageRows);
       const outcome = Array.isArray(answer) ? { rows: answer } : answer;
@@ -850,6 +876,8 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         db,
       );
     }));
+    await afterCommit({ kind: "createRows", created });
+    return created;
   }
 
   async function deleteRows(ids: string[]): Promise<void> {
@@ -866,6 +894,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         await db.delete(t).where(and(eq(t.gridId, gridId), inArray(t.rowId, unique)));
       }
     }));
+    await afterCommit({ kind: "deleteRows", deletedIds: unique });
   }
 
   // ---- updated_at change feed (§C8) -------------------------------------------

@@ -1,6 +1,8 @@
 import { varchar } from "drizzle-orm/mysql-core";
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import type { CommitOutcome } from "../../../src/changes/after-commit";
 import type { GridDb } from "../../../src/changes/db";
+import type { ServerWarning } from "../../../src/context";
 import { createDrizzleDataSource, type DrizzleDataSourceOptions } from "../../../src/datasource/create-drizzle-data-source";
 import { PermissionError, SchemaValidationError } from "../../../src/errors";
 import {
@@ -212,5 +214,123 @@ describe("createDrizzleDataSource: rows after a save and getRows (v0.3.1)", () =
     expect(statements()[0]?.sql).toMatch(/^select .* from `grid_rows` where \(`grid_rows`.`grid_id` = \? and `grid_rows`.`id` in \(\?, \?, \?, \?\)\)$/);
     expect(await ds.getRows?.([])).toEqual([]);
     expect(statements()).toHaveLength(1);
+  });
+
+  describe("afterCommit (v0.3.1)", () => {
+    const nameId = FIXTURE_COLUMN_IDS.name;
+    /** r1: name applied + fee invalid (error); r2: stale base version (conflict). */
+    const mixed = {
+      id: "b3",
+      source: "edit" as const,
+      changes: [
+        { rowId: "r1", columnId: nameId, prev: "Asha", next: "Asha K" },
+        { rowId: "r1", columnId: fee, prev: 100, next: "not-a-number" },
+        { rowId: "r2", columnId: nameId, prev: "Bhavesh", next: "B" },
+      ],
+      baseVersions: { r1: 1, r2: 7 },
+      meta: { reason: "bulk" },
+    };
+    const withWarnings = (extra: Partial<DrizzleDataSourceOptions> = {}) => {
+      const warnings: ServerWarning[] = [];
+      return { warnings, ...live({ onWarning: (w) => warnings.push(w), ...extra }) };
+    };
+
+    it("applyChanges: the hook gets applied / rejected / errors / conflicts / meta / rows with the ServerContext, after commit", async () => {
+      const seen: CommitOutcome[] = [];
+      let seenCtx: unknown;
+      let committedAt = -1;
+      const { ds, calls, warnings } = withWarnings({
+        afterCommit: async (ctx, outcome) => {
+          seenCtx = ctx;
+          seen.push(outcome);
+          committedAt = calls.map((c) => c.sql.toLowerCase()).lastIndexOf("commit");
+        },
+      });
+      const res = await ds.applyChanges(mixed);
+      expect(committedAt).toBeGreaterThan(-1); // COMMIT had already been issued when the hook ran
+      expect(res.applied).toHaveLength(1);
+      expect(res.errors).toEqual([expect.objectContaining({ rowId: "r1", columnId: fee })]);
+      expect(res.conflicts).toEqual([expect.objectContaining({ rowId: "r2", columnId: nameId })]);
+      const o = seen[0];
+      if (o?.kind !== "applyChanges") throw new Error("expected an applyChanges outcome");
+      expect(o.applied).toBe(res.applied);
+      expect(o.rejected).toEqual([]);
+      expect(o.errors).toBe(res.errors);
+      expect(o.conflicts).toBe(res.conflicts);
+      expect(o.meta).toEqual({ reason: "bulk" });
+      expect(o.rows).toBe(res.rows);
+      expect(o.rows.map((r) => r.id)).toEqual(["r1", "r2"]);
+      expect((seenCtx as { user: { id: string } }).user.id).toBe("u1");
+      expect(warnings).toEqual([]);
+    });
+
+    it("applyChanges: the hook's own statement lands after `commit`; a throwing / rejecting hook only warns", async () => {
+      const { ds, calls, warnings } = withWarnings({
+        afterCommit: async () => {
+          calls.push({ sql: "-- hook marker", params: [], rowsAsArray: false });
+          throw new Error("notify failed");
+        },
+      });
+      const res = await ds.applyChanges(mixed);
+      expect(res.applied).toHaveLength(1);
+      const sqls = calls.map((c) => c.sql.toLowerCase());
+      expect(sqls.indexOf("-- hook marker")).toBeGreaterThan(sqls.indexOf("commit"));
+      expect(warnings).toEqual([{ code: "AFTER_COMMIT_FAILED", op: "applyChanges", error: expect.objectContaining({ message: "notify failed" }) }]);
+
+      const sync = withWarnings({
+        afterCommit: () => {
+          throw new Error("sync");
+        },
+      });
+      await expect(sync.ds.applyChanges(mixed)).resolves.toMatchObject({ applied: [expect.anything()] });
+      expect(sync.warnings).toMatchObject([{ code: "AFTER_COMMIT_FAILED", op: "applyChanges" }]);
+    });
+
+    it("applyChanges: not called when the transaction rolls back", async () => {
+      const hook = vi.fn();
+      const state = freshState();
+      const fake = createFakeMysql((c) => {
+        if (c.sql.startsWith("update")) throw new Error("deadlock");
+        return script(state)(c);
+      });
+      const ds = createDrizzleDataSource({
+        db: fake.db as unknown as GridDb,
+        gridId: "admissions",
+        schema: serverFixtureSchema,
+        registry: createDefaultRegistry(),
+        resolver: createRolePermissionResolver(),
+        user: { id: "u1", roles: ["admin"] },
+        now: () => new Date(FIXTURE_NOW),
+        tables,
+        afterCommit: hook,
+      });
+      await expect(ds.applyChanges(mixed)).rejects.toThrow(/deadlock|Failed query/);
+      expect(fake.calls.at(-1)?.sql.toLowerCase()).toBe("rollback");
+      expect(hook).not.toHaveBeenCalled();
+    });
+
+    it("createRows → { created } with ids; deleteRows → { deletedIds } of the rows actually deleted", async () => {
+      const seen: CommitOutcome[] = [];
+      const { ds, calls } = withWarnings({
+        afterCommit: (_ctx, outcome) => {
+          seen.push(outcome);
+        },
+      });
+      const created = await ds.createRows([{ id: "n1", cells: { [key(nameId)]: "New" } }]);
+      expect(created.map((r) => r.id)).toEqual(["n1"]);
+      expect(seen).toEqual([{ kind: "createRows", created }]);
+      expect(calls.map((c) => c.sql.toLowerCase())).toContain("commit");
+
+      await ds.deleteRows(["r1", "r2", "r1"]);
+      expect(seen[1]).toEqual({ kind: "deleteRows", deletedIds: ["r1", "r2"] });
+
+      // Nothing live to delete → the transaction still commits but nothing was deleted.
+      await ds.deleteRows(["nope"]);
+      expect(seen[2]).toEqual({ kind: "deleteRows", deletedIds: [] });
+      // Empty input → no transaction → no hook.
+      await ds.deleteRows([]);
+      await ds.createRows([]);
+      expect(seen).toHaveLength(3);
+    });
   });
 });

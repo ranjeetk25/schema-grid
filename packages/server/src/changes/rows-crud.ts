@@ -103,21 +103,22 @@ export interface DeleteRowsOptions {
 
 /**
  * Soft-deletes rows (sets `deleted_at`, bumps `version`) and logs one `delete`
- * entry per row. Unknown and already-deleted ids are skipped silently.
+ * entry per row. Unknown and already-deleted ids are skipped silently. Returns
+ * the ids actually deleted (v0.3.1; `[]` when nothing was live).
  */
-export async function deleteRows(ids: string[], ctx: ServerContext, deps: WriteDeps, options: DeleteRowsOptions = {}): Promise<void> {
+export async function deleteRows(ids: string[], ctx: ServerContext, deps: WriteDeps, options: DeleteRowsOptions = {}): Promise<string[]> {
   if (options.canDeleteRows && !options.canDeleteRows(ctx.user)) throw new PermissionError([], "edit", "Row deletion denied");
   const unique = [...new Set(ids)];
-  if (unique.length === 0) return;
+  if (unique.length === 0) return [];
   const now = ctx.now();
   const { rows } = deps.tables;
-  await deps.db.transaction(async (tx) => {
+  return deps.db.transaction(async (tx) => {
     const live = await tx
       .select({ id: rows.id })
       .from(rows)
       .where(and(eq(rows.gridId, deps.gridId), inArray(rows.id, unique), isNull(rows.deletedAt)));
     const liveIds = live.map((r) => r.id);
-    if (liveIds.length === 0) return;
+    if (liveIds.length === 0) return [];
     await tx
       .update(rows)
       .set({ deletedAt: now, updatedAt: now, updatedBy: ctx.user.id, version: sql`${ident("version")} + 1` } as never)
@@ -128,5 +129,6 @@ export async function deleteRows(ids: string[], ctx: ServerContext, deps: WriteD
       { gridId: deps.gridId, actor: ctx.user.id, at: now, batchId: null },
       liveIds.map((rowId) => ({ rowId, columnId: null, kind: "delete" as const, prev: null, next: null })),
     );
+    return liveIds;
   });
 }

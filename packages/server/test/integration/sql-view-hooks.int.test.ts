@@ -265,4 +265,58 @@ describeMysql("SQL view v0.3 hooks and time zones (MySQL 8.4)", () => {
       await mysql.db.select({ n: sql<number>`COUNT(*)` }).from(t).where(and(eq(t.id, 3), eq(t.name, "C."))),
     ).toEqual([{ n: expect.anything() }]);
   });
+
+  it("v0.3.1 write.afterCommit re-reads the row on ctx.db and sees the COMMITTED value; the outcome carries the batch's rows", async () => {
+    const seen: { kind: string; viaDb: unknown; viaGetRows: unknown; rowsName: unknown }[] = [];
+    const ds = make({
+      write: {
+        ...hooks(),
+        afterCommit: async (ctx, outcome) => {
+          if (outcome.kind !== "applyChanges") return;
+          const [fresh] = (await ctx.db.select({ name: t.name }).from(t).where(eq(t.id, 1))) as { name: string | null }[];
+          const [viaGetRows] = await ds.getRows(["1"]);
+          seen.push({ kind: outcome.kind, viaDb: fresh?.name, viaGetRows: viaGetRows?.cells.name, rowsName: outcome.rows[0]?.cells.name });
+        },
+      },
+    });
+    const v = (await row("1", ds)).version;
+    const res = await ds.applyChanges({
+      id: "ac1",
+      source: "edit",
+      changes: [
+        { rowId: "1", columnId: "name", prev: "Asha", next: "Asha C" },
+        { rowId: "1", columnId: "fee", prev: 100, next: 1 },
+      ],
+      baseVersions: { "1": v },
+      meta: { reason: "test" },
+    });
+    expect(res.applied.map((c) => c.columnId)).toEqual(["name"]);
+    expect(seen).toEqual([{ kind: "applyChanges", viaDb: "Asha C", viaGetRows: "Asha C", rowsName: "Asha C" }]);
+  });
+
+  it("v0.3.1 a throwing afterCommit does not fail the save: the result is still applied and the row is persisted", async () => {
+    const warnings: unknown[] = [];
+    const ds = make({
+      onWarning: (w) => warnings.push(w),
+      write: {
+        ...hooks(),
+        afterCommit: async () => {
+          throw new Error("LMS unreachable");
+        },
+      },
+    });
+    const v = (await row("2", ds)).version;
+    const res = await ds.applyChanges({
+      id: "ac2",
+      source: "edit",
+      changes: [{ rowId: "2", columnId: "name", prev: "Bhavesh", next: "Bhavesh P" }],
+      baseVersions: { "2": v },
+    });
+    expect(res.applied).toHaveLength(1);
+    expect(res.versions).toEqual({ "2": v + 1 });
+    expect((await raw(2)).name).toBe("Bhavesh P");
+    expect(warnings).toEqual([
+      { code: "AFTER_COMMIT_FAILED", op: "applyChanges", error: expect.objectContaining({ message: "LMS unreachable" }) },
+    ]);
+  });
 });

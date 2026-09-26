@@ -52,6 +52,7 @@ export {
   type SqlViewCellError,
   type SqlViewColumn,
   type SqlViewContext,
+  type SqlViewCommitOutcome,
   type SqlViewCreateError,
   type SqlViewCreateResult,
   type SqlViewDataSource,
@@ -65,6 +66,7 @@ export {
   type SqlViewWriteHooks,
   createSqlViewDataSource,
 } from "../sqlview/create-sql-view-data-source";
+export { type AfterCommitHook, type CommitOp, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
 export {
   type ExtensionCellStore,
   type ExtensionCellStoreOptions,

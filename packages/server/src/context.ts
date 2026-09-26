@@ -6,11 +6,18 @@ import {
   type PermissionUser,
 } from "./internal/core";
 
-export interface ServerWarning {
-  code: "FORMULA_FALLBACK";
-  columnIds: string[];
-  rowCap: number;
-}
+export type ServerWarning =
+  | {
+      code: "FORMULA_FALLBACK";
+      columnIds: string[];
+      rowCap: number;
+    }
+  | {
+      /** An `afterCommit` hook threw after the write had committed (v0.3.1); the write's answer was not affected. */
+      code: "AFTER_COMMIT_FAILED";
+      op: "applyChanges" | "createRows" | "deleteRows";
+      error: unknown;
+    };
 
 export interface ServerContext {
   readonly schema: GridSchema;
