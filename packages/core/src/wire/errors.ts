@@ -22,6 +22,7 @@ export const WIRE_ERROR_STATUS = {
   SCHEMA_CONFLICT: 409,
   FORMULA_ROW_CAP: 413,
   INTERNAL: 500,
+  MISSING_TABLE: 500,
   OUTPUT_INVALID: 500,
   UNSUPPORTED_OPERATION: 501,
 } as const satisfies Record<string, number>;
