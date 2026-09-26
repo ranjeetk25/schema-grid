@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const REPORT = { pastedCells: 2, skippedReadOnly: 0, conflicts: 0, errors: [] };
+const REPORT = { pastedCells: 2, skippedReadOnly: 0, conflicts: 0, rejected: 0, errors: [] };
 
 afterEach(() => {
   vi.doUnmock("@mantine/notifications");

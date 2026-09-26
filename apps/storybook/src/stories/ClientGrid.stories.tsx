@@ -18,7 +18,7 @@ import {
 const meta: Meta = { title: "3. Client grid" };
 export default meta;
 
-function ClientGrid({ rows }: { rows: number }) {
+function ClientGrid({ rows, persistViewsKey }: { rows: number; persistViewsKey?: string }) {
   const schema = useMemo(() => createStorySchema(), []);
   const memory = useMemo(
     () => createMemoryDataSource({ schema, rows: createLargeRows(rows) }),
@@ -36,6 +36,7 @@ function ClientGrid({ rows }: { rows: number }) {
       dataSource={ds}
       schema={schema}
       user={USERS.admin}
+      persistViewsKey={persistViewsKey}
       onSchemaChange={(next) => {
         memory.setSchema(next);
         return next;
@@ -51,4 +52,9 @@ export const FullToolbar: StoryObj = {
 export const FixtureOnly: StoryObj = {
   name: "Fixture only (r1..r5)",
   render: () => <ClientGrid rows={0} />,
+};
+/** Saved views persist in localStorage (v0.3 columns-picker e2e: hide → save → reload → still hidden). */
+export const PersistedViews: StoryObj = {
+  name: "Persisted views (localStorage)",
+  render: () => <ClientGrid rows={0} persistViewsKey="sg-e2e-persisted-views" />,
 };

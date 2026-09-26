@@ -13,6 +13,11 @@
  *
  * Every feature is derived from the data source's capabilities; `features`
  * can only switch things off.
+ *
+ * v0.3: a "Columns" show / hide picker in the toolbar, host `events` merged
+ * with the workbench's own, "Add column" and the column panel only when the
+ * source reports `schema.write`, an export banner with Retry, and the import
+ * wizard / export dialog / column panel loaded lazily on first open.
  */
 import {
   ActionIcon,
@@ -44,21 +49,33 @@ import {
   IconUpload,
   IconWifiOff,
 } from "@tabler/icons-react";
-import { type CSSProperties, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ColumnPanel } from "../column-builder/ColumnPanel";
+import { type CSSProperties, type ReactNode, Suspense, createContext, lazy, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ConflictPopover, initialsOf } from "../conflict/ConflictPopover";
 import { useMantineConflictPrompt } from "../conflict/useMantineConflictPrompt";
 import { createMantineUiRegistry } from "../editors";
 import { FilterButton } from "../filter-builder/FilterButton";
 import { FilterChips } from "../filter-builder/FilterChips";
 import { MantineHeaderMenu } from "../header-menu";
-import { ExportDialog } from "../import-export/ExportDialog";
-import { ImportWizard } from "../import-export/ImportWizard";
 import { notifyClipboardReport } from "../notifications/notifyClipboardReport";
 import { GroupByBar } from "../views/GroupByBar";
 import { ViewSwitcher } from "../views/ViewSwitcher";
+import { ColumnsButton } from "./ColumnsButton";
 import type { SchemaGridWorkbenchProps } from "./types";
 import { type WorkbenchBanner, renderSlot, useWorkbench } from "./useWorkbench";
+
+// Heavy surfaces load on first open (their chunks, and io's exceljs / papaparse behind them, stay out of the page chunk).
+const ColumnPanel = lazy(() => import("../column-builder/ColumnPanel").then((m) => ({ default: m.ColumnPanel })));
+const ImportWizard = lazy(() => import("../import-export/ImportWizard").then((m) => ({ default: m.ImportWizard })));
+const ExportDialog = lazy(() => import("../import-export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+
+/** True once `opened` has been true (keeps a lazily mounted surface mounted afterwards so its state survives). */
+function useEverOpened(opened: boolean): boolean {
+  const [ever, setEver] = useState(opened);
+  useEffect(() => {
+    if (opened) setEver(true);
+  }, [opened]);
+  return ever || opened;
+}
 
 const ICON = { size: 16, stroke: 1.75 } as const;
 const PANEL_WIDTH = 420;
@@ -153,6 +170,12 @@ const BANNER_TONE: Record<WorkbenchBanner["kind"], { bg: string; fg: string; ico
     fg: "var(--mantine-color-dimmed)",
     icon: <IconLock {...ICON} />,
     role: "status",
+  },
+  export: {
+    bg: "var(--mantine-color-red-light)",
+    fg: "var(--mantine-color-red-light-color)",
+    icon: <IconAlertTriangle {...ICON} />,
+    role: "alert",
   },
   unknown: {
     bg: "var(--mantine-color-default-hover)",
@@ -268,6 +291,9 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
 
   const conflict = prompt.conflict;
   const conflictColumn = conflict && schema ? schema.columns.find((c) => c.id === conflict.columnId) : undefined;
+  const panelEver = useEverOpened(wb.panel.opened);
+  const importEver = useEverOpened(wb.importDialog.opened);
+  const exportEver = useEverOpened(wb.exportDialog.opened);
   const fill = height === "fill";
   const rootStyle: CSSProperties = {
     display: "flex",
@@ -398,6 +424,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             </Group>
             <Group gap={6} wrap="nowrap" style={{ flex: "none" }}>
               {renderSlot(props.toolbarEnd, slotContext)}
+              <ColumnsButton items={wb.columns.items} onChange={wb.columns.apply} />
               {features.undo ? (
                 <>
                   <IconAction label="Undo" keys={UNDO_KEYS} disabled={!wb.canUndo} onClick={wb.undo}>
@@ -414,7 +441,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                 </IconAction>
               ) : null}
               {features.export ? (
-                <IconAction label="Export CSV" onClick={wb.exportCsv}>
+                <IconAction label="Export CSV" onClick={() => void wb.exportCsv()}>
                   <IconDownload {...ICON} />
                 </IconAction>
               ) : null}
@@ -548,6 +575,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           ) : null}
           <VisuallyHidden>
             <span data-testid="saved-count">{wb.saved}</span>
+            <span data-testid="not-saved-count">{wb.notSaved}</span>
             <span data-testid="feed-count">{wb.feedCount}</span>
             <span data-testid="clipboard-report">{wb.clipboard ? JSON.stringify(wb.clipboard) : "none"}</span>
             <span data-testid="filter-ast">{JSON.stringify(wb.filter)}</span>
@@ -556,8 +584,9 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           </VisuallyHidden>
         </Group>
 
-        {schema && features.addColumn ? (
-          <ColumnPanel
+        {schema && features.addColumn && panelEver ? (
+          <Suspense fallback={null}>
+            <ColumnPanel
             opened={wb.panel.opened}
             onClose={wb.panel.close}
             schema={schema}
@@ -573,30 +602,35 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             onDelete={(id) => void wb.panel.remove(id)}
             dataSource={wb.dataSource}
             size={PANEL_WIDTH}
-          />
+            />
+          </Suspense>
         ) : null}
-        {schema && features.import ? (
-          <ImportWizard
-            opened={wb.importDialog.opened}
-            onClose={wb.importDialog.close}
-            schema={schema}
-            registry={wb.registry}
-            access={wb.access}
-            job={wb.importDialog.job}
-            onCommit={wb.importDialog.commit}
-          />
+        {schema && features.import && importEver ? (
+          <Suspense fallback={null}>
+            <ImportWizard
+              opened={wb.importDialog.opened}
+              onClose={wb.importDialog.close}
+              schema={schema}
+              registry={wb.registry}
+              access={wb.access}
+              job={wb.importDialog.job}
+              onCommit={wb.importDialog.commit}
+            />
+          </Suspense>
         ) : null}
-        {schema && features.export ? (
-          <ExportDialog
-            opened={wb.exportDialog.opened}
-            onClose={wb.exportDialog.close}
-            visibleColumnCount={wb.exportDialog.opened ? wb.exportDialog.visibleColumnCount() : 0}
-            selectedRowCount={wb.exportDialog.opened ? wb.exportDialog.selectedRowCount() : 0}
-            onExport={async (req) => {
-              await wb.exportDialog.run(req);
-              wb.exportDialog.close();
-            }}
-          />
+        {schema && features.export && exportEver ? (
+          <Suspense fallback={null}>
+            <ExportDialog
+              opened={wb.exportDialog.opened}
+              onClose={wb.exportDialog.close}
+              visibleColumnCount={wb.exportDialog.opened ? wb.exportDialog.visibleColumnCount() : 0}
+              selectedRowCount={wb.exportDialog.opened ? wb.exportDialog.selectedRowCount() : 0}
+              onExport={async (req) => {
+                await wb.exportDialog.run(req);
+                wb.exportDialog.close();
+              }}
+            />
+          </Suspense>
         ) : null}
       </Box>
     </EmptyContext.Provider>

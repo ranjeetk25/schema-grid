@@ -13,6 +13,8 @@ export interface ZodFormProps {
   errors?: Record<string, string>;
   /** Called with a field's dot-path when it loses focus (for "show errors after blur"). */
   onFieldBlur?: (path: string) => void;
+  /** Roles for option lists' per-option "Who can set" control (core `Option.settableBy`). */
+  roles?: string[];
 }
 
 /** "maxLength" / "max_length" → "Max length". */
@@ -54,9 +56,10 @@ interface FieldProps {
   value: unknown;
   onChange: (next: unknown) => void;
   errors: Record<string, string>;
+  roles?: string[];
 }
 
-function Field({ name, path, field, value, onChange, errors }: FieldProps) {
+function Field({ name, path, field, value, onChange, errors, roles }: FieldProps) {
   const label = field.optional ? `${humanizeKey(name)} (optional)` : humanizeKey(name);
   const description = field.description;
   const error = errors[path];
@@ -127,6 +130,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
           valueKey={field.valueKey}
           onChange={onChange}
           path={path}
+          {...(roles ? { roles } : {})}
           rowError={(index, key) => errors[`${path}.${index}.${key === "value" ? (field.valueKey ?? "value") : key}`]}
         />
       );
@@ -141,6 +145,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
             onChange={onChange}
             errors={errors}
             pathPrefix={`${path}.`}
+            {...(roles ? { roles } : {})}
           />
           {error && (
             <div role="alert" style={{ color: "var(--mantine-color-error)", fontSize: "var(--mantine-font-size-xs)" }}>
@@ -161,12 +166,14 @@ function Fields({
   onChange,
   errors,
   pathPrefix,
+  roles,
 }: {
   fields: FormFieldChild[];
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   errors: Record<string, string>;
   pathPrefix: string;
+  roles?: string[];
 }) {
   const effective = withDefaults(fields, value);
   const setKey = (key: string, next: unknown) => {
@@ -186,6 +193,7 @@ function Fields({
           value={effective[key]}
           onChange={(next) => setKey(key, next)}
           errors={errors}
+          {...(roles ? { roles } : {})}
         />
       ))}
     </Stack>
@@ -195,7 +203,7 @@ function Fields({
 const EMPTY_ERRORS: Record<string, string> = {};
 
 /** Auto-form driven by a Zod object schema (v3 or v4). Missing keys display — and emit — schema defaults. */
-export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS, onFieldBlur }: ZodFormProps) {
+export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS, onFieldBlur, roles }: ZodFormProps) {
   const descriptor = useMemo(() => introspectZod(schema), [schema]);
   if (descriptor.kind !== "object") {
     return (
@@ -216,7 +224,7 @@ export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS, onFiel
         if (path && onFieldBlur) onFieldBlur(path);
       }}
     >
-      <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" />
+      <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" {...(roles ? { roles } : {})} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 /**
  * Workbench screenshots (docs/design/progress/W-*) against a running Storybook.
  *   STORYBOOK_URL=http://localhost:6017 bun apps/storybook/scripts/capture-workbench.ts [tag]
+ * `ONLY=W-20,W-21` captures a subset (prefix match on the shot name).
  */
 import { join } from "node:path";
 import { type Page, chromium } from "@playwright/test";
@@ -25,10 +26,37 @@ const shots: { name: string; story: string; scheme?: "light" | "dark"; act?: (p:
       await p.waitForTimeout(600);
     },
   },
+  // v0.3
+  { name: "W-20-toolbar-columns-before", story: "3-client-grid--fixture-only" },
+  ...(["light", "dark"] as const).map((scheme) => ({
+    name: `W-21-columns-popover-${scheme}`,
+    story: "3-client-grid--fixture-only",
+    scheme,
+    act: async (p: Page) => {
+      await p.getByRole("button", { name: "Columns", exact: true }).click();
+      await p.getByRole("dialog", { name: "Columns" }).getByRole("checkbox", { name: "Fee" }).click();
+      await p.waitForTimeout(300);
+    },
+  })),
+  ...(["light", "dark"] as const).map((scheme) => ({
+    name: `W-22-option-who-can-set-${scheme}`,
+    story: "3-client-grid--fixture-only",
+    scheme,
+    act: async (p: Page) => {
+      await p.locator('.ag-header-cell[col-id="col_status"]').hover();
+      await p.getByRole("button", { name: "Column menu: Payment status" }).click({ force: true });
+      await p.getByRole("menuitem", { name: /Edit column/ }).click();
+      await p.getByTestId("option-settable-by").first().waitFor();
+      await p.getByTestId("option-settable-by").first().click();
+      await p.waitForTimeout(400);
+    },
+  })),
 ];
+const only = (process.env.ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const selected = only.length > 0 ? shots.filter((s) => only.some((prefix) => s.name.startsWith(prefix))) : shots;
 
 const browser = await chromium.launch();
-for (const s of shots) {
+for (const s of selected) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 720 } });
   await page.clock.setSystemTime(new Date("2026-09-24T21:00:00.000Z"));
   await page.goto(`${BASE}/iframe.html?id=${s.story}&viewMode=story&globals=theme:${s.scheme ?? "light"}`);

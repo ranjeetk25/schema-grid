@@ -1,9 +1,10 @@
 import { Combobox, MultiSelect, useCombobox } from "@mantine/core";
 import { IconCheck } from "../internal/icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
+import { pickableOptions } from "../internal/options";
 import { useEditorStyles } from "./EditorCard";
 import { OptionColorDot, PickerDivider, PickerEmpty, PickerOption, PickerPill, SearchRow, useEnterPicksHighlighted } from "./pickerParts";
 import { matchesSearch, useSelectOptions } from "./SelectEditor";
@@ -25,9 +26,13 @@ export function MultiSelectEditor(props: UiEditorProps<string[], MultiSelectEdit
   return props.autoFocus === false ? <MultiSelectField {...props} /> : <MultiSelectPicker {...props} />;
 }
 
-function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource }: UiEditorProps<string[], MultiSelectEditorConfig>) {
+function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user }: UiEditorProps<string[], MultiSelectEditorConfig>) {
   useEditorStyles();
-  const options = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource);
+  // Options the user may set, plus the ones already held (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = pickable.map((p) => p.option);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const [selected, setSelected] = useState<string[]>(value ?? []);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -103,7 +108,14 @@ function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config
         <PickerDivider />
         <Combobox.Options className="sg-ed-list" aria-multiselectable>
           {visible.map((o) => (
-            <PickerOption key={o.id} value={o.id} selected={selected.includes(o.id)} leading={<OptionColorDot option={o} />}>
+            <PickerOption
+              key={o.id}
+              value={o.id}
+              selected={selected.includes(o.id)}
+              disabled={lockOf(o.id) !== null}
+              title={lockOf(o.id) ?? undefined}
+              leading={<OptionColorDot option={o} />}
+            >
               {o.label}
             </PickerOption>
           ))}
@@ -115,12 +127,14 @@ function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config
 }
 
 /** Form / filter mode: a Mantine MultiSelect (dropdown kept inside the component). */
-function MultiSelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error }: UiEditorProps<string[], MultiSelectEditorConfig>) {
-  const options = useSelectOptions(config, column.id, dataSource);
+function MultiSelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user }: UiEditorProps<string[], MultiSelectEditorConfig>) {
+  const allOptions = useSelectOptions(config, column.id, dataSource);
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = pickable.map((p) => p.option);
   const [selected, setSelected] = useState<string[]>(value ?? []);
   return (
     <MultiSelect
-      data={options.map((o) => ({ value: o.id, label: o.label }))}
+      data={pickable.map((p) => ({ value: p.option.id, label: p.option.label, disabled: p.lockReason !== null }))}
       value={selected}
       error={error}
       searchable

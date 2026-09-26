@@ -69,7 +69,7 @@ function ServerGrid() {
         data-testid="api-unreachable"
       >
         <Text size="sm">
-          Could not load <Code>{DEMO_API_URL}/schema</Code>: {error}. Run{" "}
+          Could not load <Code>{DEMO_API_URL}/grid/admissions/getSchema</Code>: {error}. Run{" "}
           <Code>bun run db:up</Code> and <Code>bun run dev:api</Code>.
         </Text>
       </Alert>
@@ -89,7 +89,7 @@ function ServerGrid() {
       poll={{ intervalMs: 3000, enabled: pollEnabled }}
       persistViewsKey="schema-grid-demo-api-views"
       onSchemaChange={async (next) => {
-        // PUT /schema is the registry's updateSchema: send the CURRENT version, the API bumps it.
+        // The registry's updateSchema op: send the CURRENT version, the API bumps it.
         const saved = await putSchema(client, { ...next, schemaVersion: schema.schemaVersion });
         setSchema(saved);
         return saved;
