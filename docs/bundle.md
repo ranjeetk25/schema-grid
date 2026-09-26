@@ -176,3 +176,33 @@ How to read this:
 - The Storybook app's own stories still import from the barrel
   (`apps/storybook/src/support/Workbench.tsx` and a few stories). That does
   not change the production numbers, for the same reason.
+
+## v0.3: lazy io, exceljs in its own chunk
+
+A consumer page measured its chunk growing from 2.1 to 3.2 MB when the
+workbench came in, ~950 KB of it exceljs. In v0.3 the XLSX code paths of
+`@ranjeetk25/schema-grid-io` load exceljs with `await import()` (only
+`buildXlsxBlob`, `buildXlsxStream` and `parseXlsxBytes` touch it; CSV never
+does — a vitest module mock that throws on evaluation guards that), and both
+workbenches load `@ranjeetk25/schema-grid-io/*`, the Import wizard, the
+Export dialog and the column panel on first use (`React.lazy` / dynamic
+`import()`).
+
+Measured with `bun run analyze` on 0.2.0 (before) and on this branch (after):
+
+| Chunk | Before raw | Before gzip | After raw | After gzip |
+|---|---:|---:|---:|---:|
+| Main workbench chunk (grid + AG Grid + Mantine + schema-grid) — `__vite-browser-external-*.js` before, `Workbench-*.js` after | 2,599.2 | 752.1 | 1,556.9 | 447.7 |
+| `exceljs.min-*.js` (lazy, XLSX only) | — (inside the main chunk) | — | 918.2 | 263.6 |
+| `papaparse.min-*.js` (lazy, CSV import/export) | — (inside the main chunk) | — | 20.7 | 7.7 |
+| `ColumnPanel-*.js` (lazy) | — | — | 61.4 | 20.5 |
+| `ImportWizard-*.js` + `validate-*.js` (lazy) | — | — | 34.4 | 12.7 |
+| `ExportDialog-*.js` (lazy) | — | — | 7.0 | 2.9 |
+
+The eager cost of a page that renders the workbench fell by ~1,040 KB raw /
+~305 KB gzip; exceljs is fetched only when someone exports or imports XLSX.
+The main chunk is still above the 1.3 MB target: `ag-grid-community` alone
+renders 1,521.7 KB before minification and `@mantine/core` 414 KB, so the
+remaining reduction has to come from AG Grid module selection or from the
+host splitting Mantine, not from schema-grid code (`packages/ui-mantine`
+390 KB, `packages/ag-grid` 292 KB, `packages/core` 152 KB rendered).
