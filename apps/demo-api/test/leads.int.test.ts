@@ -107,7 +107,9 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
   it("GET /grid lists both grids; each serves its own schema", async () => {
     expect(await (await created.app.request("/grid")).json()).toEqual({ data: [{ id: "admissions" }, { id: "leads" }] });
     const leads = await op<GridSchema>("leads", "getSchema", null);
-    expect(leads.data.columns.map((c) => c.key)).toEqual(["name", "email", "paymentStatus", "callDate", "aiVerified"]);
+    // v0.3.1: `contact` is a compute column (read-only, unsortable, unfilterable) derived from name + email.
+    expect(leads.data.columns.map((c) => c.key)).toEqual(["name", "email", "paymentStatus", "callDate", "aiVerified", "contact"]);
+    expect((await leadRow("7")).cells.contact).toBe("Lead 0007 <lead7@example.com>");
     // v0.3: the schema has exactly one route (the getSchema op); the old GET alias is a 405.
     expect((await created.app.request("/grid/leads/schema")).status).toBe(405);
     const admissions = await op<GridSchema>("admissions", "getSchema", null);
@@ -193,8 +195,10 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     const res = await created.app.request("/export?grid=leads&format=csv");
     expect(res.status).toBe(200);
     const lines = (await res.text()).replace(/^﻿/, "").split("\r\n").filter(Boolean);
-    expect(lines[0]?.split(",")).toEqual(["Name", "Email", "Payment status", "Call date", "AI verified"]);
+    expect(lines[0]?.split(",")).toEqual(["Name", "Email", "Payment status", "Call date", "AI verified", "Contact"]);
     expect(lines).toHaveLength(LEADS_SEED_COUNT + 1);
+    // The computed `contact` column is exported like any other cell.
+    expect(lines.slice(1).every((l) => /,Lead \d{4} <lead\d+@example\.com>$/.test(l))).toBe(true);
   });
 
   it("an edit writes the real table; a stale base version conflicts; ai_verified is read-only", async () => {

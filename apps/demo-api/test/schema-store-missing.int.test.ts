@@ -69,7 +69,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("leads grid with a mis
   it("getSchema and fetch still work (base schema, no MISSING_TABLE 500)", async () => {
     const schema = await op<GridSchema>(broken, "getSchema", null);
     expect(schema.status).toBe(200);
-    expect(schema.data.columns.map((c) => c.key)).toEqual(["name", "email", "paymentStatus", "callDate", "aiVerified"]);
+    expect(schema.data.columns.map((c) => c.key)).toEqual(["name", "email", "paymentStatus", "callDate", "aiVerified", "contact"]);
     const rows = await op<{ rows: unknown[] }>(broken, "fetch", { filter: null, sort: [], page: { offset: 0, limit: 1 } });
     expect(rows.status).toBe(200);
     expect(rows.data.rows).toHaveLength(1);
