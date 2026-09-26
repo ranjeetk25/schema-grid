@@ -1,4 +1,5 @@
 import type { GridRegistry } from "../grid/registry";
+import { normalizeRequestBody } from "./body";
 import type { ExpressLikeResponse } from "./express";
 import { notFoundReply, pathSegments, type RegistryOptionArgs, runRegistryRoute } from "./registry-routes";
 
@@ -38,7 +39,7 @@ export function toExpressRouter<Ctx = undefined, Req extends ExpressLikeRouterRe
           registry,
           req.method ?? "GET",
           segments,
-          () => req.body,
+          () => normalizeRequestBody(segments[1] ?? "", req.body),
           context ? () => context(req) : undefined,
         )
       : undefined;
