@@ -43,7 +43,7 @@ export function translateSearch(
       }
     }
 
-    const expr = resolveColumnExpr(column, scope);
+    const expr = resolveColumnExpr(column, scope, "search"); // mapped columns: filterExpr when given
     branches.push(likeSql(expr.typed, pattern));
   }
 

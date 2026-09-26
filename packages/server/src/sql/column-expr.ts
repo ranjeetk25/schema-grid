@@ -31,6 +31,15 @@ export interface ColumnExpr {
   empty: SQL;
 }
 
+/**
+ * What a translator resolves a column FOR. `sort` = ORDER BY and the keyset
+ * predicate / cursor values (`translateSort`), `group` = the GROUP BY key
+ * (`buildGroupQuery`), `filter` = WHERE (`translateFilter`), `search` = the
+ * free-text OR (`translateSearch`), `select` = the read projection / value
+ * uses (aggregations, formulas). Omitted = `select`.
+ */
+export type ColumnExprPurpose = "sort" | "filter" | "search" | "group" | "select";
+
 const CELLS: SQL = sql`${sql.identifier("cells")}`;
 
 /** Unqualified backtick-quoted identifier as an SQL fragment. */
@@ -134,8 +143,12 @@ function columnEmpty(expr: SQL, kind: StorageKind): SQL {
 export interface ColumnExprResolver {
   /** Row-id expression: the final ORDER BY tie-breaker and the keyset cursor's `id > ?`. */
   readonly rowId: SQL;
-  /** Resolves a stored (non-formula) column. Throws `UnsupportedOperatorError` when it has no SQL form. */
-  resolve(column: ColumnDef, scope: SqlScope): ColumnExpr;
+  /**
+   * Resolves a stored (non-formula) column. Throws `UnsupportedOperatorError` when it has no SQL form.
+   * `purpose` says what the caller will do with the expression (see `ColumnExprPurpose`); only
+   * `createMappedColumnResolver` acts on it (`sortExpr` / `filterExpr`), every other resolver ignores it.
+   */
+  resolve(column: ColumnDef, scope: SqlScope, purpose?: ColumnExprPurpose): ColumnExpr;
   /**
    * Free-text search participation. `undefined` = decided by storage kind
    * (text, choice, ref). Only consulted for readable, non-formula columns.
@@ -197,9 +210,22 @@ export const jsonCellsResolver: ColumnExprResolver = createJsonCellsResolver();
 export interface MappedColumn {
   /** Comparable SQL value of the column (a drizzle column or any expression). */
   expr: SQL | AnyColumn;
+  /**
+   * Index-backed equivalent of `expr` for ORDER BY, the keyset predicate / cursor
+   * values and the GROUP BY key (e.g. a STORED generated column mirroring a
+   * `JSON_EXTRACT`). It MUST yield the same values and the same emptiness as
+   * `expr` (NULL / blank where `expr` is), or pages will skip or repeat rows.
+   * Datetime kinds are still wrapped for UTC comparison. Default: `expr`.
+   */
+  sortExpr?: SQL | AnyColumn;
+  /**
+   * Index-backed equivalent of `expr` for WHERE (filters) and free-text search.
+   * Same value / emptiness contract as `sortExpr`. Default: `expr`.
+   */
+  filterExpr?: SQL | AnyColumn;
   /** Storage kind override. Default: derived from the column's field type (`storageKindOf`). */
   kind?: StorageKind;
-  /** Include in free-text search. Default: by kind (text, choice, ref). */
+  /** Include in free-text search (matched on `filterExpr` when given, else `expr`). Default: by kind (text, choice, ref). */
   searchable?: boolean;
 }
 
@@ -224,21 +250,34 @@ export function toSql(expr: SQL | AnyColumn): SQL {
  * for exact parity with core's in-memory matching.
  */
 export function createMappedColumnResolver(options: MappedColumnResolverOptions): ColumnExprResolver {
-  const mapped = new Map<string, { expr: SQL; kind?: StorageKind; searchable?: boolean }>();
+  const mapped = new Map<string, { expr: SQL; sortExpr?: SQL; filterExpr?: SQL; kind?: StorageKind; searchable?: boolean }>();
   for (const [key, m] of Object.entries(options.columns)) {
-    mapped.set(key, { ...m, expr: toSql(m.expr) });
+    mapped.set(key, {
+      kind: m.kind,
+      searchable: m.searchable,
+      expr: toSql(m.expr),
+      sortExpr: m.sortExpr === undefined ? undefined : toSql(m.sortExpr),
+      filterExpr: m.filterExpr === undefined ? undefined : toSql(m.filterExpr),
+    });
   }
   const fallback = options.fallback;
   return {
     rowId: toSql(options.rowId),
-    resolve(column, scope) {
+    resolve(column, scope, purpose) {
       const m = mapped.get(column.key);
       if (!m) {
-        if (fallback) return fallback.resolve(column, scope);
+        if (fallback) return fallback.resolve(column, scope, purpose);
         throw new UnsupportedOperatorError("source", { columnId: column.id, kind: "unmapped column" });
       }
       const kind = m.kind ?? storageKindOf(column, scope.ctx.registry, scope.storageOverrides).kind;
-      return { column, kind, source: "mapped", raw: m.expr, typed: m.expr, empty: columnEmpty(m.expr, kind) };
+      // sort + group (ORDER BY / keyset / GROUP BY key) → sortExpr; filter + search (WHERE) → filterExpr; else expr.
+      const expr =
+        purpose === "sort" || purpose === "group"
+          ? (m.sortExpr ?? m.expr)
+          : purpose === "filter" || purpose === "search"
+            ? (m.filterExpr ?? m.expr)
+            : m.expr;
+      return { column, kind, source: "mapped", raw: expr, typed: expr, empty: columnEmpty(expr, kind) };
     },
     searchable(column) {
       const m = mapped.get(column.key);
@@ -262,9 +301,11 @@ export function rowIdExpr(scope: Pick<SqlScope, "columnExprs">): SQL {
  * The single entry point for "where does this column's value live in SQL".
  * Formula columns resolve through `scope.formulaPlans` (T15) — `gc_<key>` when
  * generated and assumed present, else the inlined plan SQL. Every other column
- * is delegated to `scope.columnExprs` (default `jsonCellsResolver`).
+ * is delegated to `scope.columnExprs` (default `jsonCellsResolver`), together
+ * with the caller's `purpose` (mapped columns may answer ORDER BY / WHERE with
+ * their index-backed `sortExpr` / `filterExpr`). Formula columns ignore it.
  */
-export function resolveColumnExpr(column: ColumnDef, scope: SqlScope): ColumnExpr {
+export function resolveColumnExpr(column: ColumnDef, scope: SqlScope, purpose?: ColumnExprPurpose): ColumnExpr {
   if (column.type === "formula") {
     const plan = scope.formulaPlans?.get(column.id);
     if (!plan || plan.mode === "fallback" || !plan.sql) {
@@ -277,7 +318,7 @@ export function resolveColumnExpr(column: ColumnDef, scope: SqlScope): ColumnExp
     const source = plan.mode === "generated" && scope.generatedColumns === "assumePresent" ? "generated" : "formula";
     return { column, kind: plan.resultKind, source, raw: expr, typed: expr, empty: columnEmpty(expr, plan.resultKind) };
   }
-  return columnExprResolverOf(scope).resolve(column, scope);
+  return columnExprResolverOf(scope).resolve(column, scope, purpose);
 }
 
 /** Predicate TRUE when the column is empty for this row. */

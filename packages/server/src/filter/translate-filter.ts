@@ -16,7 +16,7 @@ function translateCondition(cond: FilterCondition, scope: SqlScope): SQL {
   const operator = getColumnOperators(column, scope.ctx.registry).find((o) => o.id === cond.operator);
   if (!operator) throw new UnsupportedOperatorError(cond.operator, { columnId: column.id, kind: column.type });
 
-  const expr = resolveColumnExpr(column, scope);
+  const expr = resolveColumnExpr(column, scope, "filter");
   if (operator.id === "isEmpty") return expr.empty;
   if (operator.id === "isNotEmpty") return sql`NOT ${expr.empty}`;
 

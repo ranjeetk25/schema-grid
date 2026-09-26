@@ -78,10 +78,14 @@ function findColumn(scope: GridSqlScope, columnId: string): ColumnDef {
   return column;
 }
 
-/** `resolveColumnExpr`, with non-SQL columns (fallback formulas, bad sources) reported as `GroupingError`. */
+/**
+ * `resolveColumnExpr`, with non-SQL columns (fallback formulas, bad sources) reported as `GroupingError`.
+ * The GROUP BY key is resolved for "group" (mapped columns answer with `sortExpr`: the key is grouped AND
+ * ordered, so the sort-side index is the one that helps); aggregations read the plain value.
+ */
 function exprFor(column: ColumnDef, scope: GridSqlScope, usage: "groupBy" | "aggregate"): ColumnExpr {
   try {
-    return resolveColumnExpr(column, scope);
+    return resolveColumnExpr(column, scope, usage === "groupBy" ? "group" : "select");
   } catch (e) {
     if (e instanceof UnsupportedOperatorError) {
       throw new GroupingError(`Column "${column.id}" cannot be used for ${usage} in SQL`, { columnId: column.id, usage });

@@ -200,6 +200,9 @@ export interface SqlViewDataSourceOptions {
   /**
    * Schema column KEY → expression over the base tables (drizzle columns are
    * re-pointed at `sg_base`), or a `ComputedColumn` (`{ compute }`, no `expr`).
+   * `sortExpr` / `filterExpr` (index-backed twins of `expr`, e.g. STORED generated
+   * columns) drive ORDER BY + keyset paging / WHERE + search; they are rebased and
+   * UTC-wrapped like `expr`, which the projection keeps reading.
    * Stored schema columns without an entry are served from `extension` (required then).
    */
   columns: Readonly<Record<string, SqlViewColumn>>;
@@ -462,17 +465,24 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     : undefined;
   const restResolver: ColumnExprResolver = {
     rowId: rowIdSql,
-    resolve(column, scope) {
+    resolve(column, scope, purpose) {
       if (computedIdSet.has(column.id)) {
         throw new UnsupportedOperatorError("source", { columnId: column.id, kind: "computed column" });
       }
-      if (extensionResolver) return extensionResolver.resolve(column, scope);
+      if (extensionResolver) return extensionResolver.resolve(column, scope, purpose);
       throw new UnsupportedOperatorError("source", { columnId: column.id, kind: "unmapped column" });
     },
     searchable: (column) => (computedIdSet.has(column.id) ? false : extensionResolver?.searchable?.(column)),
   };
+  // sortExpr / filterExpr (index-backed twins of expr) are rebased and UTC-wrapped exactly like expr.
+  const resolverColumn = (k: string, m: MappedColumn): MappedColumn => {
+    const out: MappedColumn = { ...m, expr: comparable(k, mappedSql.get(k) as SQL) };
+    if (m.sortExpr !== undefined) out.sortExpr = comparable(k, rebase(m.sortExpr));
+    if (m.filterExpr !== undefined) out.filterExpr = comparable(k, rebase(m.filterExpr));
+    return out;
+  };
   const columnExprs = createMappedColumnResolver({
-    columns: Object.fromEntries(mappedEntries.map(([k, m]) => [k, { ...m, expr: comparable(k, mappedSql.get(k) as SQL) }])),
+    columns: Object.fromEntries(mappedEntries.map(([k, m]) => [k, resolverColumn(k, m)])),
     rowId: rowIdSql,
     fallback: restResolver,
   });

@@ -35,7 +35,8 @@ export function translateSort(sort: SortSpec[], scope: SqlScope): { orderBy: SQL
       throw new UnsupportedOperatorError("sort", { columnId: spec.columnId, kind: "unknown-column" });
     }
 
-    const resolved = resolveColumnExpr(column, scope);
+    // "sort": mapped columns answer with `sortExpr` — the keyset keys below reuse the same ColumnExpr.
+    const resolved = resolveColumnExpr(column, scope, "sort");
     if (UNSORTABLE_KINDS.has(resolved.kind)) {
       throw new UnsupportedOperatorError("sort", { columnId: column.id, kind: resolved.kind });
     }

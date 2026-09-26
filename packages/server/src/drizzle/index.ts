@@ -4,6 +4,7 @@ export type { FormulaPlan, SqlScope } from "../sql/scope";
 export type { StorageInfo, StorageKind, StorageOverrides } from "../sql/storage-kind";
 export {
   type ColumnExpr,
+  type ColumnExprPurpose,
   type ColumnExprResolver,
   type JsonCellsResolverOptions,
   type MappedColumn,

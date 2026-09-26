@@ -437,5 +437,84 @@ row ids when a source omits `rows`. `createDrizzleDataSource` exposes the shared
 `readRowsById(db, deps, ctx, ids, { mapRows, naiveDatetimeZone })` (`changes/read-rows.ts`), which the change
 feed now uses too — `getChanges` reports every id the read skipped as deleted.
 
+### Index-friendly sort and filter (`sortExpr` / `filterExpr`)
+
+A mapped column's `expr` is used verbatim in ORDER BY, the keyset predicate and WHERE. When it is an
+expression (`JSON_EXTRACT(...)`, `CONCAT(...)`, `LOWER(...)`) no index can serve it, and MySQL sorts the
+whole result set on every page (~2 s for a few thousand rows). Give the column an index-backed twin:
+
+```ts
+columns: {
+  name: {
+    expr: sql`JSON_UNQUOTE(JSON_EXTRACT(${leads.meta}, '$.name')) COLLATE utf8mb4_0900_as_ci`,
+    sortExpr: leads.nameSort,     // ORDER BY + keyset paging + GROUP BY key
+    filterExpr: leads.nameSort,   // WHERE (filters) + free-text search
+  },
+}
+```
+
+- `sortExpr` / `filterExpr` (`SQL | AnyColumn`, both optional, default `expr`) must produce the **same
+  values and the same emptiness** as `expr` — same collation for text, NULL / blank exactly where `expr`
+  is — or pages skip and repeat rows. The read projection keeps selecting `expr`.
+- They go through the same pipeline as `expr`: drizzle columns are re-pointed at `sg_base` (so the base
+  query must select them), and datetime kinds are wrapped in `CONVERT_TZ` for UTC comparison.
+- `searchable` matches on `filterExpr` when given, else `expr`. Grouping keys use `sortExpr` (the key is
+  grouped *and* ordered, so the sort-side index is the useful one); aggregations read `expr`.
+- The same fields exist on `createMappedColumnResolver`'s `MappedColumn`; the translators ask for them via
+  `resolveColumnExpr(column, scope, purpose)` (`"sort" | "filter" | "search" | "group" | "select"`). A
+  custom `ColumnExprResolver.resolve` receives `purpose` as its optional third argument and may ignore it.
+
+### Performance on existing tables
+
+Hot sort / filter keys must be plain (or generated) columns with an index. For values that live in JSON:
+
+```sql
+ALTER TABLE leads
+  ADD COLUMN name_sort VARCHAR(255) AS (JSON_UNQUOTE(JSON_EXTRACT(meta, '$.name'))) STORED,
+  ADD INDEX idx_leads_name_sort (name_sort);
+```
+
+then point `sortExpr` / `filterExpr` at `leads.nameSort` (a `varchar("name_sort")` in the drizzle table;
+`STORED` keeps the column in the base query's output, `VIRTUAL` also works when indexed). Check with
+
+```sql
+EXPLAIN SELECT ... FROM leads ORDER BY name_sort ASC, id ASC LIMIT 51;
+```
+
+`Extra` should not show `Using filesort` on the hot key (`Using index` / `Backward index scan` are fine).
+Keyset paging (`page.cursor`) needs the sort key to be indexable: its predicate is
+`(key > ? OR (key = ? AND id > ?))`, which is a range scan on an index over the key and a full scan over an
+expression. Composite indexes covering the row-filter first (e.g. `(deleted_at, name_sort)`) help when the
+base query always applies the same predicate.
+
+The schema's `indexed` column option is **JSON-grid only**: it creates `gc_<key>` generated columns on the
+grid rows table (`createDrizzleDataSource`), never on your table — for a SQL view, add the columns and
+indexes yourself and wire them through `sortExpr` / `filterExpr`.
+
+### Schema store availability (`schema.reason`, `schemaWritable`)
+
+`capabilities.schema` says why `write` is false (v0.3.1; `reason` is absent when `write` is true):
+
+| `reason` | when | `updateSchema` answers |
+| --- | --- | --- |
+| `no-store` | the grid has no `schemaStore` | `UNSUPPORTED_OPERATION` 501, `details: { reason: "schema-store-unavailable" }` |
+| `store-unavailable` | `schemaStore.available()` is false — the Drizzle store's table was never created | same 501; the message names the grid and `createGridSchemasTableDDL` |
+| `forbidden` | `permission(ctx, "updateSchema")` or `schemaWritable(ctx)` said no | `PERMISSION_DENIED` 403 |
+
+Checks run in the usual order: unknown grid → unknown op → `permission` / `schemaWritable` (403) → store
+availability (501) → input validation → the write. In the `capabilities` answer an unavailable store outranks a
+forbidden caller.
+
+- `defineGrid({ schemaWritable: (ctx) => boolean | Promise<boolean> })` — an extra gate on schema writes only,
+  consulted besides `permission(ctx, "updateSchema")`; use it when `permission` is shared across ops and column
+  editing needs a stricter rule (e.g. `schemaWritable: (ctx) => ctx.user.roles.includes("owner")`).
+- `SchemaStore.available?(): Promise<boolean>` (core, optional; absent → assumed available). Evaluated at most
+  once per request. `createMemorySchemaStore().available()` is always true. `createDrizzleSchemaStore` probes
+  ``SELECT 1 FROM `table` LIMIT 0``: `ER_NO_SUCH_TABLE` → false, anything else rejects (not cached); `true` is
+  cached for the store's lifetime and `false` is re-probed, so running the DDL later is picked up without a restart.
+- While the store is unavailable the grid serves its base `schema` read-only (`getSchema` / `fetch` keep working;
+  the stored schema is not read, so there is no `MISSING_TABLE` 500 on the read path). `get` / `put` outside the
+  registry still throw `MissingTableError` (see *Missing tables*).
+
 <!-- v0.3.1: further subsections go here -->
 
