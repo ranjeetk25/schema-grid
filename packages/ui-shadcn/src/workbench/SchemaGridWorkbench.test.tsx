@@ -56,7 +56,8 @@ function gridClient(caps?: Partial<DataSourceCapabilities>) {
   const handle = createDataSourceHandler(source(caps, memory(schema)));
   const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const op = String(url).split("/").pop() ?? "";
-    const input = JSON.parse(String(init?.body)) as unknown;
+    // v0.3 client: null inputs (getSchema / capabilities) travel with no body.
+    const input = init?.body === undefined ? null : (JSON.parse(String(init.body)) as unknown);
     if (op === "getSchema") return jsonResponse(200, { data: schema });
     if (op === "updateSchema") {
       // Wire contract (like createGridRegistry): the input carries the CURRENT version; the server bumps it.
