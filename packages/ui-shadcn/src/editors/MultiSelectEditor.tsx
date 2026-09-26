@@ -1,9 +1,9 @@
 import { XIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
-import { optionToneStyle } from "../internal/options";
+import { optionToneStyle, pickableOptions } from "../internal/options";
 import { cn } from "../lib/cn";
 import { Badge } from "../ui/badge";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -55,8 +55,13 @@ export function MultiSelectEditor({
   autoFocus,
   error,
   cellWidth,
+  user,
 }: UiEditorProps<string[], MultiSelectEditorConfig>) {
-  const options = useSelectOptions(config, dataSource, column);
+  const allOptions = useSelectOptions(config, dataSource, column);
+  // Options the user may set, plus the ones already held (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = useMemo(() => pickable.map((p) => p.option), [pickable]);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const gridMode = isGridMode(autoFocus);
   const [selected, setSelected] = useState<string[]>(value ?? []);
   const selectedRef = useRef(selected);
@@ -135,7 +140,14 @@ export function MultiSelectEditor({
       <CommandList {...highlight.listProps}>
         <CommandEmpty>No options</CommandEmpty>
         {filtered.map((option) => (
-          <CommandItem key={option.id} value={optionItemValue(option.id)} onSelect={() => toggle(option.id)}>
+          <CommandItem
+            key={option.id}
+            value={optionItemValue(option.id)}
+            disabled={lockOf(option.id) !== null}
+            aria-disabled={lockOf(option.id) !== null || undefined}
+            title={lockOf(option.id) ?? undefined}
+            onSelect={() => toggle(option.id)}
+          >
             <OptionRowContent option={option} selected={selected.includes(option.id)} />
           </CommandItem>
         ))}

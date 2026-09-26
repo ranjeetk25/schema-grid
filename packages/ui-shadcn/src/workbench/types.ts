@@ -2,7 +2,7 @@
  * `<SchemaGridWorkbench>` contracts. Framework-free; copied verbatim from ui-mantine so the
  * two kits share one contract.
  */
-import type { GridClient } from "@ranjeetk25/schema-grid-ag-grid";
+import type { GridClient, SchemaGridEvents } from "@ranjeetk25/schema-grid-ag-grid";
 import type {
   ChangeFeedEntry,
   DataSource,
@@ -15,6 +15,9 @@ import type {
   ViewDef,
 } from "@ranjeetk25/schema-grid-core";
 import type { ReactNode } from "react";
+import type { ExportFileNameOption } from "./exportName";
+
+export type { ExportFileFormat, ExportFileNameContext, ExportFileNameOption } from "./exportName";
 
 // ---------------------------------------------------------------------------
 // Grid client (spec C5 `createGridClient`)
@@ -145,6 +148,20 @@ export interface SchemaGridWorkbenchBaseProps {
   /** Roles offered in the column panel's access step. Default: roles found in the schema + the user's. */
   roles?: string[];
   onRemoteChanges?(entry: ChangeFeedEntry): void;
+  /**
+   * Host grid events, merged with the workbench's own (v0.3): `beforeCellsChange`
+   * chains host → internal (the host may veto with `false` or return a
+   * transformed / reduced batch, `meta` included); every other event fans out
+   * to the host and the workbench. `gridProps.events` is honoured too; a
+   * handler given here wins over the same handler in `gridProps.events`.
+   */
+  events?: Partial<SchemaGridEvents>;
+  /**
+   * Export file name (quick CSV and the Export dialog). A string is used as-is
+   * (extension appended if missing); a function gets the grid id, schema, active
+   * view, format and date. Default `${gridId}-${view|"all"}-${YYYY-MM-DD}.${format}`, slugified.
+   */
+  exportFileName?: ExportFileNameOption;
   /** Receives the grid handle. */
   onHandle?(handle: import("@ranjeetk25/schema-grid-ag-grid").SchemaGridHandle | null): void;
   /** Escape hatch forwarded to `<SchemaGrid>` (e.g. `gridOptions`, `tz`). */

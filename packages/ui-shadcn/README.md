@@ -90,8 +90,66 @@ persist column edits). Other props:
 | `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling }>` — `false` turns one off |
 | `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities` (raw, once loaded), `effectiveCapabilities` (core `mergeCapabilities`, `null` until loaded), `openImport`, `openExport`, `openAddColumn`, `refetch` |
 | `emptyState` | shown over the grid when there are no rows |
-| `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload) |
+| `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload), export failures (`op: "export"`, banner with Retry) |
+| `events` | host grid events merged with the workbench's own (see below) |
+| `exportFileName` | a string, or `(ctx) => string` with `{ gridId, schema, view, format, date }`; default `${gridId}-${view ?? "all"}-${YYYY-MM-DD}.csv`, slugified |
 | `pollIntervalMs`, `height` (`"fill"` default: give the parent a height), `pageSize`, `roles`, `gridProps` | |
+
+### Host events
+
+`events?: Partial<SchemaGridEvents>` (also `gridProps.events`; a handler on
+`events` wins per name). `beforeCellsChange` chains **host → workbench**: the
+host may veto with `false`, or return a transformed / reduced batch — `meta`
+on the batch or on individual changes travels to the data source untouched.
+Every other event (`onCellsChange`, `onConflict`, `onRowsCreate/Delete`,
+`onColumn*`, `onOptionCreate`, `onViewChange`, `onRemoteChanges`,
+`onSchemaChanged`) fans out to the host first, then the workbench; a throwing
+host handler is reported through `onError` and never breaks the built-in
+handling (the conflict popover still opens after your `onConflict`).
+
+### Columns picker
+
+The toolbar "Columns" button (a Radix popover) lists every column the user may
+read (columns hidden by permission are never listed; `ColumnDef.hidden` ones
+start unchecked): search, a checkbox per column, move up / down, "Show all" /
+"Hide all", and a badge with the hidden count. Changes go through the grid's
+column state, so they live in the current view (marked unsaved), persist with
+"Save changes" / "Save as new view" and are undone by switching views.
+
+### Who may change the schema
+
+With a `client`, "Add column", the header's "Edit column… / Insert…" and the
+trailing "+" appear only when the server's capabilities report
+`schema.write: true` (`createGridRegistry` answers it from `permission(ctx,
+"updateSchema")` and the presence of a schema store). In direct
+(`dataSource` + `schema`) mode the host owns the schema, so they stay on;
+`features.addColumn: false` still turns them off.
+
+### Restricted options
+
+A select / multiSelect / creatableSelect option may carry
+`settableBy: { roles: [...] }` (core `Option.settableBy`). The cmdk pickers
+offer only the options the signed-in user can set; a value the row already
+holds stays visible and renders normally, but is locked in the picker
+(disabled, with an "Only Admin can set this" title). Servers and the
+in-memory source reject the rest ("Option “Verified” can only be set by
+Admin"), which the grid shows as a cell error. The column panel's Options
+editor has a per-option "Who can set" pill (Everyone | Only roles…, role
+chips) mirroring the column's access section.
+
+### Saved vs. not saved
+
+The status bar's "N saved" counts applied **cells**. Changes a data source
+(or a `beforeCellsChange` hook that dropped them) declines quietly come back
+as `ChangeResult.rejected`: the cell reverts with no error state, nothing is
+announced assertively, and the bar reads "N changes not saved" (paste
+summaries add "R not saved").
+
+### Lazy chunks
+
+The import wizard, the export dialog and the column panel load on first
+open, and `@ranjeetk25/schema-grid-io` (exceljs, papaparse) is imported only
+inside an export / import run, so none of them sit in the page chunk.
 
 ## CSS strategy
 

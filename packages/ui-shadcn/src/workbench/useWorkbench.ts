@@ -3,6 +3,11 @@
  * capabilities → features, saved views, filter / group / search, the column
  * panel, import / export, counters and error banners. No UI kit imports, so
  * the ui-shadcn mirror copies this file verbatim and only re-skins it.
+ *
+ * v0.3: host events merge (`mergeWorkbenchEvents`), schema editability from
+ * `capabilities.schema.write`, the column show / hide picker, "not saved"
+ * counters for silently rejected changes, export naming + error banner, and
+ * the io peer loaded on demand (`import()` inside runExport / commitImport).
  */
 import type {
   ClipboardReport,
@@ -33,11 +38,13 @@ import {
   resolveColumnAccess,
 } from "@ranjeetk25/schema-grid-core";
 import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
-import { buildExportBlob, exportFileName } from "@ranjeetk25/schema-grid-io/export";
-import { toChangeBatches, validateRows } from "@ranjeetk25/schema-grid-io/import";
+import type { validateRows } from "@ranjeetk25/schema-grid-io/import";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
+import { type ColumnPickerItem, columnSignature, listPickerColumns, toColumnState } from "./columnPicker";
 import { tapDataSource, toWorkbenchError } from "./errors";
+import { combineHostEvents, mergeWorkbenchEvents } from "./events";
+import { type ExportFileFormat, resolveExportFileName } from "./exportName";
 import { collectRows } from "./exportRows";
 import { type WorkbenchInsertPosition, addOptions, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
 import type {
@@ -70,7 +77,7 @@ export type WorkbenchExportScope = "view" | "all" | "selected";
 
 /** A banner the kit renders between the toolbar and the grid. */
 export interface WorkbenchBanner {
-  kind: WorkbenchErrorKind | "read-only";
+  kind: WorkbenchErrorKind | "read-only" | "export";
   message: string;
   /** "Retry" / "Reload" — absent for informational banners. */
   action?: { label: string; run(): void };
@@ -93,8 +100,22 @@ export function clipboardSummary(r: ClipboardReport): string {
   if (r.conflicts) parts.push(`${r.conflicts} conflict${r.conflicts === 1 ? "" : "s"}`);
   const errors = r.errors.length;
   if (errors) parts.push(`${errors} error${errors === 1 ? "" : "s"}`);
+  const rejected = (r as { rejected?: number }).rejected ?? 0;
+  if (rejected) parts.push(`${rejected} not saved`);
   return `Paste: ${parts.join(", ")}`;
 }
+
+/** "1 change not saved" / "N changes not saved" — quietly rejected cells (v0.3). */
+export function notSavedLine(count: number): string | null {
+  if (count <= 0) return null;
+  return count === 1 ? "1 change not saved" : `${count} changes not saved`;
+}
+
+const IO_EXPORT = "@ranjeetk25/schema-grid-io/export";
+const IO_IMPORT = "@ranjeetk25/schema-grid-io/import";
+/** io is loaded on first use so exceljs / papaparse stay out of the page chunk. */
+const loadIoExport = () => import("@ranjeetk25/schema-grid-io/export").catch(() => Promise.reject(new Error(`Export needs "${IO_EXPORT}"`)));
+const loadIoImport = () => import("@ranjeetk25/schema-grid-io/import").catch(() => Promise.reject(new Error(`Import needs "${IO_IMPORT}"`)));
 
 function importJobLine(job: WorkbenchImportJob | undefined): string | null {
   if (!job) return null;
@@ -256,9 +277,10 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       deriveWorkbenchFeatures({
         capabilities: effectiveCapabilities,
         ...(featureOverrides ? { features: featureOverrides } : {}),
-        canChangeSchema: true,
+        // Client mode: the registry says whether THIS user may change the schema. Direct mode: the host owns it.
+        canChangeSchema: client ? (effectiveCapabilities?.schema.write ?? false) : true,
       }),
-    [effectiveCapabilities, featureOverrides],
+    [effectiveCapabilities, featureOverrides, client],
   );
 
   const access: Map<string, Access> = useMemo(
@@ -384,7 +406,12 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       setViews((vs) => vs.map((v) => (v.id === activeViewId ? { ...captured, id: v.id, name: v.name } : v)));
     },
   };
-  const viewDirty = comparableView(liveView) !== comparableView(activeView);
+  // Column show / hide / order counts as an unsaved change too (v0.3); a view without
+  // column state compares as the schema default, so a freshly applied view is clean.
+  const columnsDirty =
+    schema !== null &&
+    columnSignature(listPickerColumns(schema, access, liveView)) !== columnSignature(listPickerColumns(schema, access, activeView));
+  const viewDirty = comparableView(liveView) !== comparableView(activeView) || columnsDirty;
 
   // ---- column panel --------------------------------------------------------
   const [panelOpen, setPanelOpen] = useState(false);
@@ -452,7 +479,10 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   // ---- counters, clipboard, feed ---------------------------------------------
   const [clipboard, setClipboard] = useState<ClipboardReport | null>(null);
   const [feedCount, setFeedCount] = useState(0);
+  /** Applied CELLS (not results). */
   const [saved, setSaved] = useState(0);
+  /** Cells the data source (or a `beforeCellsChange` hook) declined quietly. */
+  const [notSaved, setNotSaved] = useState(0);
   const onRemoteChangesRef = useRef(props.onRemoteChanges);
   onRemoteChangesRef.current = props.onRemoteChanges;
   const flagSchemaVersion = useCallback(
@@ -469,11 +499,13 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     },
     [report],
   );
-  const events: SchemaGridEvents = useMemo(
+  const internalEvents: SchemaGridEvents = useMemo(
     () => ({
       onConflict,
-      onCellsChange: () => {
-        setSaved((n) => n + 1);
+      onCellsChange: (result) => {
+        if (result.applied.length > 0) setSaved((n) => n + result.applied.length);
+        const rejected = result.rejected?.length ?? 0;
+        if (rejected > 0) setNotSaved((n) => n + rejected);
         bump();
       },
       onOptionCreate: (columnId: string, option: Option) => {
@@ -488,6 +520,24 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     }),
     [onConflict, bump, flagSchemaVersion],
   );
+  const hostEvents = combineHostEvents(props.events, props.gridProps?.events);
+  const hostEventsRef = useRef(hostEvents);
+  hostEventsRef.current = hostEvents;
+  const hostEventsKey = hostEvents ? Object.keys(hostEvents).sort().join(",") : "";
+  // Merged once per handler SET: each merged handler reads the latest host handler through the ref.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hostEventsKey stands in for the (ref-read) host events.
+  const events: SchemaGridEvents = useMemo(() => {
+    if (!hostEventsRef.current) return internalEvents;
+    const live: Partial<SchemaGridEvents> = {};
+    for (const name of Object.keys(hostEventsRef.current) as (keyof SchemaGridEvents)[]) {
+      (live as Record<string, unknown>)[name] = (...args: unknown[]) =>
+        (hostEventsRef.current?.[name] as ((...a: unknown[]) => unknown) | undefined)?.(...args);
+    }
+    return mergeWorkbenchEvents(live, internalEvents, {
+      onHostError: (error, event) =>
+        report({ kind: "unknown", op: event, error, message: error instanceof Error ? error.message : String(error) }),
+    });
+  }, [internalEvents, hostEventsKey, report]);
   const onClipboardReport = useCallback((r: ClipboardReport) => setClipboard(r), []);
 
   // ---- offline / online -----------------------------------------------------
@@ -526,6 +576,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   }, [clearKinds, client, loadSchema, refetch]);
 
   const [readOnlyDismissed, setReadOnlyDismissed] = useState(false);
+  const [exportError, setExportError] = useState<{ message: string; retry(): void } | null>(null);
   const banners: WorkbenchBanner[] = [];
   const dismiss = (kind: WorkbenchErrorKind) => () => clearKinds([kind]);
   if (errors["schema-changed"])
@@ -549,6 +600,13 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       kind: "capability-denied",
       message: errors["capability-denied"].message,
       dismiss: dismiss("capability-denied"),
+    });
+  if (exportError)
+    banners.push({
+      kind: "export",
+      message: `Couldn't export: ${exportError.message}`,
+      action: { label: "Retry", run: exportError.retry },
+      dismiss: () => setExportError(null),
     });
   if (isReadOnly(effectiveCapabilities) && !readOnlyDismissed)
     banners.push({
@@ -578,8 +636,34 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       .filter(readable);
   }, [access]);
 
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
+  const exportFileNameRef = useRef(props.exportFileName);
+  exportFileNameRef.current = props.exportFileName;
+  const exportName = useCallback(
+    (format: ExportFileFormat): string =>
+      resolveExportFileName(exportFileNameRef.current, {
+        gridId,
+        schema: schemaRef.current ?? { id: gridId, schemaVersion: 0, columns: [] },
+        view: activeViewRef.current,
+        format,
+        date: new Date(),
+      }),
+    [gridId],
+  );
+  /** Surfaces an export failure through `onError` AND the export banner (Retry re-runs `retry`). */
+  const failExport = useCallback(
+    (error: unknown, retry: () => void) => {
+      const message = error instanceof Error && error.message ? error.message : "Export failed";
+      setExportError({ message, retry });
+      onErrorRef.current?.({ kind: "unknown", op: "export", message: `Couldn't export: ${message}`, error });
+    },
+    [],
+  );
+
   const runExport = useCallback(
-    async ({ scope, format }: { scope: WorkbenchExportScope; format: "csv" | "xlsx" }) => {
+    async (request: { scope: WorkbenchExportScope; format: "csv" | "xlsx" }) => {
+      const { scope, format } = request;
       const columns = visibleColumns();
       let rows: GridRow[];
       if (scope === "selected") {
@@ -594,31 +678,50 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
           ...(effectiveCapabilities?.export.maxRows !== undefined ? { maxRows: effectiveCapabilities.export.maxRows } : {}),
         });
       }
-      const base = (schemaRef.current?.id ?? "export").replace(/[^\w-]+/g, "-");
-      const fileName = exportFileName(base, format);
+      const fileName = exportName(format);
+      const { buildExportBlob } = await loadIoExport();
       const blob = await buildExportBlob({ columns, registry, rows, format, tz, fileName, access });
       setLastExport(`${fileName}: ${rows.length} rows, ${columns.length} columns`);
+      setExportError(null);
       download(blob, fileName);
     },
-    [visibleColumns, dataSource, effectiveCapabilities, registry, tz, access],
+    [visibleColumns, dataSource, effectiveCapabilities, registry, tz, access, exportName],
   );
+  const runExportRef = useRef(runExport);
+  runExportRef.current = runExport;
+  /** The dialog's export: the dialog shows the message inline; the banner + `onError` see it too. */
+  const runExportReported = useCallback(async (request: { scope: WorkbenchExportScope; format: "csv" | "xlsx" }) => {
+    try {
+      await runExportRef.current(request);
+    } catch (error) {
+      failExport(error, () => void runExportRef.current(request).catch((e: unknown) => failExport(e, () => undefined)));
+      throw error;
+    }
+  }, [failExport]);
   const exportMaxRows = effectiveCapabilities?.export.maxRows;
-  const exportCsv = useCallback(() => {
+  const exportCsvRef = useRef<() => Promise<void>>(async () => undefined);
+  const exportCsv = useCallback(async () => {
     const h = handleRef.current;
-    const name = "schema-grid.csv";
-    // The grid's client-mode CSV writes every loaded row; a capped source pages through the view instead.
-    if (exportMaxRows === undefined) h?.exportCsv(name);
-    else
-      void h
-        ?.exportCurrentView("csv", name)
-        .then((blob) => download(blob, name))
-        .catch(() => undefined);
-  }, [exportMaxRows]);
+    try {
+      const name = exportName("csv");
+      // The grid's client-mode CSV writes every loaded row; a capped source pages through the view instead.
+      if (exportMaxRows === undefined) await Promise.resolve(h?.exportCsv(name));
+      else {
+        const blob = await h?.exportCurrentView("csv", name);
+        if (blob) download(blob, name);
+      }
+      setExportError(null);
+    } catch (error) {
+      failExport(error, () => void exportCsvRef.current());
+    }
+  }, [exportMaxRows, exportName, failExport]);
+  exportCsvRef.current = exportCsv;
 
   const commitImport = useCallback(
     async (plan: WorkbenchImportPlan) => {
       const current = schemaRef.current;
       if (!current) return;
+      const { toChangeBatches, validateRows } = await loadIoImport();
       const report = validateRows(plan.parsed, plan.mapping, current, registry, {
         mode: plan.mode,
         unknownOptions: plan.unknownOptions,
@@ -655,6 +758,21 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     [registry, access, dataSource, refetch],
   );
 
+  // ---- column picker (v0.3) --------------------------------------------------
+  const pickerView = liveView ?? activeView;
+  const columnItems: ColumnPickerItem[] = useMemo(
+    () => (schema ? listPickerColumns(schema, access, pickerView) : []),
+    [schema, access, pickerView],
+  );
+  const applyColumns = useCallback((items: readonly ColumnPickerItem[]) => {
+    const api = handleRef.current?.api();
+    if (!api) return;
+    api.applyColumnState({ state: toColumnState(items), applyOrder: true });
+    // The grid emits onViewChange for the column events; refresh our copy right away too.
+    const captured = handleRef.current?.captureView();
+    if (captured) setLiveView(captured);
+  }, []);
+
   const poll: SchemaGridPollOptions = features.polling
     ? { ...(props.pollIntervalMs ? { intervalMs: props.pollIntervalMs } : {}) }
     : { enabled: false };
@@ -677,6 +795,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
 
   const status: string[] = [
     saved > 0 ? `${saved} saved` : null,
+    notSavedLine(notSaved),
     feedCount > 0 ? `${feedCount} remote update${feedCount === 1 ? "" : "s"}` : null,
     clipboard ? clipboardSummary(clipboard) : null,
     lastExport ? `Exported ${lastExport}` : null,
@@ -754,15 +873,18 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       opened: exportOpen,
       open: () => setExportOpen(true),
       close: () => setExportOpen(false),
-      run: runExport,
+      run: runExportReported,
       visibleColumnCount: () => visibleColumns().length,
       selectedRowCount: () => handle?.api()?.getSelectedRows().length ?? 0,
       lastExport,
     },
+    // column picker
+    columns: { items: columnItems, apply: applyColumns },
     // status
     clipboard,
     onClipboardReport,
     saved,
+    notSaved,
     feedCount,
     status,
     banners,

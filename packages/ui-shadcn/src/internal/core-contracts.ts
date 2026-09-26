@@ -35,7 +35,13 @@ export { BUILTIN_FIELD_TYPE_IDS } from "@ranjeetk25/schema-grid-core";
 
 // §4.7 permissions
 export type { Access, PermissionContext, PermissionResolver, PermissionUser } from "@ranjeetk25/schema-grid-core";
-export { createRolePermissionResolver, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
+export {
+  canSetOption,
+  createRolePermissionResolver,
+  optionNotSettableMessage,
+  resolveColumnAccess,
+  resolveSettableOptions,
+} from "@ranjeetk25/schema-grid-core";
 
 // §4.2 field types
 export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core";

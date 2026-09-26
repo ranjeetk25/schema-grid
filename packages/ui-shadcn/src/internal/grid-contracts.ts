@@ -33,6 +33,7 @@ import {
   type FilterOperatorDef,
   type GridRow,
   type Option,
+  type PermissionUser,
   createDefaultRegistry,
 } from "./core-contracts";
 
@@ -93,6 +94,8 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
   cellWidth?: number;
   error?: string;
   onOptionCreate?(option: Option): void;
+  /** The signed-in user (from the grid context); option pickers hide options they cannot set (`Option.settableBy`). */
+  user?: PermissionUser;
 }
 
 export interface UiRendererProps<TValue = unknown, TConfig = unknown> {
@@ -142,6 +145,7 @@ function contextExtras(context: unknown, column: ColumnDef | undefined) {
   const ctx = getSchemaGridContext(context);
   return {
     dataSource: ctx?.dataSource as DataSource | undefined,
+    ...(ctx?.user ? { user: ctx.user as PermissionUser } : {}),
     onOptionCreate: (option: Option) => {
       if (column) ctx?.events()?.onOptionCreate?.(column.id, option);
     },

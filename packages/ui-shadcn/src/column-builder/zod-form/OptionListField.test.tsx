@@ -10,7 +10,7 @@ const INITIAL = [
   { id: "c", label: "C" },
 ];
 
-function Harness({ onChange }: { onChange: (v: Record<string, string>[]) => void }) {
+function Harness({ onChange }: { onChange: (v: Record<string, unknown>[]) => void }) {
   const [value, setValue] = useState<unknown>(INITIAL);
   return (
     <OptionListField

@@ -86,3 +86,35 @@ test("conflict popover: Keep theirs adopts the remote value", async ({ page }) =
   await expect(cell(page, "r1", "col_name")).toHaveText("Asha (remote 1)");
   await expect.poll(() => storedCell(page, "conflict", "r1", "name")).toBe("Asha (remote 1)");
 });
+
+test("v0.3 columns picker: hide a column → header gone → save the view → reload → still hidden", async ({ page }) => {
+  await openStory(page, STORIES.clientPersisted);
+  await page.evaluate(() => localStorage.removeItem("sg-e2e-persisted-views"));
+  await page.reload();
+  await page.locator(".ag-row").first().waitFor();
+  const feeHeader = page.locator('.ag-header-cell[col-id="col_fee"]');
+  await expect(feeHeader).toBeVisible();
+
+  await page.getByRole("button", { name: "Columns", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Columns" });
+  await picker.getByRole("checkbox", { name: "Fee" }).click();
+  await expect(feeHeader).toHaveCount(0);
+  await expect(page.getByTestId("columns-hidden-count")).toHaveText("1");
+  await page.keyboard.press("Escape");
+
+  // Save into a new view (persisted in localStorage by the story).
+  await page.getByRole("button", { name: /^All rows/ }).click();
+  await page.getByRole("menuitem", { name: "Save as new view" }).click();
+  await page.getByRole("textbox", { name: "View name" }).fill("No fee");
+  await page.getByRole("textbox", { name: "View name" }).press("Enter");
+  await expect(page.getByRole("button", { name: /^No fee/ })).toBeVisible();
+
+  await page.reload();
+  await page.locator(".ag-row").first().waitFor();
+  await page.getByRole("button", { name: /^All rows/ }).click();
+  await page.getByRole("menuitemradio", { name: "No fee" }).click();
+  await expect(page.getByRole("button", { name: /^No fee/ })).toBeVisible();
+  await expect(page.locator('.ag-header-cell[col-id="col_fee"]')).toHaveCount(0);
+  await expect(page.locator('.ag-header-cell[col-id="col_name"]')).toBeVisible();
+  await expect(page.getByTestId("columns-hidden-count")).toHaveText("1");
+});

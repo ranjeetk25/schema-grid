@@ -6,6 +6,7 @@ export const FIXTURE_NOW = "2026-09-24T21:00:00.000Z";
 export const STORIES = {
   client: "3-client-grid--full-toolbar",
   clientFixture: "3-client-grid--fixture-only",
+  clientPersisted: "3-client-grid--persisted-views",
   conflict: "6-conflict-prompt--keep-theirs-or-overwrite",
 } as const;
 

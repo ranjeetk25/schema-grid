@@ -15,6 +15,8 @@ export interface ZodFormProps {
   onChange: (next: Record<string, unknown>) => void;
   /** Dot-path → message, e.g. `{ "options.0.label": "Required" }`. */
   errors?: Record<string, string>;
+  /** Roles for option lists' per-option "Who can set" control (core `Option.settableBy`). */
+  roles?: string[];
 }
 
 /** "maxLength" / "max_length" → "Max length". */
@@ -137,9 +139,10 @@ interface FieldProps {
   value: unknown;
   onChange: (next: unknown) => void;
   errors: Record<string, string>;
+  roles?: string[];
 }
 
-function Field({ name, path, field, value, onChange, errors }: FieldProps) {
+function Field({ name, path, field, value, onChange, errors, roles }: FieldProps) {
   const label = field.optional ? `${humanizeKey(name)} (optional)` : humanizeKey(name);
   const description = field.description;
   const error = errors[path];
@@ -212,6 +215,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
           hasColor={field.hasColor}
           valueKey={field.valueKey}
           onChange={onChange}
+          {...(roles ? { roles } : {})}
           rowError={(index, key) => errors[`${path}.${index}.${key}`]}
         />
       );
@@ -221,7 +225,7 @@ function Field({ name, path, field, value, onChange, errors }: FieldProps) {
         <fieldset className="sg:m-0 sg:flex sg:min-w-0 sg:flex-col sg:gap-3 sg:border-0 sg:border-l sg:border-border sg:p-0 sg:pl-3">
           <legend className="sg:mb-2 sg:p-0 sg:text-sm sg:font-medium sg:text-foreground">{label}</legend>
           {description ? <p className="sg:-mt-1 sg:text-xs sg:text-muted-foreground">{description}</p> : null}
-          <Fields fields={field.children} value={objectValue} onChange={onChange} errors={errors} pathPrefix={`${path}.`} />
+          <Fields fields={field.children} value={objectValue} onChange={onChange} errors={errors} pathPrefix={`${path}.`} {...(roles ? { roles } : {})} />
           {error ? (
             <p role="alert" className="sg:text-xs sg:text-danger">
               {error}
@@ -241,12 +245,14 @@ function Fields({
   onChange,
   errors,
   pathPrefix,
+  roles,
 }: {
   fields: FormFieldChild[];
   value: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
   errors: Record<string, string>;
   pathPrefix: string;
+  roles?: string[];
 }) {
   const effective = withDefaults(fields, value);
   const setKey = (key: string, next: unknown) => {
@@ -266,6 +272,7 @@ function Fields({
           value={effective[key]}
           onChange={(next) => setKey(key, next)}
           errors={errors}
+          {...(roles ? { roles } : {})}
         />
       ))}
     </div>
@@ -275,7 +282,7 @@ function Fields({
 const EMPTY_ERRORS: Record<string, string> = {};
 
 /** Auto-form driven by a Zod object schema (v3 or v4). Missing keys display — and emit — schema defaults. */
-export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS }: ZodFormProps) {
+export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS, roles }: ZodFormProps) {
   const descriptor = useMemo(() => introspectZod(schema), [schema]);
   if (descriptor.kind !== "object") {
     return (
@@ -289,5 +296,5 @@ export function ZodForm({ schema, value, onChange, errors = EMPTY_ERRORS }: ZodF
       />
     );
   }
-  return <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" />;
+  return <Fields fields={descriptor.children} value={value ?? {}} onChange={onChange} errors={errors} pathPrefix="" {...(roles ? { roles } : {})} />;
 }

@@ -2,7 +2,7 @@ import { Loader2Icon, PlusIcon } from "lucide-react";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
-import { getSelectOptions } from "../internal/options";
+import { getSelectOptions, pickableOptions } from "../internal/options";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { EditorCard, FormPicker, OptionRowContent, ToneDot } from "./EditorCard";
 import { isGridMode, useCmdkEnter, useCmdkHighlight, useElement, useMountedRef } from "./useEditorKeys";
@@ -30,7 +30,7 @@ const errorMessage = (err: unknown): string =>
  * a failure shows inline and keeps the editor open.
  */
 export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
-  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, cellWidth } = props;
+  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, cellWidth, user } = props;
   // Latest props for async continuations (avoids stale closures after await).
   const latest = useRef(props);
   latest.current = props;
@@ -39,11 +39,14 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   const creatingRef = useRef(false);
   const gridMode = isGridMode(autoFocus);
   const [created, setCreated] = useState<Option[]>([]);
-  const options = useMemo(() => {
+  // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => {
     const base = getSelectOptions(config);
     const extra = created.filter((c) => !base.some((b) => b.id === c.id));
-    return [...base, ...extra];
-  }, [config, created]);
+    return pickableOptions([...base, ...extra], user, value);
+  }, [config, created, user, value]);
+  const options = useMemo(() => pickable.map((p) => p.option), [pickable]);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const selected = options.find((o) => o.id === value);
   const valueLabel = selected?.label ?? (value == null || value === "" ? undefined : String(value));
 
@@ -151,7 +154,14 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
       <CommandList {...highlight.listProps}>
         {!showCreate ? <CommandEmpty>Nothing found</CommandEmpty> : null}
         {filtered.map((option) => (
-          <CommandItem key={option.id} value={optionItemValue(option.id)} disabled={creating} onSelect={() => !creatingRef.current && pick(option)}>
+          <CommandItem
+            key={option.id}
+            value={optionItemValue(option.id)}
+            disabled={creating || lockOf(option.id) !== null}
+            aria-disabled={lockOf(option.id) !== null || undefined}
+            title={lockOf(option.id) ?? undefined}
+            onSelect={() => !creatingRef.current && lockOf(option.id) === null && pick(option)}
+          >
             <OptionRowContent option={option} selected={option.id === value} />
           </CommandItem>
         ))}

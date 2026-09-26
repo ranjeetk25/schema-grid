@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, GripVertical, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, GripVertical, LockIcon, Plus, X } from "lucide-react";
 import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -9,28 +9,39 @@ import {
   useRef,
   useState,
 } from "react";
+import type { RoleRule } from "../../internal/core-contracts";
 import { OPTION_TONES, optionToneStyle } from "../../internal/options";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Tooltip } from "../../ui/tooltip";
+import { titleCaseRole } from "../permissions-model";
 
 export interface OptionListItem {
   label: string;
   value: string;
   color?: string;
+  /** Who may SET this option (core `Option.settableBy`, v0.3). Absent = everyone. */
+  settableBy?: RoleRule;
 }
 
 export interface OptionListFieldProps {
   label: ReactNode;
   description?: ReactNode;
   value: unknown;
-  /** Emits options keyed by `valueKey` (e.g. core `{id, label, color?}`). */
-  onChange: (next: Record<string, string>[]) => void;
+  /** Emits options keyed by `valueKey` (e.g. core `{id, label, color?, settableBy?}`). */
+  onChange: (next: Record<string, unknown>[]) => void;
   /** Whether the schema's option object has a `color` field. */
   hasColor: boolean;
   /** Key of the stored value: `"id"` for core options (default `"value"`). */
   valueKey?: "id" | "value";
+  /**
+   * Roles offered by the per-option "Who can set" control (core options only,
+   * i.e. `valueKey: "id"`). Absent → the control is not shown.
+   */
+  roles?: string[];
   error?: string;
   /** Per-row errors, e.g. `rowErrors(0, "label")`. */
   rowError?: (index: number, field: "label" | "value" | "color") => string | undefined;
@@ -41,9 +52,13 @@ interface Row {
   label: string;
   value: string;
   color?: string;
+  settableBy?: RoleRule;
   /** Once true, editing the label no longer re-derives the value. */
   valueEdited: boolean;
 }
+
+const isRoleRule = (v: unknown): v is RoleRule =>
+  v === "all" || (!!v && typeof v === "object" && Array.isArray((v as { roles?: unknown }).roles));
 
 /** "In Progress!" → "in_progress": lowercase, non-alphanumerics → "_", trimmed underscores. */
 export function slugifyOptionValue(label: string): string {
@@ -61,13 +76,122 @@ const readOptions = (value: unknown, valueKey: "id" | "value"): OptionListItem[]
           label: typeof o.label === "string" ? o.label : "",
           value: typeof o[valueKey] === "string" ? (o[valueKey] as string) : "",
           ...(typeof o.color === "string" && o.color ? { color: o.color } : {}),
+          ...(isRoleRule(o.settableBy) ? { settableBy: o.settableBy } : {}),
         }))
     : [];
 
-function projectRows(rows: Row[], hasColor: boolean | undefined, valueKey: "id" | "value"): Record<string, string>[] {
+const list = (roles: string[]) => {
+  const labels = roles.map(titleCaseRole);
+  return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
+};
+
+/** "Everyone" / "Only Admin and Finance team" / "Nobody yet". */
+export function settableBySummary(rule: RoleRule | undefined): string {
+  if (rule === undefined || rule === "all") return "Everyone";
+  return rule.roles.length === 0 ? "Nobody yet" : `Only ${list(rule.roles)}`;
+}
+
+/**
+ * Per-option "Who can set" (v0.3): a subtle pill that opens a small popover
+ * with the same "Everyone | Only roles…" control as the column's access
+ * section. Absent `settableBy` = everyone (never written as `"all"` unless it
+ * already was).
+ */
+function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: RoleRule | undefined; roles: string[]; onChange(rule: RoleRule | undefined): void }) {
+  const [open, setOpen] = useState(false);
+  const labelId = useId();
+  const restricted = rule !== undefined && rule !== "all";
+  const selected = restricted ? rule.roles : [];
+  const offered = [...roles, ...selected.filter((r) => !roles.includes(r))];
+  const summary = settableBySummary(rule);
+  const who = label || "this option";
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="xs"
+          aria-label={`Who can set ${who}: ${summary}`}
+          aria-expanded={open}
+          data-testid="option-settable-by"
+          className={cn("sg:max-w-40 sg:font-normal", restricted ? "sg:text-foreground" : "sg:text-muted-foreground")}
+        >
+          {restricted ? <LockIcon aria-hidden className="sg:size-3" /> : null}
+          <span className="sg:truncate">{summary}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" portalled={false} className="sg:w-80" aria-label={`Who can set ${who}`}>
+        <div className="sg:flex sg:flex-col sg:gap-2">
+          <div className="sg:flex sg:items-center sg:justify-between sg:gap-3">
+            <span id={labelId} className="sg:text-sm sg:whitespace-nowrap sg:text-foreground">
+              Who can set
+            </span>
+            <ToggleGroup
+              type="single"
+              aria-labelledby={labelId}
+              value={restricted ? "roles" : "all"}
+              onValueChange={(v) => {
+                if (v === "all") onChange(rule === "all" ? "all" : undefined);
+                else if (v === "roles") onChange({ roles: selected });
+              }}
+            >
+              <ToggleGroupItem value="all">Everyone</ToggleGroupItem>
+              <ToggleGroupItem value="roles">Only roles…</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          {restricted ? (
+            <div className="sg:flex sg:flex-col sg:gap-1.5">
+              {offered.length ? (
+                <fieldset aria-label={`Roles that can set ${who}`} className="sg:m-0 sg:flex sg:min-w-0 sg:flex-wrap sg:gap-1.5 sg:border-0 sg:p-0">
+                  {offered.map((role) => {
+                    const on = selected.includes(role);
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => onChange({ roles: on ? selected.filter((r) => r !== role) : [...selected, role] })}
+                        className={cn(
+                          "sg:inline-flex sg:h-6 sg:items-center sg:gap-1 sg:rounded-full sg:border sg:px-2.5 sg:text-xs sg:font-medium sg:outline-none",
+                          "sg:transition-colors sg:duration-150 sg:focus-visible:ring-[3px] sg:focus-visible:ring-ring",
+                          on
+                            ? "sg:border-primary sg:bg-primary-subtle sg:text-primary"
+                            : "sg:border-border sg:text-muted-foreground sg:hover:border-input-hover sg:hover:text-foreground",
+                        )}
+                      >
+                        {on ? <Check aria-hidden className="sg:size-3" /> : null}
+                        {titleCaseRole(role)}
+                      </button>
+                    );
+                  })}
+                </fieldset>
+              ) : (
+                <p className="sg:text-xs sg:text-muted-foreground">This grid has no roles to choose from.</p>
+              )}
+              {selected.length === 0 ? (
+                <p role="alert" className="sg:text-xs sg:text-danger">
+                  Pick at least one role
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="sg:text-xs sg:text-muted-foreground">Anyone who can edit the column can pick this option.</p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function projectRows(rows: Row[], hasColor: boolean | undefined, valueKey: "id" | "value"): Record<string, unknown>[] {
   return rows.map((r) =>
     valueKey === "id"
-      ? { id: r.value, label: r.label, ...(hasColor && r.color ? { color: r.color } : {}) }
+      ? {
+          id: r.value,
+          label: r.label,
+          ...(hasColor && r.color ? { color: r.color } : {}),
+          ...(r.settableBy !== undefined ? { settableBy: r.settableBy } : {}),
+        }
       : { label: r.label, value: r.value, ...(hasColor && r.color ? { color: r.color } : {}) },
   );
 }
@@ -154,7 +278,9 @@ export function OptionListField({
   valueKey = "value",
   error,
   rowError,
+  roles,
 }: OptionListFieldProps) {
+  const showSettableBy = valueKey === "id" && roles !== undefined;
   const headingId = useId();
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
@@ -335,6 +461,9 @@ export function OptionListField({
                   onKeyDown={(e) => onRowKeyDown(e, index, false)}
                   onChange={(e) => update(index, { value: e.currentTarget.value, valueEdited: true })}
                 />
+                {showSettableBy ? (
+                  <WhoCanSet label={row.label} rule={row.settableBy} roles={roles ?? []} onChange={(settableBy) => update(index, { settableBy })} />
+                ) : null}
                 <div className="sg:flex sg:shrink-0 sg:items-center">
                   <Tooltip content="Move up" shortcut="Alt ↑">
                     <Button variant="subtle" size="icon-xs" aria-label="Move option up" disabled={index === 0} onClick={() => move(index, index - 1)}>

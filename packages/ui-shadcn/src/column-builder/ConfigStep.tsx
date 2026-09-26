@@ -23,6 +23,8 @@ export interface ConfigStepProps {
   dataSource?: DataSource;
   /** Rows for the formula live preview. */
   sampleRows?: GridRow[];
+  /** Roles for option lists' "Who can set" control (v0.3). */
+  roles?: string[];
 }
 
 /** Sample inputs for the live format preview of number-like and date types. */
@@ -68,6 +70,7 @@ export function TypeConfigFields({
   errors,
   onFormulaValidityChange,
   sampleRows,
+  roles,
   showHint = true,
   portalled,
 }: TypeConfigFieldsProps) {
@@ -111,7 +114,12 @@ export function TypeConfigFields({
           portalled={portalled}
         />
       ) : hasSettings ? (
-        <ZodForm schema={fieldType.configSchema} value={draft.config} onChange={(config) => dispatch({ type: "setConfig", config })} />
+        <ZodForm
+          schema={fieldType.configSchema}
+          value={draft.config}
+          onChange={(config) => dispatch({ type: "setConfig", config })}
+          {...(roles ? { roles } : {})}
+        />
       ) : null}
 
       {preview ? (
@@ -144,6 +152,7 @@ export function ConfigStep({
   onFormulaValidityChange,
   dataSource,
   sampleRows,
+  roles,
 }: ConfigStepProps) {
   return (
     <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-6")}>
@@ -158,6 +167,7 @@ export function ConfigStep({
           errors={errors}
           onFormulaValidityChange={onFormulaValidityChange}
           sampleRows={sampleRows}
+          {...(roles ? { roles } : {})}
         />
       </div>
     </div>

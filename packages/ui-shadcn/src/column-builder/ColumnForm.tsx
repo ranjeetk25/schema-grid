@@ -298,6 +298,7 @@ export function ColumnFormBody({
                 errors={visibleErrors}
                 onFormulaValidityChange={setFormulaValid}
                 sampleRows={sampleRows}
+                roles={roles}
                 portalled={portalled}
               />
             </div>

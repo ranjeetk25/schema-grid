@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Option } from "../internal/core-contracts";
 import { toPopupGridEditor } from "../internal/grid-contracts";
 import type { UiEditorProps } from "../internal/grid-contracts";
+import { pickableOptions } from "../internal/options";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { EditorCard, FormPicker, OptionRowContent, ToneDot } from "./EditorCard";
 import { isGridMode, useCmdkEnter, useCmdkHighlight, useElement } from "./useEditorKeys";
@@ -32,8 +33,13 @@ export function SelectEditor({
   autoFocus,
   error,
   cellWidth,
+  user,
 }: UiEditorProps<string, SelectEditorConfig>) {
-  const options = useSelectOptions(config, dataSource, column);
+  const allOptions = useSelectOptions(config, dataSource, column);
+  // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
+  const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
+  const options = useMemo(() => pickable.map((p) => p.option), [pickable]);
+  const lockOf = (id: string) => pickable.find((p) => p.option.id === id)?.lockReason ?? null;
   const gridMode = isGridMode(autoFocus);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -71,7 +77,14 @@ export function SelectEditor({
       <CommandList {...highlight.listProps}>
         <CommandEmpty>No options</CommandEmpty>
         {filtered.map((option) => (
-          <CommandItem key={option.id} value={optionItemValue(option.id)} onSelect={() => pick(option)}>
+          <CommandItem
+            key={option.id}
+            value={optionItemValue(option.id)}
+            disabled={lockOf(option.id) !== null}
+            aria-disabled={lockOf(option.id) !== null || undefined}
+            title={lockOf(option.id) ?? undefined}
+            onSelect={() => pick(option)}
+          >
             <OptionRowContent option={option} selected={option.id === value} />
           </CommandItem>
         ))}
