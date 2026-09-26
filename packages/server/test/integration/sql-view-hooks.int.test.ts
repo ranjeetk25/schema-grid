@@ -216,7 +216,7 @@ describeMysql("SQL view v0.3 hooks and time zones (MySQL 8.4)", () => {
       });
       expect(same.errors).toEqual([]);
       expect(same.applied).toHaveLength(2);
-      expect(await raw(1)).toMatchObject({ d: "2026-09-24", dt: "2026-09-24 10:30:00.000" });
+      expect(await raw(1)).toMatchObject({ d: "2026-09-24", dt: "2026-09-24 10:30:00.000000" });
       expect((await row("1", ds)).cells).toMatchObject({ callDate: "2026-09-24", calledAt: "2026-09-24T05:00:00.000Z" });
     }
     // A real edit lands as IST wall time.
@@ -231,7 +231,7 @@ describeMysql("SQL view v0.3 hooks and time zones (MySQL 8.4)", () => {
       ],
       baseVersions: { "1": v },
     });
-    expect(await raw(1)).toMatchObject({ d: "2026-09-25", dt: "2026-09-25 18:45:00.000" });
+    expect(await raw(1)).toMatchObject({ d: "2026-09-25", dt: "2026-09-25 18:45:00.000000" });
     expect((await row("1", ds)).cells).toMatchObject({ callDate: "2026-09-25", calledAt: "2026-09-25T13:15:00.000Z" });
   });
 
@@ -250,7 +250,8 @@ describeMysql("SQL view v0.3 hooks and time zones (MySQL 8.4)", () => {
     // Declaring the column as UTC storage flips the interpretation (and drops CONVERT_TZ).
     const utc = make({ naiveDatetimeZone: "UTC" });
     expect((await row("1", utc)).cells.calledAt).toBe("2026-09-24T10:30:00.000Z");
-    expect(await ids({ columnId: "calledAt", operator: "is", value: "2026-09-24" }, utc)).toEqual(["1", "2"].filter((id) => id === "1"));
+    // Stored as UTC, row 2's 23:45Z on the 23rd is 05:15 IST on the 24th: the IST-day filter now sees both.
+    expect(await ids({ columnId: "calledAt", operator: "is", value: "2026-09-24" }, utc)).toEqual(["1", "2"]);
   });
 
   it("#1/#4 the write hook's `values` are bound to the UPDATE; stale versions still conflict", async () => {
