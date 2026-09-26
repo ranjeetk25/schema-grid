@@ -16,6 +16,10 @@ export interface CreateRowsOptions {
   generateId?: () => string;
   /** Applied to hydrated rows before projection (formula evaluation hook). */
   transformRows?: (rows: GridRow[]) => GridRow[];
+  /** Post-read hook (see `RowSource.mapRows`): after `transformRows`, before projection. */
+  mapRows?: (rows: GridRow[]) => Promise<GridRow[]> | GridRow[];
+  /** Zone of naive DATETIME wall times in physical `datetime` columns. Default UTC. */
+  naiveDatetimeZone?: string;
 }
 
 /**
@@ -84,9 +88,11 @@ export async function createRows(
       { ...(v as { id: string; version: number; cells: Record<string, unknown> }), updatedAt: now, updatedBy: ctx.user.id },
       ctx.schema,
       ctx.registry,
+      options.naiveDatetimeZone ? { naiveDatetimeZone: options.naiveDatetimeZone } : {},
     ),
   );
   if (options.transformRows) rows = options.transformRows(rows);
+  if (options.mapRows) rows = await options.mapRows(rows);
   return rows.map((r) => projectRow(r, ctx.schema, access));
 }
 

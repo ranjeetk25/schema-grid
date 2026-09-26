@@ -14,7 +14,14 @@ export {
   jsonCellsResolver,
   resolveColumnExpr,
 } from "../sql/column-expr";
-export { type RowSource, gridRowsSource } from "../query/row-source";
+export { type RowSource, gridRowsSource, mapSourceRows } from "../query/row-source";
+export {
+  type HydrateOptions,
+  dateOnlyFromDriver,
+  hydrateRow,
+  isoToNaiveDatetime,
+  naiveDatetimeToIso,
+} from "../storage/hydrate";
 export { translateFilter } from "../filter/translate-filter";
 export { registerOperatorTranslator } from "../filter/operator-table";
 export type { OperatorTranslator, OperatorTranslatorArgs } from "../filter/types";
@@ -38,12 +45,20 @@ export {
 } from "../datasource/create-drizzle-data-source";
 export { type DrizzleSchemaStoreOptions, createDrizzleSchemaStore } from "../schema-store/drizzle-schema-store";
 export {
+  type ComputedColumn,
   SQL_VIEW_BASE_ALIAS,
   SQL_VIEW_EXTENSION_ALIAS,
+  type SqlViewCellError,
+  type SqlViewColumn,
   type SqlViewContext,
+  type SqlViewCreateError,
+  type SqlViewCreateResult,
   type SqlViewDataSource,
   type SqlViewDataSourceOptions,
+  type SqlViewRowMapper,
+  type SqlViewRowsMapper,
   type SqlViewUpdateInput,
+  type SqlViewUpdateOutcome,
   type SqlViewUpdateResult,
   type SqlViewWriteHooks,
   createSqlViewDataSource,

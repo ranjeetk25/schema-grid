@@ -22,6 +22,19 @@ export interface RowSource {
   projection(access: AccessMap): Record<string, unknown>;
   /** One selected DB row → GridRow (before formula evaluation and `projectRow`). */
   hydrate(dbRow: Record<string, unknown>): GridRow;
+  /**
+   * Post-read hook over a whole page: runs AFTER hydration and formula
+   * evaluation and BEFORE `projectRow` (so it may read hidden cells, e.g. a
+   * storage key, to fill a visible one, e.g. a signed URL). Applied by every
+   * row-returning path: fetch (SQL and formula fallback), the change feed,
+   * `createRows`. Must return one row per input row, in order.
+   */
+  mapRows?(rows: GridRow[]): Promise<GridRow[]> | GridRow[];
+}
+
+/** `source.mapRows` when present, else the rows unchanged. */
+export async function mapSourceRows(source: Pick<RowSource, "mapRows">, rows: GridRow[]): Promise<GridRow[]> {
+  return source.mapRows ? source.mapRows(rows) : rows;
 }
 
 function requireTables(scope: SqlScope): GridTables {
