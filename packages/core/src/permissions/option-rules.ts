@@ -36,15 +36,16 @@ function roleLabel(role: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** `Option “Verified” can only be set by Admin` (roles joined with "or"). */
+/**
+ * `Option “Verified” can only be set by Admin` (roles joined with "or");
+ * `Option “X” can’t be set manually` for an empty role list; `settableMessage`
+ * (v0.3.1) replaces either when the option carries one.
+ */
 export function optionNotSettableMessage(option: Option): string {
+  if (typeof option.settableMessage === "string" && option.settableMessage.trim() !== "") return option.settableMessage;
   const roles = option.settableBy && option.settableBy !== "all" ? option.settableBy.roles.map(roleLabel) : [];
-  const who =
-    roles.length === 0
-      ? "nobody"
-      : roles.length === 1
-        ? roles[0]
-        : `${roles.slice(0, -1).join(", ")} or ${roles[roles.length - 1]}`;
+  if (roles.length === 0) return `Option “${option.label}” can’t be set manually`;
+  const who = roles.length === 1 ? roles[0] : `${roles.slice(0, -1).join(", ")} or ${roles[roles.length - 1]}`;
   return `Option “${option.label}” can only be set by ${who}`;
 }
 

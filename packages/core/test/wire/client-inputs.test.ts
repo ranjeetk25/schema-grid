@@ -30,6 +30,7 @@ describe("client-sent inputs vs wireSchemas[op].input", () => {
     await ds.getOptions?.(C.status, "pa");
     await ds.createOption?.(C.status, "New");
     await ds.lookup?.(C.programs, "x");
+    await ds.getRows?.(["r1", "r2"]);
     await ds.capabilities?.();
     const ops = new Set(sent.map(([op]) => op));
     for (const op of GRID_OPERATIONS) {

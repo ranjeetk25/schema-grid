@@ -116,6 +116,7 @@ const changeBatch = z.object({
   baseVersions: z.record(z.string(), z.number()),
   source: z.enum(["edit", "paste", "fill", "undo", "redo", "import"]),
   meta: changeMeta,
+  resubmitOf: z.string().optional(),
 });
 
 const changeResult = z.object({
@@ -134,6 +135,7 @@ const changeResult = z.object({
   errors: z.array(z.object({ rowId: id, columnId: id, message: z.string() })),
   versions: z.record(z.string(), z.number()).optional(),
   rejected: z.array(cellChange).optional(),
+  rows: z.array(gridRowSchema).optional(),
 });
 
 const columnScope = z.union([z.literal("all"), z.object({ columnIds: z.array(id) })]);
@@ -151,11 +153,24 @@ const capabilities = z.object({
   lookup: z.boolean(),
   export: z.object({ maxRows: z.number().int().positive().optional() }),
   // Optional on the wire: a v0.2 server omits it and `normalizeCapabilities` fills the default.
-  schema: z.object({ read: z.boolean(), write: z.boolean() }).optional(),
+  schema: z
+    .object({
+      read: z.boolean(),
+      write: z.boolean(),
+      // v0.3.1: why `write` is false (optional, informational).
+      reason: z.enum(["forbidden", "no-store", "store-unavailable"]).optional(),
+    })
+    .optional(),
 });
 
 const roleRule = z.union([z.literal("all"), z.object({ roles: z.array(z.string()) })]);
-const option = z.object({ id, label: z.string(), color: z.string().optional(), settableBy: roleRule.optional() });
+const option = z.object({
+  id,
+  label: z.string(),
+  color: z.string().optional(),
+  settableBy: roleRule.optional(),
+  settableMessage: z.string().optional(),
+});
 const linkRef = z.object({ id, label: z.string() });
 
 /**
@@ -230,6 +245,10 @@ export const wireSchemas: WireSchemas = {
   lookup: {
     input: z.object({ columnId: id, search: z.string() }),
     output: z.array(linkRef),
+  },
+  getRows: {
+    input: z.object({ ids: z.array(id) }),
+    output: z.array(gridRowSchema),
   },
   capabilities: {
     input: z.null(),

@@ -84,6 +84,7 @@ describe("handler -> remote round trip matches the data source", () => {
     ["createOption not allowed", async (ds) => ds.createOption?.(C.status, "Nope")],
     ["lookup", async (ds) => ds.lookup?.(C.programs, "data")],
     ["lookup non-link", async (ds) => ds.lookup?.(C.name, "x")],
+    ["getRows", async (ds) => ds.getRows?.(["r1", "nope", "r3"])],
     ["capabilities", async (ds) => ds.capabilities?.()],
     ["fetch after writes", (ds) => ds.fetch(q({ includeTotal: true }))],
   ];
@@ -129,8 +130,10 @@ describe("createRemoteDataSource", () => {
     const all = createRemoteDataSource(transport);
     expect(typeof all.getChanges).toBe("function");
     expect(typeof all.lookup).toBe("function");
-    const some = createRemoteDataSource(transport, { supports: { lookup: false, getChanges: false } });
+    expect(typeof all.getRows).toBe("function");
+    const some = createRemoteDataSource(transport, { supports: { lookup: false, getChanges: false, getRows: false } });
     expect(some.lookup).toBeUndefined();
+    expect(some.getRows).toBeUndefined();
     expect(some.getChanges).toBeUndefined();
     expect(typeof some.getOptions).toBe("function");
     expect(typeof some.createOption).toBe("function");
@@ -157,6 +160,7 @@ describe("createRemoteDataSource", () => {
     await ds.getOptions?.("c", "s");
     await ds.createOption?.("c", "L");
     await ds.lookup?.("c", "s");
+    await ds.getRows?.(["r1"]);
     await ds.capabilities?.();
     expect(transport.mock.calls).toEqual([
       ["fetch", q()],
@@ -168,6 +172,7 @@ describe("createRemoteDataSource", () => {
       ["getOptions", { columnId: "c", search: "s" }],
       ["createOption", { columnId: "c", label: "L" }],
       ["lookup", { columnId: "c", search: "s" }],
+      ["getRows", { ids: ["r1"] }],
       ["capabilities", null],
     ]);
   });

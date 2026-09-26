@@ -93,6 +93,9 @@ export function createRemoteDataSource(
   if (supports("lookup")) {
     ds.lookup = (columnId: string, search: string): Promise<LinkRef[]> => call("lookup", { columnId, search });
   }
+  if (supports("getRows")) {
+    ds.getRows = (ids: string[]): Promise<GridRow[]> => call("getRows", { ids });
+  }
   if (supports("capabilities")) {
     ds.capabilities = (): Promise<DataSourceCapabilities> => call("capabilities", null);
   }

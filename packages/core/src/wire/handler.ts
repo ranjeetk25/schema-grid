@@ -65,6 +65,8 @@ async function invoke(ds: DataSource<GridRow>, op: GridOperation, input: unknown
       const i = input as WireInput<"lookup">;
       return ds.lookup?.(i.columnId, i.search);
     }
+    case "getRows":
+      return ds.getRows?.((input as WireInput<"getRows">).ids);
     case "capabilities":
       // Sources without `capabilities()` get a default computed from what they implement.
       return getDataSourceCapabilities(ds);

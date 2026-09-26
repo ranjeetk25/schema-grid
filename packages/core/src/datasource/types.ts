@@ -18,6 +18,13 @@ export interface DataSource<Row extends GridRow = GridRow> {
   getOptions?(columnId: string, search?: string): Promise<Option[]>;
   createOption?(columnId: string, label: string): Promise<Option>;
   lookup?(columnId: string, search: string): Promise<LinkRef[]>;
+  /**
+   * v0.3.1: the current state of the given rows (projected for the caller,
+   * formulas / computed columns evaluated), skipping ids that do not exist or
+   * that the caller may not see. Order follows `ids`. The client uses it to
+   * refresh rows after a save when `ChangeResult.rows` is absent.
+   */
+  getRows?(ids: string[]): Promise<Row[]>;
   /** What this source supports (see `DataSourceCapabilities`). Absent → `inferCapabilities`. */
   capabilities?(): Promise<DataSourceCapabilities> | DataSourceCapabilities;
 }

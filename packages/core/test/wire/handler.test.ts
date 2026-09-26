@@ -40,6 +40,13 @@ describe("createDataSourceHandler", () => {
     if (res.ok) expect(res.data.rows.map((r) => r.id)).toEqual(["r1", "r2", "r3", "r4", "r5"]);
   });
 
+  it("dispatches getRows to the data source with the ids", async () => {
+    const handle = createDataSourceHandler(source(), { validateOutput: true });
+    const res = await handle("getRows", { ids: ["r2", "r1", "missing"] });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.map((r) => r.id)).toEqual(["r2", "r1"]);
+  });
+
   it("answers deleteRows with null", async () => {
     const ds = source();
     expect(await createDataSourceHandler(ds)("deleteRows", { ids: ["r1"] })).toEqual({ ok: true, data: null });
@@ -84,6 +91,7 @@ describe("createDataSourceHandler", () => {
       ["getOptions", { columnId: "c" }],
       ["createOption", { columnId: "c", label: "x" }],
       ["lookup", { columnId: "c", search: "" }],
+      ["getRows", { ids: ["r1"] }],
     ] as const) {
       expect(await handle(op, input)).toMatchObject({
         ok: false,

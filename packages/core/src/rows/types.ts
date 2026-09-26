@@ -35,6 +35,12 @@ export interface ChangeBatch {
   source: ChangeSource;
   /** v0.3: input-only data for the whole batch (see `CellChange.meta`). */
   meta?: ChangeMeta;
+  /**
+   * v0.3.1: the id of the batch this one re-submits (a conflict "Overwrite",
+   * a retry). Set by the client's edit controller; hosts use it to skip a
+   * confirmation they already gave for the original batch. Passthrough on the wire.
+   */
+  resubmitOf?: string;
 }
 
 export interface ChangeConflict {
@@ -73,6 +79,13 @@ export interface ChangeResult {
    * may say "N changes not saved". Optional: absent means none.
    */
   rejected?: CellChange[];
+  /**
+   * v0.3.1: the refreshed rows for every row id in the batch that still
+   * exists, read AFTER the write — formulas, computed columns, `mapRows` and
+   * projection applied — so the client can show derived values without a
+   * refetch. Optional: sources that omit it leave the client to `getRows`.
+   */
+  rows?: GridRow[];
 }
 
 export interface ChangeFeedEntry<Row extends GridRow = GridRow> {

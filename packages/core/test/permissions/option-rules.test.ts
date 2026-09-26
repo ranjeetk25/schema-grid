@@ -65,6 +65,20 @@ describe("optionNotSettableMessage", () => {
     expect(optionNotSettableMessage(options[1] as Option)).toBe("Option “Verified” can only be set by Admin");
     expect(optionNotSettableMessage(options[2] as Option)).toBe("Option “Rejected” can only be set by Admin or Finance team");
   });
+
+  it("an empty role list means nobody sets it by hand (v0.3.1 copy)", () => {
+    expect(optionNotSettableMessage({ id: "ai", label: "AI verified", settableBy: { roles: [] } })).toBe(
+      "Option “AI verified” can’t be set manually",
+    );
+  });
+
+  it("settableMessage overrides the generated copy everywhere the rule fires", () => {
+    const option: Option = { id: "ai", label: "AI verified", settableBy: { roles: [] }, settableMessage: "Set by the AI pipeline" };
+    expect(optionNotSettableMessage(option)).toBe("Set by the AI pipeline");
+    const select = column("select", { options: [...options, option] });
+    expect(optionRuleViolation(select, "ai", admin)).toBe("Set by the AI pipeline");
+    expect(optionRuleViolation(select, "ai", counsellor)).toBe("Set by the AI pipeline");
+  });
 });
 
 describe("optionRuleViolation", () => {

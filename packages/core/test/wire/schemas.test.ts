@@ -12,6 +12,7 @@ import {
 } from "../../src/wire/operations";
 import { createFixtureSchema } from "../../src/testing/schema";
 import { wireSchemas } from "../../src/wire/schemas";
+import { DEFAULT_CAPABILITIES } from "../../src/datasource/capabilities";
 
 const spec8: FilterNode = {
   op: "and",
@@ -39,6 +40,7 @@ describe("GRID_OPERATIONS", () => {
         "getOptions",
         "createOption",
         "lookup",
+        "getRows",
         "capabilities",
         "getSchema",
         "updateSchema",
@@ -46,7 +48,7 @@ describe("GRID_OPERATIONS", () => {
     );
     expect(new Set(GRID_OPERATIONS).size).toBe(GRID_OPERATIONS.length);
     expect([...OPTIONAL_GRID_OPERATIONS]).toEqual(
-      expect.arrayContaining(["getChanges", "getOptions", "createOption", "lookup"]),
+      expect.arrayContaining(["getChanges", "getOptions", "createOption", "lookup", "getRows"]),
     );
     expect([...GRID_SCHEMA_OPERATIONS].sort()).toEqual(["getSchema", "updateSchema"]);
     for (const op of GRID_SCHEMA_OPERATIONS) expect(GRID_OPERATIONS).toContain(op);
@@ -297,5 +299,54 @@ describe("wireSchemas.capabilities", () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data).toEqual(withSchema);
     expect(wireSchemas.capabilities.output.safeParse({ ...full, schema: { read: true } }).success).toBe(false);
+  });
+});
+
+describe("v0.3.1 wire additions", () => {
+  const row = { id: "r1", version: 2, updatedAt: "2026-09-24T21:00:00.000Z", cells: { name: "A" } };
+
+  it("getRows takes { ids } and answers GridRow[]", () => {
+    expect(wireSchemas.getRows.input.safeParse({ ids: ["r1", "r2"] }).success).toBe(true);
+    expect(wireSchemas.getRows.input.safeParse({ ids: "r1" }).success).toBe(false);
+    expect(wireSchemas.getRows.input.safeParse(null).success).toBe(false);
+    expect(wireSchemas.getRows.output.safeParse([row]).success).toBe(true);
+    expect(wireSchemas.getRows.output.safeParse([{ id: "r1" }]).success).toBe(false);
+  });
+
+  it("ChangeResult.rows passes through and stays optional", () => {
+    const base = { applied: [], conflicts: [], errors: [] };
+    expect(wireSchemas.applyChanges.output.safeParse(base).success).toBe(true);
+    const parsed = wireSchemas.applyChanges.output.safeParse({ ...base, rows: [row] });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.rows).toEqual([row]);
+    expect(wireSchemas.applyChanges.output.safeParse({ ...base, rows: [{ id: "r1" }] }).success).toBe(false);
+  });
+
+  it("ChangeBatch.resubmitOf passes through and stays optional", () => {
+    const batch = { id: "b2", changes: [], baseVersions: {}, source: "edit" as const };
+    expect(wireSchemas.applyChanges.input.safeParse(batch).success).toBe(true);
+    const parsed = wireSchemas.applyChanges.input.safeParse({ ...batch, resubmitOf: "b1" });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.resubmitOf).toBe("b1");
+    expect(wireSchemas.applyChanges.input.safeParse({ ...batch, resubmitOf: 7 }).success).toBe(false);
+  });
+
+  it("Option.settableMessage survives getOptions / createOption", () => {
+    const option = { id: "x", label: "X", settableBy: { roles: [] }, settableMessage: "Set by the AI pipeline" };
+    const parsed = wireSchemas.getOptions.output.safeParse([option]);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data[0]).toEqual(option);
+    expect(wireSchemas.createOption.output.safeParse(option).success).toBe(true);
+  });
+
+  it("capabilities.schema.reason passes through (optional)", () => {
+    const caps = {
+      ...DEFAULT_CAPABILITIES,
+      schema: { read: true, write: false, reason: "store-unavailable" as const },
+    };
+    const parsed = wireSchemas.capabilities.output.safeParse(caps);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.schema).toEqual({ read: true, write: false, reason: "store-unavailable" });
+    expect(wireSchemas.capabilities.output.safeParse({ ...caps, schema: { read: true, write: false, reason: "nope" } }).success).toBe(false);
   });
 });

@@ -12,6 +12,13 @@ export type ColumnScope = "all" | { columnIds: string[] };
  * limits. `changeFeed: "updates-only"` = `getChanges` reports updated rows but
  * never deletions (e.g. an `updated_at` feed).
  */
+/**
+ * v0.3.1: why `schema.write` is false — the caller lacks `updateSchema`
+ * permission, the grid has no schema store, or the store's table is missing /
+ * unreachable (`SchemaStore.available()`). Informational; absent when unknown.
+ */
+export type SchemaWriteReason = "forbidden" | "no-store" | "store-unavailable";
+
 export interface DataSourceCapabilities {
   /** Largest `page.limit` the source honours; bigger requests are clamped. */
   maxPageSize: number;
@@ -32,7 +39,7 @@ export interface DataSourceCapabilities {
    * answers from its `permission` hook and schema store. The workbench hides
    * every column-editing entry point when `write` is false.
    */
-  schema: { read: boolean; write: boolean };
+  schema: { read: boolean; write: boolean; reason?: SchemaWriteReason };
   /**
    * v0.3: the order the source applies when a query has `sort: []` (also the
    * keyset paging tie-break order). Informational for clients: the grid may

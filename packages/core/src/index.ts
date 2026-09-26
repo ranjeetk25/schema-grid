@@ -65,6 +65,7 @@ export {
   type DataSourceCapabilities,
   type EffectiveCapabilities,
   type EffectiveColumnCapabilities,
+  type SchemaWriteReason,
 } from "./datasource/capabilities";
 export type { SchemaStore } from "./schema/store";
 export type { GridEventName, GridEvents } from "./events/types";

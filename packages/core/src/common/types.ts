@@ -15,6 +15,11 @@ export interface Option {
    * ("Option “Verified” can only be set by Admin"). See `resolveSettableOptions`.
    */
   settableBy?: RoleRule;
+  /**
+   * v0.3.1: the message shown when a user may not set this option, in place of
+   * the generated "Option “X” can only be set by …" / "can’t be set manually".
+   */
+  settableMessage?: string;
 }
 
 /** `"all"` or an explicit role list (column permissions, `Option.settableBy`). */

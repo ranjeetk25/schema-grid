@@ -40,17 +40,49 @@ describe("in-memory applyChanges", () => {
   it("applies a change on a matching base version and bumps the version", async () => {
     const ds = source();
     const res = await ds.applyChanges(batch([change("r1", C.name, "Asha V.")], { r1: 1 }));
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       applied: [{ rowId: "r1", columnId: C.name, prev: "Asha Verma", next: "Asha V." }],
       conflicts: [],
       errors: [],
       versions: { r1: 2 },
     });
+    // v0.3.1: the refreshed row (formulas materialised) rides along.
+    expect(res.rows?.map((r) => [r.id, r.version, r.cells.name])).toEqual([["r1", 2, "Asha V."]]);
     const r1 = await row(ds, "r1");
     expect(r1?.version).toBe(2);
     expect(r1?.cells.name).toBe("Asha V.");
     expect(r1?.updatedBy).toEqual(actor);
     expect(r1?.updatedAt).toBe(FIXTURE_NOW);
+  });
+
+  it("returns every batch row refreshed after the write, formulas recomputed and hidden cells stripped", async () => {
+    const ds = source("counsellor");
+    const res = await ds.applyChanges(batch([change("r1", C.paid, 30000), change("r2", C.name, "Bee")], { r1: 1, r2: 1 }));
+    expect(res.errors).toEqual([]);
+    const byId = new Map(res.rows?.map((r) => [r.id, r]));
+    expect([...byId.keys()].sort()).toEqual(["r1", "r2"]);
+    expect(byId.get("r1")?.cells.paid).toBe(30000);
+    expect(byId.get("r1")?.cells.balance).toBe(20000); // {fee} - {paid} recomputed in the same answer
+    expect(byId.get("r1")?.version).toBe(2);
+    // A column the counsellor cannot read never appears in the refreshed row.
+    const hidden = (await ds.fetch(all)).rows.find((r) => r.id === "r1")?.cells;
+    expect(Object.keys(byId.get("r1")?.cells ?? {}).sort()).toEqual(Object.keys(hidden ?? {}).sort());
+  });
+
+  it("rows that were only conflicts / errors are still returned, in their current state", async () => {
+    const ds = source();
+    await ds.applyChanges(batch([change("r1", C.name, "Server edit")], { r1: 1 }));
+    const res = await ds.applyChanges(batch([change("r1", C.name, "Stale"), change("nope", C.name, "x")], { r1: 1 }));
+    expect(res.rows?.map((r) => [r.id, r.version, r.cells.name])).toEqual([["r1", 2, "Server edit"]]);
+  });
+
+  it("getRows answers the requested rows (projected, formulas materialised), skipping unknown ids", async () => {
+    const ds = source("counsellor");
+    const rows = await ds.getRows(["r3", "missing", "r1"]);
+    expect(rows.map((r) => r.id)).toEqual(["r3", "r1"]);
+    expect(rows[1]?.cells.balance).toBe(30000);
+    const fetched = (await ds.fetch(all)).rows.find((r) => r.id === "r1");
+    expect(rows[1]).toEqual(fetched);
   });
 
   it("turns a version mismatch into a conflict, not an error", async () => {

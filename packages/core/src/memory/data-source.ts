@@ -109,6 +109,16 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
 
   let optionSeq = 0;
 
+  /** The current state of `ids` (existing ones, in order), formulas materialised and projected for the user. */
+  function readRows(ids: string[]): Row[] {
+    const keys = readableKeys();
+    const e = env();
+    return ids.flatMap((id) => {
+      const stored = store.get(id);
+      return stored ? [projectRow(materialized(stored, schema, e), keys)] : [];
+    });
+  }
+
   return {
     async fetch(query: GridQuery): Promise<QueryResult<Row>> {
       const ctx = queryContext();
@@ -120,7 +130,12 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     },
     capabilities: () => structuredClone(caps),
     async applyChanges(batch: ChangeBatch): Promise<ChangeResult> {
-      return applyChangeBatch(batch, mutationDeps());
+      const result = applyChangeBatch(batch, mutationDeps());
+      const ids = [...new Set((Array.isArray(batch?.changes) ? batch.changes : []).map((c) => c.rowId))];
+      return { ...result, rows: readRows(ids) };
+    },
+    async getRows(ids: string[]): Promise<Row[]> {
+      return readRows(ids);
     },
     async createRows(partials: RowPartial<Row>[]): Promise<Row[]> {
       const keys = readableKeys();

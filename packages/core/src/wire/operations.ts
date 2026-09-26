@@ -20,6 +20,7 @@ export const GRID_OPERATIONS = [
   "getOptions",
   "createOption",
   "lookup",
+  "getRows",
   "capabilities",
   "getSchema",
   "updateSchema",
@@ -32,7 +33,7 @@ export type GridOperation = (typeof GRID_OPERATIONS)[number];
  * `capabilities` is optional on a `DataSource` too, but the handler answers
  * it with `inferCapabilities` instead.
  */
-export const OPTIONAL_GRID_OPERATIONS = ["getChanges", "getOptions", "createOption", "lookup"] as const;
+export const OPTIONAL_GRID_OPERATIONS = ["getChanges", "getOptions", "createOption", "lookup", "getRows"] as const;
 
 export type OptionalGridOperation = (typeof OPTIONAL_GRID_OPERATIONS)[number];
 
@@ -69,6 +70,8 @@ export interface GridWireContract {
   getOptions: { input: { columnId: string; search?: string }; output: Option[] };
   createOption: { input: { columnId: string; label: string }; output: Option };
   lookup: { input: { columnId: string; search: string }; output: LinkRef[] };
+  /** v0.3.1: rows by id (projected, formulas evaluated); unknown ids are skipped. */
+  getRows: { input: { ids: string[] }; output: GridRow[] };
   capabilities: { input: null; output: DataSourceCapabilities };
   /** Grid-level: the grid's current schema. Input `null`. */
   getSchema: { input: null; output: GridSchema };

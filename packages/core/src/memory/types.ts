@@ -39,6 +39,8 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends DataS
   setSchema(schema: GridSchema): void;
   /** Deep copies of all stored rows (unprojected, formulas computed now). */
   snapshot(): Row[];
+  /** Always implemented here (v0.3.1). */
+  getRows(ids: string[]): Promise<Row[]>;
 }
 
 export type InMemoryQueryErrorCode =

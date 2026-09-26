@@ -15,4 +15,11 @@ import type { GridSchema } from "./types";
 export interface SchemaStore {
   get(gridId: string): Promise<GridSchema | null>;
   put(gridId: string, schema: GridSchema): Promise<void>;
+  /**
+   * v0.3.1: whether the store can currently persist (its table exists, the
+   * backend is reachable). Absent → assumed available. A grid registry reports
+   * `capabilities.schema.write: false, reason: "store-unavailable"` and answers
+   * `updateSchema` with `UNSUPPORTED_OPERATION` while this is false.
+   */
+  available?(): Promise<boolean>;
 }
