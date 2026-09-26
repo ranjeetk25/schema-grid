@@ -116,3 +116,68 @@ describe("createDrizzleSchemaStore: missing table (v0.3)", () => {
     expect(rejection === boom || (rejection as { cause?: unknown })?.cause === boom).toBe(true);
   });
 });
+
+describe("createDrizzleSchemaStore.available (v0.3.1)", () => {
+  const noSuchTable = () =>
+    Object.assign(new Error("Table 'app.grid_schemas' doesn't exist"), { errno: 1146, code: "ER_NO_SUCH_TABLE" });
+
+  it("probes the table with a zero-row select and answers true when it exists", async () => {
+    const { store, calls } = storeOver(() => []);
+    await expect(store.available?.()).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sql.toLowerCase()).toBe("select 1 from `grid_schemas` limit 0");
+  });
+
+  it("answers false on ER_NO_SUCH_TABLE without throwing", async () => {
+    const { store } = storeOver(() => {
+      throw noSuchTable();
+    });
+    await expect(store.available?.()).resolves.toBe(false);
+  });
+
+  it("caches true for the store's lifetime", async () => {
+    const { store, calls } = storeOver(() => []);
+    await store.available?.();
+    await store.available?.();
+    await store.available?.();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("re-checks while false, so a table created later is picked up", async () => {
+    let exists = false;
+    const { store, calls } = storeOver(() => {
+      if (!exists) throw noSuchTable();
+      return [];
+    });
+    await expect(store.available?.()).resolves.toBe(false);
+    await expect(store.available?.()).resolves.toBe(false);
+    expect(calls).toHaveLength(2);
+    exists = true;
+    await expect(store.available?.()).resolves.toBe(true);
+    await expect(store.available?.()).resolves.toBe(true);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("a connection error rejects and is not cached", async () => {
+    const boom = new Error("connection lost");
+    let broken = true;
+    const { store, calls } = storeOver(() => {
+      if (broken) throw boom;
+      return [];
+    });
+    const rejection = await store.available?.().then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(rejection === boom || (rejection as { cause?: unknown })?.cause === boom).toBe(true);
+    broken = false;
+    await expect(store.available?.()).resolves.toBe(true);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("concurrent probes share one in-flight query", async () => {
+    const { store, calls } = storeOver(() => []);
+    await Promise.all([store.available?.(), store.available?.(), store.available?.()]);
+    expect(calls).toHaveLength(1);
+  });
+});

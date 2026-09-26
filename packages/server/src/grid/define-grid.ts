@@ -18,7 +18,17 @@ export interface GridDefinitionInput<Ctx = undefined> {
   source: (ctx: Ctx, info: GridSourceInfo) => DataSource<GridRow> | Promise<DataSource<GridRow>>;
   /** Per-operation gate (all operations incl. `getSchema` / `updateSchema`); false → `PERMISSION_DENIED` 403. Default: allow. */
   permission?: (ctx: Ctx, op: GridOperation) => boolean | Promise<boolean>;
-  /** Persists `updateSchema`. Without one, `updateSchema` answers `UNSUPPORTED_OPERATION` 501. */
+  /**
+   * Extra gate on schema writes only, consulted besides `permission(ctx, "updateSchema")`
+   * (v0.3.1): false → `capabilities.schema.write: false, reason: "forbidden"` and
+   * `updateSchema` → `PERMISSION_DENIED` 403. Default: allow.
+   */
+  schemaWritable?: (ctx: Ctx) => boolean | Promise<boolean>;
+  /**
+   * Persists `updateSchema`. Without one — or while `schemaStore.available()` is false —
+   * `updateSchema` answers `UNSUPPORTED_OPERATION` 501 (`details.reason: "schema-store-unavailable"`)
+   * and the grid serves `schema` read-only.
+   */
   schemaStore?: SchemaStore;
   /**
    * Runs after validation and BEFORE the new schema is persisted (e.g. the DDL

@@ -309,7 +309,7 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
   it("capabilities.schema: counsellor cannot change the leads schema, admin can (v0.3)", async () => {
     const caps = async (roles: string) =>
       ((await (await post("/grid/leads/capabilities", null, { "x-roles": roles })).json()) as { data: { schema: unknown } }).data.schema;
-    expect(await caps("counsellor")).toEqual({ read: true, write: false });
+    expect(await caps("counsellor")).toEqual({ read: true, write: false, reason: "forbidden" });
     expect(await caps("admin")).toEqual({ read: true, write: true });
   });
 

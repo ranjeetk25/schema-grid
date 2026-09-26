@@ -392,13 +392,13 @@ describe("capabilities.schema (v0.3)", () => {
     const registry = createGridRegistry([
       defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: createMemorySchemaStore(), permission, source: () => memory("admin") }),
     ]);
-    expect((await caps(registry, "counsellor")).schema).toEqual({ read: true, write: false });
+    expect((await caps(registry, "counsellor")).schema).toEqual({ read: true, write: false, reason: "forbidden" });
     expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: true });
   });
 
-  it("no schema store → write is false even for an admin; no permission hook → read true", async () => {
+  it("no schema store → write is false even for an admin (reason no-store); no permission hook → read true", async () => {
     const registry = createGridRegistry([defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), source: () => memory("admin") })]);
-    expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: false });
+    expect((await caps(registry, "admin")).schema).toEqual({ read: true, write: false, reason: "no-store" });
   });
 
   it("overrides whatever the source reported and evaluates each permission at most once per request", async () => {
@@ -417,5 +417,190 @@ describe("capabilities.schema (v0.3)", () => {
     permission.mockClear();
     await registry.handle("a", "fetch", q(), { role: "admin" });
     expect(permission.mock.calls.map((c) => c[1])).toEqual(["fetch"]);
+  });
+});
+
+describe("schema store availability (v0.3.1: schema.reason, schemaWritable)", () => {
+  type SchemaCaps = { schema: { read: boolean; write: boolean; reason?: string } };
+  const caps = async (registry: ReturnType<typeof createGridRegistry<Ctx>>, role: Role = "admin") => {
+    const res = await registry.handle("a", "capabilities", null, { role });
+    if (!res.ok) throw new Error(res.error.code);
+    return (res.data as SchemaCaps).schema;
+  };
+  /** A memory store whose `available()` answers `flag` and counts its calls. */
+  const storeWith = (flag: () => boolean) => {
+    const inner = createMemorySchemaStore();
+    const available = vi.fn(async () => flag());
+    const get = vi.fn(inner.get);
+    return { store: { ...inner, get, available }, available, get };
+  };
+
+  it("write true → no reason key at all", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: createMemorySchemaStore(), source: () => memory("admin") }),
+    ]);
+    const schema = await caps(registry);
+    expect(schema).toEqual({ read: true, write: true });
+    expect("reason" in schema).toBe(false);
+  });
+
+  it("store.available() false → write false, reason store-unavailable (permission true)", async () => {
+    const { store } = storeWith(() => false);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, source: () => memory("admin") }),
+    ]);
+    expect(await caps(registry)).toEqual({ read: true, write: false, reason: "store-unavailable" });
+  });
+
+  it("a store without available() is assumed available", async () => {
+    const inner = createMemorySchemaStore();
+    const store = { get: inner.get, put: inner.put };
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, source: () => memory("admin") }),
+    ]);
+    expect(await caps(registry)).toEqual({ read: true, write: true });
+  });
+
+  it("schemaWritable(ctx) false → write false, reason forbidden; it sees ctx", async () => {
+    const schemaWritable = vi.fn((ctx: Ctx) => ctx.role === "admin");
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: createMemorySchemaStore(),
+        schemaWritable,
+        source: () => memory("admin"),
+      }),
+    ]);
+    expect(await caps(registry, "counsellor")).toEqual({ read: true, write: false, reason: "forbidden" });
+    expect(await caps(registry, "admin")).toEqual({ read: true, write: true });
+    expect(schemaWritable).toHaveBeenCalledWith({ role: "counsellor" });
+  });
+
+  it("schemaWritable may be async", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: createMemorySchemaStore(),
+        schemaWritable: async () => false,
+        source: () => memory("admin"),
+      }),
+    ]);
+    expect(await caps(registry)).toEqual({ read: true, write: false, reason: "forbidden" });
+  });
+
+  it("an unavailable store outranks a forbidden caller in the capabilities reason", async () => {
+    const { store } = storeWith(() => false);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: store,
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        source: () => memory("admin"),
+      }),
+    ]);
+    expect(await caps(registry, "counsellor")).toEqual({ read: true, write: false, reason: "store-unavailable" });
+  });
+
+  it("updateSchema on an unavailable store → 501 UNSUPPORTED_OPERATION, details.reason schema-store-unavailable, message names the grid and the DDL", async () => {
+    const { store } = storeWith(() => false);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, source: () => memory("admin") }),
+    ]);
+    const res = await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "admin" });
+    expect(res).toMatchObject({
+      ok: false,
+      status: 501,
+      error: { code: "UNSUPPORTED_OPERATION", details: { reason: "schema-store-unavailable" } },
+    });
+    const message = res.ok ? "" : res.error.message;
+    expect(message).toContain('"a"');
+    expect(message).toContain("createGridSchemasTableDDL");
+    expect(await store.get("a")).toBeNull();
+  });
+
+  it("updateSchema without a store → 501 with the same details.reason", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), source: () => memory("admin") }),
+    ]);
+    expect(await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "admin" })).toMatchObject({
+      status: 501,
+      error: { code: "UNSUPPORTED_OPERATION", details: { reason: "schema-store-unavailable" } },
+    });
+  });
+
+  it("updateSchema with schemaWritable false → 403 PERMISSION_DENIED (like permission)", async () => {
+    const store = createMemorySchemaStore();
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: store,
+        schemaWritable: (ctx) => ctx.role === "admin",
+        source: () => memory("admin"),
+      }),
+    ]);
+    expect(await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "counsellor" })).toMatchObject({
+      status: 403,
+      error: { code: "PERMISSION_DENIED" },
+    });
+    expect(await store.get("a")).toBeNull();
+    expect((await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "admin" })).ok).toBe(true);
+  });
+
+  it("check order: permission before availability, availability before input validation", async () => {
+    const { store, available } = storeWith(() => false);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: store,
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        source: () => memory("admin"),
+      }),
+    ]);
+    expect(await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "counsellor" })).toMatchObject({
+      status: 403,
+    });
+    expect(available).not.toHaveBeenCalled();
+    expect(await registry.handle("a", "updateSchema", { columns: 1 }, { role: "admin" })).toMatchObject({
+      status: 501,
+      error: { code: "UNSUPPORTED_OPERATION" },
+    });
+  });
+
+  it("available() is evaluated at most once per request; the schema store is not read while unavailable", async () => {
+    const { store, available, get } = storeWith(() => false);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, source: () => memory("admin") }),
+    ]);
+    await caps(registry);
+    expect(available).toHaveBeenCalledTimes(1);
+    available.mockClear();
+    await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "admin" });
+    expect(available).toHaveBeenCalledTimes(1);
+    available.mockClear();
+    expect(await registry.handle("a", "getSchema", null, { role: "admin" })).toEqual({ ok: true, data: createFixtureSchema() });
+    expect(available).toHaveBeenCalledTimes(1);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("a store that becomes available is picked up on the next request", async () => {
+    let up = false;
+    const { store, get } = storeWith(() => up);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, source: () => memory("admin") }),
+    ]);
+    expect((await caps(registry)).write).toBe(false);
+    up = true;
+    expect(await caps(registry)).toEqual({ read: true, write: true });
+    expect((await registry.handle("a", "updateSchema", withColumn(createFixtureSchema()), { role: "admin" })).ok).toBe(true);
+    expect(get).toHaveBeenCalled();
+  });
+
+  it("createMemorySchemaStore().available() → true", async () => {
+    await expect(createMemorySchemaStore().available()).resolves.toBe(true);
   });
 });

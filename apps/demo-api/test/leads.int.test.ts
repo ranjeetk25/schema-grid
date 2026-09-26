@@ -178,7 +178,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
 
   it("capabilities.schema (v0.3): a counsellor sees write:false, an admin write:true (leads has a schema store)", async () => {
     const counsellor = await op<DataSourceCapabilities>("leads", "capabilities", null, { "x-roles": "counsellor" });
-    expect(counsellor.data.schema).toEqual({ read: true, write: false });
+    expect(counsellor.data.schema).toEqual({ read: true, write: false, reason: "forbidden" });
     const admin = await op<DataSourceCapabilities>("leads", "capabilities", null, { "x-roles": "admin" });
     expect(admin.data.schema).toEqual({ read: true, write: true });
   });

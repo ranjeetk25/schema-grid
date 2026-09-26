@@ -25,6 +25,8 @@ describeMysql("drizzle schema store (MySQL 8.4)", () => {
   let mysql: StartedMysql;
   let clock = T1;
   let store: SchemaStore;
+  /** Built BEFORE the DDL ran, to watch `available()` flip. */
+  let early: SchemaStore;
   const exec = (s: string) => mysql.db.execute(s as never);
   const meta = async (gridId: string) => {
     const [rows] = (await mysql.db.execute(
@@ -36,6 +38,9 @@ describeMysql("drizzle schema store (MySQL 8.4)", () => {
   beforeAll(async () => {
     mysql = await startMysql();
     await exec(`DROP TABLE IF EXISTS \`${TABLE}\``);
+    early = createDrizzleSchemaStore({ db: mysql.db, table: TABLE });
+    expect(await early.available?.()).toBe(false);
+    expect(await early.available?.()).toBe(false); // re-probed while false, still false
     await exec(createGridSchemasTableDDL({ table: TABLE }).sql);
     // Re-running the DDL is harmless (IF NOT EXISTS).
     await exec(createGridSchemasTableDDL({ table: TABLE }).sql);
@@ -43,6 +48,16 @@ describeMysql("drizzle schema store (MySQL 8.4)", () => {
   }, 180_000);
   afterAll(async () => {
     await mysql?.stop();
+  });
+
+  it("v0.3.1: available() is false before the DDL, true after it, and true is cached", async () => {
+    mysql.queries.length = 0;
+    await expect(early.available?.()).resolves.toBe(true);
+    await expect(early.available?.()).resolves.toBe(true);
+    const probes = mysql.queries.filter((q) => /^select 1 from/i.test(q.sql));
+    expect(probes).toHaveLength(1);
+    expect(probes[0]?.sql.toLowerCase()).toBe(`select 1 from \`${TABLE}\` limit 0`);
+    await expect(store.available?.()).resolves.toBe(true);
   });
 
   it("get of an unknown grid → null", async () => {
@@ -80,6 +95,9 @@ describeMysql("drizzle schema store (MySQL 8.4)", () => {
       code: "MISSING_TABLE",
       details: { table: TABLE, ddl: "createGridSchemasTableDDL" },
     });
+    // `available()` stays true once confirmed (per-instance cache); a fresh store sees the drop.
+    await expect(store.available?.()).resolves.toBe(true);
+    await expect(createDrizzleSchemaStore({ db: mysql.db, table: TABLE }).available?.()).resolves.toBe(false);
     await exec(createGridSchemasTableDDL({ table: TABLE }).sql);
     await expect(store.get("leads")).resolves.toBeNull();
   });

@@ -4,6 +4,8 @@ import type { GridSchema, SchemaStore } from "../internal/core";
 export type { SchemaStore };
 
 export interface MemorySchemaStore extends SchemaStore {
+  /** Always true: the process-local store can always persist. */
+  available(): Promise<boolean>;
   /** Forgets every stored schema (tests, dev resets). */
   clear(): void;
 }
@@ -25,6 +27,9 @@ export function createMemorySchemaStore(initial: Record<string, GridSchema> = {}
     },
     async put(gridId, schema) {
       schemas.set(gridId, copy(schema));
+    },
+    async available() {
+      return true;
     },
     clear() {
       schemas.clear();

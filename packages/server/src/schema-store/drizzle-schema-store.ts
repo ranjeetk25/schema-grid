@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { datetime, int, json, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import type { GridDb } from "../changes/db";
-import { SchemaGridServerError, guardMissingTable } from "../errors";
+import { SchemaGridServerError, guardMissingTable, isNoSuchTableError } from "../errors";
 import type { GridSchema, SchemaStore } from "../internal/core";
 import { assertSafeColumnKey } from "../storage/keys";
 
@@ -48,7 +48,10 @@ function parseSchema(value: unknown): GridSchema {
  * the last write wins. Schema contents are not validated here (`defineGrid`
  * validates before calling `put`); grid ids must be 1–64 characters
  * (`INVALID_GRID_ID` otherwise). A missing table is a `MissingTableError`
- * (`MISSING_TABLE`) naming `createGridSchemasTableDDL`.
+ * (`MISSING_TABLE`) naming `createGridSchemasTableDDL`; `available()` (v0.3.1)
+ * answers false instead of throwing for that case, caching `true` for the
+ * store's lifetime and re-probing while false (a connection error rejects and
+ * is not cached).
  */
 export function createDrizzleSchemaStore(options: DrizzleSchemaStoreOptions): SchemaStore {
   assertSafeColumnKey(options.table);
@@ -57,7 +60,30 @@ export function createDrizzleSchemaStore(options: DrizzleSchemaStoreOptions): Sc
   const now = options.now ?? (() => new Date());
   const known = { [options.table]: "createGridSchemasTableDDL" } as const;
 
+  let confirmed = false;
+  let probe: Promise<boolean> | undefined;
+  const probeTable = async (): Promise<boolean> => {
+    try {
+      await db.execute(sql`select 1 from ${table} limit 0`);
+      confirmed = true;
+      return true;
+    } catch (err) {
+      if (isNoSuchTableError(err)) return false;
+      throw err;
+    }
+  };
+
   return {
+    async available() {
+      if (confirmed) return true;
+      if (!probe) {
+        probe = probeTable().finally(() => {
+          probe = undefined;
+        });
+      }
+      return probe;
+    },
+
     get: (gridId) =>
       guardMissingTable(known, async () => {
         assertGridId(gridId);
