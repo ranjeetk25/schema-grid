@@ -1,4 +1,5 @@
 import { type GridRouterAdapter, runRequest, toHttpResponse } from "./adapter";
+import { normalizeRequestBody } from "./body";
 
 /** The slice of an Express (or Express-compatible) request the handler reads. */
 export interface ExpressLikeRequest {
@@ -37,7 +38,7 @@ export function toExpressHandler<Ctx = undefined, Req extends ExpressLikeRequest
   const context = options.context;
   return async (req, res) => {
     const op = req.params?.[opParam] ?? "";
-    const result = await runRequest(adapter, op, req.body, context ? () => context(req) : undefined);
+    const result = await runRequest(adapter, op, normalizeRequestBody(op, req.body), context ? () => context(req) : undefined);
     const { status, body } = toHttpResponse(result);
     res.status(status).json(body);
   };

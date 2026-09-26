@@ -25,7 +25,7 @@ function fakeServer(caps?: Partial<DataSourceCapabilities>) {
   const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const [gridId, op] = String(url).split("/").slice(-2);
     if (gridId !== "admissions") return json(404, { error: { code: "UNKNOWN_GRID", message: "nope" } });
-    const input = JSON.parse(String(init?.body)) as unknown;
+    const input = init?.body === undefined ? null : (JSON.parse(String(init.body)) as unknown);
     if (op === "getSchema") return json(200, { data: schema });
     if (op === "updateSchema") {
       const next = input as GridSchema;
@@ -66,12 +66,14 @@ describe("createGridClient", () => {
     expect(String(fetch.mock.calls[0]?.[0])).toBe("/grid/a%20b/getSchema");
   });
 
-  it("getSchema POSTs null and validates the answer; updateSchema returns the bumped schema", async () => {
+  it("getSchema POSTs with no body (the wire `null`) and validates the answer; updateSchema returns the bumped schema", async () => {
     const { fetch } = fakeServer();
     const client = createGridClient({ baseUrl: "/grid", gridId: "admissions", fetch });
     const schema = await client.getSchema();
     expect(schema).toEqual(createFixtureSchema());
-    expect(JSON.parse(String((fetch.mock.calls[0]?.[1] as RequestInit).body))).toBeNull();
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(init.body).toBeUndefined();
+    expect(init.headers).not.toHaveProperty("content-type");
     const renamed = { ...schema, columns: schema.columns.map((c, i) => (i === 0 ? { ...c, label: "X" } : c)) };
     const saved = await client.updateSchema(renamed);
     expect(saved.schemaVersion).toBe(schema.schemaVersion + 1);
@@ -107,7 +109,7 @@ describe("createGridClient", () => {
       changeFeed: "updates-only",
     });
     expect(String(fetch.mock.calls[0]?.[0])).toBe("/grid/admissions/capabilities");
-    expect(JSON.parse(String((fetch.mock.calls[0]?.[1] as RequestInit).body))).toBeNull();
+    expect((fetch.mock.calls[0]?.[1] as RequestInit).body).toBeUndefined();
   });
 
   it("capabilities() rejects a malformed answer with OUTPUT_INVALID", async () => {

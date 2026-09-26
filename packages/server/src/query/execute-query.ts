@@ -4,7 +4,7 @@ import { encodeCursor } from "../pagination/cursor";
 import { cursorFromDbRow } from "../pagination/keyset";
 import { trimPage } from "../pagination/offset";
 import type { BuiltQuery, GridSqlScope } from "./build-query";
-import { rowSourceOf } from "./row-source";
+import { mapSourceRows, rowSourceOf } from "./row-source";
 
 export interface ExecuteQueryOptions {
   /**
@@ -31,7 +31,8 @@ export async function executeQuery(
   const source = rowSourceOf(scope);
   const hydrated = page.map((r) => source.hydrate(r as unknown as Record<string, unknown>));
   const transformed = options.transformRows ? options.transformRows(hydrated) : hydrated;
-  const rows = transformed.map((r) => projectRow(r, scope.ctx.schema, built.access));
+  const mapped = await mapSourceRows(source, transformed);
+  const rows = mapped.map((r) => projectRow(r, scope.ctx.schema, built.access));
 
   const result: QueryResult<GridRow> = { rows };
   if (hasMore) {

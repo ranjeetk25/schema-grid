@@ -159,3 +159,61 @@ export function firstDayStartingAtOrAfter(ms: number, tz: string): string {
   const day = toLocalDate(new Date(ms).toISOString(), tz);
   return localDayStartMs(day, tz) >= ms ? day : addDaysYmd(day, 1);
 }
+
+// ---- naive (zone-less) DATETIME wall times ---------------------------------------
+
+const NAIVE_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?$/;
+
+export interface WallTime extends Ymd {
+  hour: number;
+  minute: number;
+  second: number;
+  millisecond: number;
+}
+
+/** `YYYY-MM-DD HH:MM[:SS[.fff]]` (or with `T`) → wall-clock parts, or undefined when malformed. */
+export function parseNaiveDatetime(s: string): WallTime | undefined {
+  const m = NAIVE_DATETIME_RE.exec(s.trim());
+  if (!m) return undefined;
+  const ymd = parseYmd(`${m[1]}-${m[2]}-${m[3]}`);
+  if (!ymd) return undefined;
+  const hour = Number(m[4]);
+  const minute = Number(m[5]);
+  const second = m[6] ? Number(m[6]) : 0;
+  if (hour > 23 || minute > 59 || second > 59) return undefined;
+  const millisecond = m[7] ? Number(m[7].padEnd(3, "0").slice(0, 3)) : 0;
+  return { ...ymd, hour, minute, second, millisecond };
+}
+
+/**
+ * Wall-clock time in `tz` → UTC ISO instant. Same DST policy as
+ * `localDayStartUtc`: a skipped wall time resolves to the first existing
+ * instant after the gap; a repeated one to its first occurrence.
+ */
+export function wallTimeToUtcIso(w: WallTime, tz: string): string {
+  const wall = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second, w.millisecond);
+  let guess = wall - offsetMs(wall, tz);
+  for (let i = 0; i < 3; i++) {
+    const next = wall - offsetMs(guess, tz);
+    if (next === guess) break;
+    guess = Math.max(guess, next);
+  }
+  return new Date(guess).toISOString();
+}
+
+/** UTC ISO instant → `YYYY-MM-DD HH:MM:SS.fff` wall time in `tz` (a naive `DATETIME(3)` literal). */
+export function utcIsoToWallTime(iso: string, tz: string): string {
+  const d = toDate(iso);
+  const p = zonedParts(d, tz);
+  return `${formatYmd(p)} ${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}.${pad(d.getUTCMilliseconds(), 3)}`;
+}
+
+/** Whether `tz` keeps one UTC offset all year (no DST), and that offset as `±HH:MM` (MySQL `CONVERT_TZ` form). */
+export function fixedUtcOffset(tz: string, year = new Date().getUTCFullYear()): string | undefined {
+  const jan = offsetMs(Date.UTC(year, 0, 1), tz);
+  const jul = offsetMs(Date.UTC(year, 6, 1), tz);
+  if (jan !== jul) return undefined;
+  const sign = jan < 0 ? "-" : "+";
+  const abs = Math.abs(jan) / 60_000;
+  return `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}

@@ -102,7 +102,11 @@ Override or extend with `createDataSourceHandler(ds, { mapError })`.
 
 Used by `toExpressHandler`, `toLambdaHandler`, `toHttpResponse` and `createHttpDataSource`:
 
-- `POST {base}/{op}` with a JSON body = the op input (`content-type: application/json`).
+- `POST {base}/{op}` with a JSON body = the op input (`content-type: application/json`). A `null` input
+  (`capabilities`, `getSchema`) is sent as a **body-less** POST without `content-type` (v0.3 client); servers
+  read a missing / empty / `{}` / raw `"null"` body as `null` for those ops only. Objects and arrays are sent
+  as-is, so `express.json()` in strict mode accepts them; use `express.json({ strict: false })` on the grid
+  path for older clients that post a bare `null`.
 - Success: `200 { "data": <output> }`.
 - Failure: `<status from the table> { "error": WireError }`.
 

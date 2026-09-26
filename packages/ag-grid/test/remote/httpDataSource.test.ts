@@ -16,7 +16,7 @@ function serverFetch() {
   const handle = createDataSourceHandler(ds);
   return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     const op = String(url).split("/").pop() ?? "";
-    const result = await handle(op, JSON.parse(String(init?.body)));
+    const result = await handle(op, init?.body === undefined ? null : JSON.parse(String(init.body)));
     return result.ok ? jsonResponse(200, { data: result.data }) : jsonResponse(result.status, { error: result.error });
   });
 }
@@ -108,6 +108,27 @@ describe("createHttpDataSource", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("sends null inputs (capabilities) with NO body and no content-type, so strict JSON parsers accept the request", async () => {
+    const fetch = vi.fn(async () => jsonResponse(200, { data: {} }));
+    const ds = createHttpDataSource({ baseUrl: "/g", fetch, headers: () => ({ "x-user": "u1" }), validateOutput: false });
+    await ds.capabilities?.();
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/g/capabilities");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(init.headers).toEqual({ accept: "application/json", "x-user": "u1" });
+    // Arrays and objects keep travelling as JSON bodies.
+    await ds.fetch(q());
+    const [, second] = fetch.mock.calls[1] as unknown as [string, RequestInit];
+    expect(second.headers).toMatchObject({ "content-type": "application/json" });
+    expect(JSON.parse(String(second.body))).toEqual(q());
+  });
+
+  it("round-trips capabilities against the core handler with a body-less request", async () => {
+    const ds = createHttpDataSource({ baseUrl: "/grid", fetch: serverFetch() });
+    expect(await ds.capabilities?.()).toMatchObject({ maxPageSize: expect.any(Number) });
   });
 
   it("re-exports createRemoteDataSource for custom transports (e.g. a tRPC client)", async () => {

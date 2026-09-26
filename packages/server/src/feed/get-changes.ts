@@ -11,6 +11,10 @@ import { type DbRow, hydrateRow } from "../storage/hydrate";
 export interface GetChangesOptions {
   /** Max change_log entries to read per call. Default 1000, clamped to 1..10000. */
   maxEntries?: number;
+  /** Post-read hook (see `RowSource.mapRows`): after formula evaluation, before projection. */
+  mapRows?: (rows: GridRow[]) => Promise<GridRow[]> | GridRow[];
+  /** Zone of naive DATETIME wall times in physical `datetime` columns. Default UTC. */
+  naiveDatetimeZone?: string;
 }
 
 const DEFAULT_MAX_ENTRIES = 1000;
@@ -43,6 +47,7 @@ export async function getChanges(
 ): Promise<ChangeFeedEntry<GridRow>> {
   const { db, tables, gridId } = deps;
   const maxEntries = clampMaxEntries(options.maxEntries);
+  const hydrateOptions = options.naiveDatetimeZone ? { naiveDatetimeZone: options.naiveDatetimeZone } : {};
   const schemaVersion = ctx.schema.schemaVersion;
 
   if (since === undefined || since === "") {
@@ -93,11 +98,12 @@ export async function getChanges(
       deletedRowIds.push(rowId);
       continue;
     }
-    liveRows.push(hydrateRow(dbRow, ctx.schema, ctx.registry));
+    liveRows.push(hydrateRow(dbRow, ctx.schema, ctx.registry, hydrateOptions));
   }
 
   const evaluated = evaluateFormulaCells(liveRows, access, ctx);
-  const rows = evaluated.map((row) => projectRow(row, ctx.schema, access));
+  const mapped = options.mapRows ? await options.mapRows(evaluated) : evaluated;
+  const rows = mapped.map((row) => projectRow(row, ctx.schema, access));
 
   return { cursor, rows, deletedRowIds, schemaVersion };
 }

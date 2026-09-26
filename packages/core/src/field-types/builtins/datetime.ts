@@ -29,7 +29,8 @@ const configSchema: ZodType<DatetimeConfig> = z.object({
 });
 
 const ISO_WITH_OFFSET_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/;
-const ISO_NO_OFFSET_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
+/** Naive wall time: ISO `T` or the MySQL DATETIME space separator, optional seconds and fraction (1-9 digits, ms kept). */
+const ISO_NO_OFFSET_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?$/;
 const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DMY_MDY_TIME_RE =
   /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i;
@@ -57,9 +58,10 @@ export function parseDatetimeString(input: string, inputOrder: "DMY" | "MDY", tz
     const hour = Number(m[4]);
     const minute = Number(m[5]);
     const second = m[6] ? Number(m[6]) : 0;
+    const millisecond = m[7] ? Number(m[7].padEnd(3, "0").slice(0, 3)) : 0;
     if (!isValidYmd(year, month, day) || hour > 23 || minute > 59 || second > 59) return null;
     try {
-      return zonedToInstant({ year, month, day, hour, minute, second }, tz);
+      return zonedToInstant({ year, month, day, hour, minute, second, millisecond }, tz);
     } catch {
       return null;
     }

@@ -3,6 +3,7 @@ import { DATE_OPERATORS } from "../../filter/operators";
 import type { AggregationId } from "../../query/types";
 import type { FieldType, ParseResult } from "../types";
 import { compareWithEmptyLast } from "../empty";
+import { DEFAULT_TIME_ZONE, getZonedParts } from "../../time/zoned";
 import { resolveConfig } from "./config";
 import {
   addMonthsClamped,
@@ -17,6 +18,13 @@ import {
 export interface DateConfig {
   displayFormat: "iso" | "dmy" | "mdy" | "long";
   inputOrder: "DMY" | "MDY";
+  /**
+   * Zone whose calendar day a JS `Date` INPUT to `parse` is read in (a
+   * `Date` is an instant; a date cell is a calendar day). Strings are
+   * zone-free and never use it. Default `Asia/Kolkata` (`DEFAULT_TIME_ZONE`).
+   * Not part of the editable column config (`configSchema`).
+   */
+  timeZone?: string;
 }
 
 const defaultConfig: DateConfig = {
@@ -102,10 +110,15 @@ function parse(input: unknown, config: DateConfig): ParseResult<string | null> {
 
   if (input instanceof Date) {
     if (Number.isNaN(input.getTime())) return { ok: false, error: "Invalid date" };
-    return {
-      ok: true,
-      value: formatYmd(input.getUTCFullYear(), input.getUTCMonth() + 1, input.getUTCDate(), "iso"),
-    };
+    // The LOCAL calendar day in the configured zone, never `toISOString()`: a driver
+    // that builds `Date`s in a zone east of UTC would otherwise lose a day.
+    let p: { year: number; month: number; day: number };
+    try {
+      p = getZonedParts(input, c.timeZone ?? DEFAULT_TIME_ZONE);
+    } catch {
+      return { ok: false, error: `Unknown time zone "${c.timeZone}"` };
+    }
+    return { ok: true, value: formatYmd(p.year, p.month, p.day, "iso") };
   }
   if (typeof input !== "string") return { ok: false, error: "Invalid date" };
 

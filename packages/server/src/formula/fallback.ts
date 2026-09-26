@@ -8,7 +8,7 @@ import { type FilterNode, type GridQuery, type GridRow, type QueryResult, matche
 import { assertCursorMatches, decodeCursor, encodeCursor, queryFingerprint } from "../pagination/cursor";
 import { offsetClause } from "../pagination/offset";
 import type { GridSqlScope, SelectCapableDb } from "../query/build-query";
-import { rowSourceOf } from "../query/row-source";
+import { mapSourceRows, rowSourceOf } from "../query/row-source";
 import { translateSearch } from "../search/translate-search";
 import type { FormulaPlan } from "../sql/scope";
 import { evaluateFormulaCells } from "./evaluate-rows";
@@ -106,7 +106,7 @@ export async function executeFallbackQuery(
   if (candidates.length > cap) throw new FormulaQueryLimitError(columnIds, cap);
 
   const hydrated = candidates.map((r) => source.hydrate(r));
-  const evaluated = evaluateFormulaCells(hydrated, access, ctx);
+  const evaluated = await mapSourceRows(source, evaluateFormulaCells(hydrated, access, ctx));
   const matchCtx = { schema: ctx.schema, registry: ctx.registry, now: ctx.now(), tz: ctx.tz, userId: ctx.user.id };
   const filtered = memoryPart ? evaluated.filter((r) => matchesFilter(memoryPart, r, matchCtx)) : evaluated;
   filtered.sort((a, b) => compareRows(a, b, query.sort ?? [], ctx.schema, ctx.registry));
