@@ -38,7 +38,25 @@ map to wire codes (`PermissionError` → `PERMISSION_DENIED` 403, `FilterValidat
 ### Express (or anything with `req.params` / `req.body` / `res.status().json()`)
 
 ```ts
-app.post("/api/grid/:op", express.json(), toExpressHandler(grid, { context: (req) => ({ user: req.user }) }));
+app.post("/api/grid/:op", express.json({ strict: false }), toExpressHandler(grid, { context: (req) => ({ user: req.user }) }));
+```
+
+**Why `strict: false` (or mount before the global `express.json()`)?** The wire input of an op is the JSON
+value itself: an object for most ops, an array for none today, and `null` for `capabilities` / `getSchema`.
+`express.json()` defaults to `strict: true`, which answers **400** to any body whose first character is not
+`{` or `[` — so a bare `null` never reaches the handler. Since v0.3 the browser client
+(`createHttpDataSource` / `createGridClient`) sends null inputs as a **body-less POST** (no `content-type`),
+which every parser lets through, and the Express adapters read a missing / empty / `{}` (Express 4's
+`express.json()` leaves `{}` when there is no body) / raw `"null"` body as `null` for exactly those ops
+(`normalizeRequestBody`). Keep `strict: false` anyway for clients that still post `null`, or mount the grid
+router **before** the app-wide `express.json()` so the grid path gets its own parser:
+
+```ts
+// either: its own, lenient parser on the grid path only
+app.use("/api/grid", express.json({ strict: false }), toExpressRouter(grids, { context }));
+app.use(express.json()); // the rest of the app, unchanged
+// or: no parser at all — the adapters parse a raw string body themselves
+app.use("/api/grid", express.text({ type: "application/json" }), toExpressRouter(grids, { context }));
 ```
 
 ### AWS API Gateway + Lambda (route `POST /grid/{op}`)
@@ -130,8 +148,8 @@ Adapters (structural types, no framework dependency), all with the routes `POST 
 const endpoint = toFetchHandler(grids, { basePath: "/api/grid", context: (request) => ctxFrom(request) });
 app.all("/api/grid/*", (c) => endpoint(c.req.raw));
 
-// Express middleware (unmatched paths go to next())
-app.use("/api/grid", express.json(), toExpressRouter(grids, { context: (req) => ({ user: req.user }) }));
+// Express middleware (unmatched paths go to next()) — mount BEFORE the global express.json(), or use strict: false (see "Express" above)
+app.use("/api/grid", express.json({ strict: false }), toExpressRouter(grids, { context: (req) => ({ user: req.user }) }));
 
 // API Gateway: POST /grid/{gridId}/{op} (incl. getSchema), GET /grid
 export const handler = toLambdaHandler(grids, { context: (event) => ctxFromClaims(event) });
@@ -162,11 +180,14 @@ const source = createSqlViewDataSource({
   version: leads.version,                      // monotonic; omitted → CRC32 of the settable cells
   updatedAt: leads.updatedAt,                  // enables the updated_at change feed
   write: {                                     // absent → read-only (capabilities.write all false)
-    update: async (ctx, { rowId, changes, baseVersion }) => { /* UPDATE … WHERE id = ? AND version = ? */ },
-    create: async (ctx, partials) => { /* INSERT, return [{ id }] */ },
+    update: async (ctx, { rowId, changes, baseVersion, values }) => { /* UPDATE … SET <values> WHERE id = ? AND version = ? */ },
+    create: async (ctx, partials, storage) => { /* INSERT storage[i], return [{ id }] */ },
     delete: async (ctx, ids) => { /* DELETE / soft delete */ },
   },
   extension: createExtensionCellStore({ db, table: "grid_extension_cells" }), // optional
+  mapRows: async (rows) => sign(rows),         // post-read hook (v0.3), e.g. signed file URLs
+  defaultSort: [{ columnId: "callDate", dir: "desc" }], // when the query has no sort (v0.3)
+  naiveDatetimeZone: "Asia/Kolkata",           // zone of DATETIME wall times; default: tz (v0.3)
 });
 ```
 
@@ -177,12 +198,14 @@ const source = createSqlViewDataSource({
   receives the request context (`ctx.user`, …), e.g. to scope rows per counsellor.
 - **Semantics.** A mapped expression is compared as-is (like a physical column): text
   matching follows its collation — use `utf8mb4_0900_as_ci` for exact parity with core
-  (case-insensitive, accent-sensitive); datetimes must be stored in UTC. `kind` overrides
-  the storage kind, `searchable` the search participation.
+  (case-insensitive, accent-sensitive). `kind` overrides the storage kind, `searchable`
+  the search participation. DATE / DATETIME handling is described under "Dates and time
+  zones" below.
 - **Writes.** `applyChanges` validates, permission-checks (row-aware) and rejects
   `settable: false` columns ("Read-only"), compares the client's base version with the
   current row version, then calls `write.update` inside a transaction (`ctx.db` is the
-  transaction). Return `{ conflict }` when your guarded UPDATE matched no row.
+  transaction). Return `{ conflict }` when your guarded UPDATE matched no row; per-cell
+  outcomes are described under "Per-cell write outcomes" below.
 - **Extension columns.** Schema columns without a mapping live in the extension table
   (`createExtensionCellsTableDDL`, keyed by `(grid_id, row_id)`), LEFT JOINed on the row id
   and resolved by the JSON-cells resolver, so filter / sort / group / search work on them.
@@ -265,11 +288,91 @@ columns: {
 }
 ```
 
-`compute(row)` runs after hydration on every read (`fetch`, `getChanges`, `createRows`). The column needs no
-extension store, is read-only (writes answer "Column is read-only"), is excluded from free-text search and is
-reported as neither sortable nor filterable in `capabilities` (`sort` / `filter` become explicit column-id
-lists without it), so the grid turns those affordances off; the server rejects them anyway
-(`UNSORTABLE_COLUMN` / `FILTER_INVALID`). Grouping by a computed column is a `FILTER_INVALID` 400.
+`compute(row)` runs after hydration and formula evaluation on every read (`fetch`, `getChanges`, `createRows`),
+before `mapRows`. The column needs no extension store, is read-only (writes answer "Column is read-only"), is
+excluded from free-text search and is reported as neither sortable nor filterable in `capabilities` (`sort` /
+`filter` become explicit column-id lists without it), so the grid turns those affordances off; the server
+rejects them anyway (`UNSORTABLE_COLUMN` / `FILTER_INVALID`). Grouping by a computed column is a
+`FILTER_INVALID` 400. A column whose value comes ONLY from `mapRows` (no `compute`) is declared with
+`computed: { url: { kind: "text" } }` instead, with the same restrictions.
+
+### Post-read hook: `mapRows` / `mapRow`
+
+```ts
+createSqlViewDataSource({
+  …,
+  mapRows: async (rows, ctx) => {              // batched; ctx = request context + db + gridId
+    const urls = await signAll(rows.map((r) => r.cells.fileKey as string), ctx.user);
+    return rows.map((r, i) => ({ ...r, cells: { ...r.cells, url: urls[i] } }));
+  },
+  mapRow: (row) => ({ ...row, cells: { ...row.cells, name: row.cells.name?.trim() } }), // per-row sugar, runs after mapRows
+});
+```
+
+Runs after hydration, `compute` and formula evaluation and **before** projection, on every row-returning path
+(`fetch` — SQL and formula-fallback —, `getChanges`, `createRows`). Because it runs before projection the hook
+sees the WHOLE row: with `compute` / `mapRows` configured, every mapped and extension column is selected
+regardless of the user's permissions (a hidden `fileKey` can feed a visible `url`); `projectRow` still strips
+hidden cells from the answer. The hook must return one row per input row, in order (otherwise
+`INTERNAL`). `createDrizzleDataSource` takes the same `mapRows` / `mapRow` (with the `ServerContext`) and
+exposes them through `RowSource.mapRows` for custom row sources.
+
+### Default sort
+
+`defaultSort: SortSpec[]` is applied when a query has `sort: []` — to the SQL `ORDER BY` and therefore to the
+keyset paging tie-break — and reported as `capabilities.defaultSort` (normalised through
+`normalizeCapabilities` / `mergeCapabilities`). Columns the user cannot read are dropped per request;
+an unknown or `sortable: false` column throws `INVALID_DEFAULT_SORT` at construction. `createDrizzleDataSource`
+accepts it too (and now implements `capabilities()`).
+
+### Per-cell write outcomes
+
+`write.update` answers any subset of `{ applied, rejected, errors, conflict, version }`:
+
+```ts
+update: async (ctx, { rowId, changes, baseVersion, values, meta }) => {
+  const [ok, locked] = partition(changes, (c) => c.columnId !== "fee");
+  if (ok.length === 0) return { errors: locked.map((c) => ({ rowId, columnId: c.columnId, message: "Fee is locked" })) };
+  const res = await ctx.db.update(t).set(pick(values, ok)).where(and(eq(t.id, +rowId), eq(t.version, baseVersion)));
+  if (affectedRowsOf(res) === 0) return { conflict: { rowId, columnId: ok[0].columnId, serverValue: null, serverVersion: baseVersion, updatedAt } };
+  return { applied: ok, errors: locked.map(…), version: baseVersion + 1 }; // omit `version` → the row is re-read
+},
+```
+
+- `applied` cells reach `ChangeResult.applied`; the row version bumps **once** per row (`version`, or a
+  re-read when omitted). `errors` (`{ rowId, columnId, message }`) reach `ChangeResult.errors`; `rejected` cells
+  reach `ChangeResult.rejected` (declined quietly, the grid reverts them without an error state). Cells the hook
+  mentions nowhere count as `rejected`. `conflict` short-circuits the row as before. The v0.2 shapes
+  `{ applied, version }` / `{ conflict }` still fit. When nothing was applied the row has no `versions` entry.
+- `write.create(ctx, partials, storage)` may answer `{ rows, errors: [{ index, columnId?, message }] }`: the
+  first error becomes a `RowValidationError` (wire `ROW_INVALID` 400 with the row index) and the transaction
+  rolls back. `storage[i]` are the storage-ready values of `partials[i]`.
+
+### Dates and time zones
+
+MySQL `DATE` / `DATETIME` carry no zone; mysql2 turns them into JS `Date`s in the pool's `timezone`
+(default: the process's local zone), which shifts a `DATE` to the previous day east of UTC and reads a
+`DATETIME` wall time as if it were local. The SQL view never lets the driver convert:
+
+- `date` columns are selected as `DATE_FORMAT(col, '%Y-%m-%d')` and served as that day; writes hand the hook
+  `YYYY-MM-DD` (`values` / `storage`).
+- `datetime` columns are selected as `DATE_FORMAT(col, '%Y-%m-%d %H:%i:%s.%f')` — a naive wall time — and
+  interpreted in **`naiveDatetimeZone`** (default: the source's `tz`, i.e. `Asia/Kolkata`) into UTC ISO. Writes
+  go the other way: `values.calledAt` is the wall time in that zone (`YYYY-MM-DD HH:MM:SS.fff`), so bind
+  `values`, not `changes[i].next`, in your UPDATE / INSERT. Filters, sorts and keyset cursors compare the column
+  in UTC through `CONVERT_TZ(col, '+05:30', '+00:00')` (a numeric offset for zones without DST; zones with DST
+  use `CONVERT_TZ(col, 'Zone/Name', 'UTC')` and need MySQL's time zone tables — `mysql_tzinfo_to_sql`).
+  Columns that store UTC: `naiveDatetimeZone: "UTC"` (no conversion at all).
+- `updatedAt` (the change feed) stays UTC as documented. `TIMESTAMP` columns are converted by MySQL to the
+  **session** `time_zone` before any of this; keep it at `+00:00`.
+
+mysql2 recommendation: `timezone: "Z"` (so the `Date`s other code paths receive carry the wall time in
+their UTC fields) or `dateStrings: true`. Both are optional for the SQL view since v0.3. The JSON-cells
+source (`createDrizzleDataSource`) keeps writing physical `datetime` columns in UTC; its reads take
+`naiveDatetimeZone` for tables that hold local wall times, and `DATE` `Date`s are read from whichever
+midnight the driver used (`dateOnlyFromDriver`). Core: `date.parse(Date)` reads the calendar day in
+`DateConfig.timeZone` (default `Asia/Kolkata`) instead of `toISOString()`, and `datetime.parse` takes
+`YYYY-MM-DD HH:MM:SS[.fff]` as a wall time in `config.timeZone`.
 
 ### Per-option write rules
 

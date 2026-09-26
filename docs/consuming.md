@@ -101,9 +101,21 @@ const grid = createGridRouterAdapter((ctx: { user: PermissionUser }) =>
 
 app.post(
   "/api/grid/:op",
-  express.json(),
+  express.json({ strict: false }),
   toExpressHandler(grid, { context: (req) => ({ user: req.user as PermissionUser }) }),
 );
+```
+
+**`express.json()` and bare JSON bodies.** The op input is the JSON value itself, and it is `null` for
+`capabilities` / `getSchema`. Express's `express.json()` is strict by default: a body that does not start with
+`{` or `[` is answered with **400** before the grid handler runs. Since v0.3 the browser client sends those
+ops as a body-less POST (no `content-type`), which any parser lets through, and the Express adapters treat a
+missing / empty / `{}` / raw `"null"` body as `null` for exactly those ops. Still, either pass
+`{ strict: false }` on the grid path (above), or mount the grid router **before** the app-wide parser:
+
+```ts
+app.use("/api/grid", express.json({ strict: false }), toExpressRouter(grids, { context })); // grid first
+app.use(express.json()); // everything else, strict as before
 ```
 
 `db` is your Drizzle MySQL instance and `schema` is a `GridSchema`. The tables
@@ -202,7 +214,8 @@ const endpoint = toFetchHandler(grids, { basePath: "/grid", context: (request) =
 app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js route handlers take `endpoint` as is
 ```
 
-`toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json(), …)`) and
+`toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json({ strict: false }), …)` — before
+the global `express.json()`, see "Server (Express)") and
 `toLambdaHandler(grids, { context })` (routes `POST /grid/{gridId}/{op}`) serve the same routes. There is exactly one
 way to read a schema: `POST /grid/:gridId/getSchema` (v0.3 removed the `GET /grid/:gridId/schema` alias). In the browser, one client per grid:
 
