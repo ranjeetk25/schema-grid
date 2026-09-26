@@ -57,10 +57,17 @@ export function createHttpTransport(options: HttpTransportOptions): (op: string,
 
   return async (op, input) => {
     const extra = getHeaders ? await getHeaders() : {};
+    // A `null` input (`capabilities`, `getSchema`) travels as NO body: a bare `null`
+    // JSON body is rejected by strict JSON parsers (Express's default), while a
+    // body-less POST reaches the server adapters, which read it as `null`.
+    // Objects and arrays are sent as-is (strict parsers accept both).
+    const bodyless = input === null || input === undefined;
     const init: RequestInit = {
       method,
-      headers: { "content-type": "application/json", accept: "application/json", ...extra },
-      body: JSON.stringify(input),
+      headers: bodyless
+        ? { accept: "application/json", ...extra }
+        : { "content-type": "application/json", accept: "application/json", ...extra },
+      ...(bodyless ? {} : { body: JSON.stringify(input) }),
       ...(credentials ? { credentials } : {}),
     };
     // Called through a local binding so browsers don't throw "Illegal invocation".
