@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-ui-mantine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Mantine v8 UI for Schema Grid: cell editors, filter and column builders, import wizard and export dialog.",
   "license": "MIT",
   "author": "Masai School",
