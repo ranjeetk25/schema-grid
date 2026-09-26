@@ -227,6 +227,13 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
   onClipboardReport?(report: ClipboardReport): void;
   /** Change-feed polling (needs `dataSource.getChanges`). Default interval 7s; enabled defaults to document visibility. */
   poll?: SchemaGridPollOptions;
+  /**
+   * v0.3.1: after a save whose result carries no `rows`, fetch the changed rows
+   * with `dataSource.getRows` so derived / computed cells update without a
+   * poll. Rows the result does carry are always applied. Default: `true` in
+   * server mode, `false` in client mode.
+   */
+  refetchAfterSave?: boolean;
   /** Default `createSchemaGridTheme()`. */
   theme?: Theme;
   /**
@@ -326,6 +333,11 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;
+  /**
+   * v0.3.1: re-reads the given rows through `dataSource.getRows` and upserts
+   * them (cells pending locally are kept). No-op when the source lacks `getRows`.
+   */
+  refreshRows(ids: string[]): Promise<void>;
   access: Map<string, Access>;
   loadState: SchemaGridLoadState;
   lastError: unknown;
@@ -533,6 +545,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
 
   const { schema: baseSchema, dataSource, user } = props;
   const mode: SchemaGridMode = props.mode ?? "client";
+  const refetchAfterSave = props.refetchAfterSave ?? mode === "server";
   const requestedPageSize = props.pageSize ?? DEFAULT_PAGE_SIZE;
   const pageMode: PageMode = props.pageMode ?? "offset";
   const tz = props.tz ?? DEFAULT_TZ;
@@ -1246,7 +1259,16 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     () =>
       // T30: veto / conflict / rejected-edit outcomes are announced (assertive) through the announce seam.
       withEditAnnouncements<Row>(createEditController<Row>({
-        dataSource: { applyChanges: (batch) => latest.current.dataSource.applyChanges(batch) },
+        dataSource: {
+          applyChanges: (batch) => latest.current.dataSource.applyChanges(batch),
+          // Always present so a data source swapped in later is honoured; a source without getRows yields nothing.
+          getRows: async (ids) => {
+            const source = latest.current.dataSource;
+            return source.getRows ? source.getRows(ids) : [];
+          },
+        },
+        refetchAfterSave,
+        upsertRows: upsertIncoming,
         schema,
         rowStore: stores.rows,
         cellStatus: stores.cellStatus,
@@ -1270,7 +1292,16 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         getSchema: () => schema,
         announce: (message, politeness) => latestSeams.current.announce?.(message, politeness),
       }),
-    [schema, stores, getEvents, formulas, undoStack, scheduleRowSync, refetch],
+    [schema, stores, getEvents, formulas, undoStack, scheduleRowSync, refetch, refetchAfterSave, upsertIncoming],
+  );
+  const refreshRows = useCallback(
+    async (ids: string[]): Promise<void> => {
+      const source = latest.current.dataSource;
+      if (!source.getRows || ids.length === 0) return;
+      const rows = await source.getRows(ids);
+      if (rows.length > 0) upsertIncoming(rows);
+    },
+    [upsertIncoming],
   );
   const onCellEditRequest = useMemo(
     () =>
@@ -1812,6 +1843,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     exportCurrentView,
     captureView,
     refetch,
+    refreshRows,
     access,
     loadState,
     lastError,

@@ -547,6 +547,170 @@ describe("<SchemaGridWorkbench>", () => {
     });
   });
 
+  describe("save errors (v0.3.1)", () => {
+    const AADHAAR = "The student has not uploaded: Aadhaar card";
+    /** Every change fails with the same server message (nothing applied, nothing rejected). */
+    function failingSource(message = AADHAAR): DataSource {
+      const base = memory();
+      return Object.assign(Object.create(base) as DataSource, {
+        applyChanges: async (batch: ChangeBatch): Promise<ChangeResult> => ({
+          applied: [],
+          conflicts: [],
+          rejected: [],
+          errors: batch.changes.map((c) => ({ rowId: c.rowId, columnId: c.columnId, message })),
+        }),
+      });
+    }
+
+    it("shows the server's message in a banner, on the cell, in the live region and through onError", async () => {
+      const onError = vi.fn();
+      const { container, user } = renderWorkbench({ dataSource: failingSource(), onError });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await editCell(container, "r1", C.name, "Zed");
+      const banner = await screen.findByTestId("workbench-banner-save");
+      expect(banner).toHaveAttribute("role", "alert");
+      expect(banner).toHaveTextContent("1 change failed");
+      expect(banner).toHaveTextContent(AADHAAR);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "save",
+          op: "applyChanges",
+          message: "1 change failed",
+          error: [expect.objectContaining({ rowId: "r1", columnId: C.name, message: AADHAAR })],
+        }),
+      );
+      await waitFor(() => expect(cellOf(container, "r1", C.name).getAttribute("title")).toBe(AADHAAR));
+      expect(cellOf(container, "r1", C.name).className).toContain("sg-cell-error");
+      const assertive = container.querySelector('[aria-live="assertive"]');
+      expect((assertive?.textContent ?? "").replace(/​/g, "")).toContain(AADHAAR);
+      expect(screen.getByTestId("saved-count")).toHaveTextContent("0");
+      await user.click(within(banner).getByRole("button", { name: "Dismiss" }));
+      await waitFor(() => expect(screen.queryByTestId("workbench-banner-save")).toBeNull());
+    });
+
+    it("a second failed save re-announces (same message, new banner) and groups distinct messages with counts", async () => {
+      const onError = vi.fn();
+      const { container, user } = renderWorkbench({ dataSource: failingSource(), onError });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await editCell(container, "r1", C.name, "One");
+      const first = await screen.findByTestId("workbench-banner-save");
+      await user.click(within(first).getByRole("button", { name: "Dismiss" }));
+      await waitFor(() => expect(screen.queryByTestId("workbench-banner-save")).toBeNull());
+      await editCell(container, "r2", C.name, "Two");
+      expect(await screen.findByTestId("workbench-banner-save")).toHaveTextContent(AADHAAR);
+      expect(onError).toHaveBeenCalledTimes(2);
+    });
+
+    it("auto-dismisses after 8s, pausing while the pointer is over it", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { container } = renderWorkbench({ dataSource: failingSource() });
+        await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+        await editCell(container, "r1", C.name, "Zed");
+        const banner = await screen.findByTestId("workbench-banner-save");
+        fireEvent.mouseEnter(banner);
+        await act(async () => {
+          vi.advanceTimersByTime(9_000);
+        });
+        expect(screen.getByTestId("workbench-banner-save")).toBeInTheDocument();
+        fireEvent.mouseLeave(banner);
+        await act(async () => {
+          vi.advanceTimersByTime(7_000);
+        });
+        expect(screen.getByTestId("workbench-banner-save")).toBeInTheDocument();
+        await act(async () => {
+          vi.advanceTimersByTime(1_500);
+        });
+        expect(screen.queryByTestId("workbench-banner-save")).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe("schema store unavailable (v0.3.1)", () => {
+    it("write:false with reason store-unavailable shows a neutral, dismissible banner", async () => {
+      const { container, user } = renderWorkbench({
+        dataSource: source({ schema: { read: true, write: false, reason: "store-unavailable" } }),
+      });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      const banner = await screen.findByTestId("workbench-banner-schema-unavailable");
+      expect(banner).toHaveAttribute("role", "status");
+      expect(banner).toHaveTextContent("Column changes are unavailable: the schema store isn't set up.");
+      await user.click(within(banner).getByRole("button", { name: "Dismiss" }));
+      await waitFor(() => expect(screen.queryByTestId("workbench-banner-schema-unavailable")).toBeNull());
+    });
+
+    it("write:false for any other reason shows no such banner", async () => {
+      const { container } = renderWorkbench({ dataSource: source({ schema: { read: true, write: false, reason: "forbidden" } }) });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await screen.findByRole("button", { name: "Filter" });
+      expect(screen.queryByTestId("workbench-banner-schema-unavailable")).toBeNull();
+    });
+  });
+
+  describe("conflict overwrite re-submits (v0.3.1)", () => {
+    /** First save conflicts on every cell; later saves apply. */
+    function conflictOnce(sent: ChangeBatch[]): DataSource {
+      const base = memory();
+      let first = true;
+      return Object.assign(Object.create(base) as DataSource, {
+        applyChanges: async (batch: ChangeBatch): Promise<ChangeResult> => {
+          sent.push(batch);
+          if (first) {
+            first = false;
+            return {
+              applied: [],
+              errors: [],
+              conflicts: batch.changes.map((c) => ({
+                rowId: c.rowId,
+                columnId: c.columnId,
+                serverValue: "Server wins",
+                serverVersion: 9,
+                updatedAt: FIXTURE_NOW,
+              })),
+            };
+          }
+          // The overwrite re-submit carries the conflict's server version as its base: apply it as-is.
+          return { applied: batch.changes, conflicts: [], errors: [], versions: { [batch.changes[0]?.rowId ?? ""]: 10 } };
+        },
+      });
+    }
+
+    it("the host's beforeCellsChange runs ONCE across edit → conflict → Overwrite; meta and resubmitOf travel", async () => {
+      const sent: ChangeBatch[] = [];
+      const beforeCellsChange = vi.fn((b: ChangeBatch) => ({ ...b, meta: { decisionMessage: "Approved" } }));
+      const { container, user } = renderWorkbench({ dataSource: conflictOnce(sent), events: { beforeCellsChange } });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await editCell(container, "r1", C.name, "Mine");
+      await user.click(await screen.findByRole("button", { name: "Overwrite" }));
+      await waitFor(() => expect(sent).toHaveLength(2));
+      expect(beforeCellsChange).toHaveBeenCalledTimes(1);
+      expect(sent[1]?.resubmitOf).toBe(sent[0]?.id);
+      expect(sent[1]?.meta).toEqual({ decisionMessage: "Approved" });
+      expect(sent[1]?.changes[0]).toMatchObject({ rowId: "r1", columnId: C.name, prev: "Server wins", next: "Mine" });
+      await waitFor(() => expect(screen.getByTestId("saved-count")).toHaveTextContent("1"));
+    });
+
+    it("confirmOnResubmit: true asks the host again, with resubmitOf set on the second batch", async () => {
+      const sent: ChangeBatch[] = [];
+      const beforeCellsChange = vi.fn((b: ChangeBatch) => b);
+      const { container, user } = renderWorkbench({
+        dataSource: conflictOnce(sent),
+        events: { beforeCellsChange },
+        confirmOnResubmit: true,
+      });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await editCell(container, "r1", C.name, "Mine");
+      await user.click(await screen.findByRole("button", { name: "Overwrite" }));
+      await waitFor(() => expect(sent).toHaveLength(2));
+      expect(beforeCellsChange).toHaveBeenCalledTimes(2);
+      const second = beforeCellsChange.mock.calls[1]?.[0] as ChangeBatch;
+      expect(second.resubmitOf).toBe(sent[0]?.id);
+      expect(sent[1]?.resubmitOf).toBe(sent[0]?.id);
+    });
+  });
+
   describe("export (v0.3)", () => {
     const stubDownloads = () => {
       const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };

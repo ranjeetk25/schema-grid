@@ -64,11 +64,34 @@ describe("announcement builders", () => {
     expect(conflictsMessage(3)).toBe("Conflicts on 3 cells");
     expect(editRejectedMessage("Score", "Must be positive")).toBe("Edit rejected on Score: Must be positive");
     expect(editsRejectedMessage(2)).toBe("2 edits rejected");
+    // v0.3.1: the first server message rides along so the reason is heard, not just the count.
+    expect(editsRejectedMessage(2, "The student has not uploaded: Aadhaar card")).toBe(
+      "2 edits rejected: The student has not uploaded: Aadhaar card",
+    );
+    expect(editsRejectedMessage(1, "Too long")).toBe("1 edit rejected: Too long");
     expect(EDIT_CANCELLED).toBe("Edit cancelled");
     expect(pasteSummaryMessage({ pastedCells: 2, skippedReadOnly: 1, conflicts: 0, errors: [], rejected: 0 })).toBe(
       "Paste: 2 pasted, 1 skipped, 0 errors",
     );
     expect(fillMessage(3, 1)).toBe("Fill: 3 cells filled, 1 read-only cell skipped");
+  });
+
+  it("v0.3.1: several errors announce the count AND the first server message", () => {
+    const outcome: SubmitOutcome = {
+      vetoed: false,
+      batch: { id: "b", changes: [], baseVersions: {}, source: "edit" },
+      result: {
+        applied: [],
+        conflicts: [],
+        errors: [
+          { rowId: "r1", columnId: "name", message: "The student has not uploaded: Aadhaar card" },
+          { rowId: "r2", columnId: "name", message: "The student has not uploaded: Aadhaar card" },
+        ],
+      },
+    };
+    expect(editOutcomeMessage(outcome, "edit", fixtureSchema)).toBe("2 edits rejected: The student has not uploaded: Aadhaar card");
+    const single: SubmitOutcome = { ...outcome, result: { ...outcome.result, errors: outcome.result.errors.slice(0, 1) } };
+    expect(editOutcomeMessage(single, "edit", fixtureSchema)).toBe("Edit rejected on Name: The student has not uploaded: Aadhaar card");
   });
 
   it("v0.3: quiet 'not saved' wording for silently rejected changes", () => {

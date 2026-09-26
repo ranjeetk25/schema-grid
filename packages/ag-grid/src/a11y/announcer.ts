@@ -14,7 +14,7 @@
  * builders from this module.
  *   - commit (polite):     "Saved" / "Saved N cells"
  *   - conflict (assertive): "Conflict on {column}, row {id}" / "Conflicts on N cells"
- *   - rejected (assertive): "Edit rejected on {column}: {reason}" / "N edits rejected"
+ *   - rejected (assertive): "Edit rejected on {column}: {reason}" / "N edits rejected: {first reason}"
  *   - veto (assertive):     "Edit cancelled"
  *   - not saved (polite):   "1 change not saved" / "N changes not saved" (v0.3 silent rejection)
  *   - paste (polite):       "Paste: N pasted, M skipped, K errors[, C conflicts][, R not saved]"
@@ -64,9 +64,13 @@ export function editRejectedMessage(columnLabel: string, reason: string): string
   return `Edit rejected on ${columnLabel}: ${reason}`;
 }
 
-/** Several rejected cells in one batch. */
-export function editsRejectedMessage(count: number): string {
-  return count === 1 ? "1 edit rejected" : `${count} edits rejected`;
+/**
+ * Several rejected cells in one batch. v0.3.1: with `firstMessage` (the first
+ * server error message) the reason is spoken too: "N edits rejected: {message}".
+ */
+export function editsRejectedMessage(count: number, firstMessage?: string): string {
+  const head = count === 1 ? "1 edit rejected" : `${count} edits rejected`;
+  return firstMessage ? `${head}: ${firstMessage}` : head;
 }
 
 /** A `beforeCellsChange` veto. */

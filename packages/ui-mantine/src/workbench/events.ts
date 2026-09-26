@@ -6,6 +6,11 @@
  * internal hook (when any) and the grid then see. Every other event FANS OUT
  * to the host first, then the internal handler; a throwing host handler never
  * breaks the internal one (the error is handed to `onHostError`).
+ *
+ * v0.3.1: a re-submit (`batch.resubmitOf` set — a conflict "Overwrite") skips
+ * the host's `beforeCellsChange` unless `confirmOnResubmit` is true: the host
+ * already confirmed the original batch, whose `meta` the grid carries over.
+ * The internal chain still runs.
  */
 import type { SchemaGridEvents } from "@ranjeetk25/schema-grid-ag-grid";
 import type { ChangeBatch } from "@ranjeetk25/schema-grid-core";
@@ -42,6 +47,8 @@ export function combineHostEvents(
 export interface MergeEventsOptions {
   /** Receives errors thrown by a host handler (the internal handler still runs). */
   onHostError?(error: unknown, event: keyof SchemaGridEvents): void;
+  /** v0.3.1: also ask the host's `beforeCellsChange` for batches with `resubmitOf`. Default false. */
+  confirmOnResubmit?: boolean;
 }
 
 export function mergeWorkbenchEvents(
@@ -78,6 +85,9 @@ export function mergeWorkbenchEvents(
   const internalBefore = internal.beforeCellsChange;
   if (hostBefore) {
     out.beforeCellsChange = async (batch: ChangeBatch) => {
+      if (batch.resubmitOf !== undefined && options.confirmOnResubmit !== true) {
+        return internalBefore ? internalBefore(batch) : batch;
+      }
       const decided = await hostBefore(batch);
       if (decided === false) return false;
       const next = decided ?? batch;

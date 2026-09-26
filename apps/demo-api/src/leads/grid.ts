@@ -16,6 +16,7 @@ export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns:
   col(2, "paymentStatus", "Payment status", "select", { config: { options } }),
   col(3, "callDate", "Call date", "date", { config: { displayFormat: "dmy", inputOrder: "DMY" } }),
   col(4, "aiVerified", "AI verified", "boolean", { settable: false, sortable: false }), // AI pipeline only; unindexed
+  col(5, "contact", "Contact", "text", { settable: false, sortable: false }), // computed below: read-only, unfilterable
 ] };
 
 type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore };
@@ -28,7 +29,8 @@ export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) =>
     db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension,
     baseQuery: () => sql`select * from ${t}`, rowId: t.id, updatedAt: t.updatedAt,
     columns: { name: { expr: t.name, searchable: true }, email: { expr: t.email, searchable: true },
-      paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified } },
+      paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified },
+      contact: { compute: (row) => `${row.cells.name ?? ""} <${row.cells.email ?? ""}>` } },
     defaultCapabilities: { maxPageSize: 200 },
     write: { update: async (view, { rowId, changes }) => { // `view.db` is the batch transaction
       await view.db.update(t).set(Object.fromEntries(changes.map((c) => [c.columnId, c.next]))).where(eq(t.id, Number(rowId)));

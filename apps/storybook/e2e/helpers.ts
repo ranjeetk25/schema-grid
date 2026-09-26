@@ -14,6 +14,7 @@ export const STORIES = {
   importExport: "5-import-and-export--import-and-export",
   conflict: "6-conflict-prompt--keep-theirs-or-overwrite",
   polling: "7-polling-sync--polling-highlight",
+  saveErrors: "8-workbench-states--save-errors",
 } as const;
 
 export async function openStory(

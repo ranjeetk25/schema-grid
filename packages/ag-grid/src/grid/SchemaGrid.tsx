@@ -67,6 +67,8 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   exportCurrentView(format: ExportFormat, fileName?: string): Promise<Blob>;
   captureView(): ViewDef | null;
   refetch(): Promise<void>;
+  /** v0.3.1: re-reads rows by id through `dataSource.getRows` and upserts them (no-op without `getRows`). */
+  refreshRows(ids: string[]): Promise<void>;
   stores: SchemaGridStores<Row>;
   announce(message: string, politeness?: Politeness): void;
   /** Column options ∩ data-source capabilities (defaults until they load). */
@@ -129,6 +131,7 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       exportCurrentView: grid.exportCurrentView,
       captureView: grid.captureView,
       refetch: grid.refetch,
+      refreshRows: grid.refreshRows,
       stores: grid.stores,
       announce,
       effectiveCapabilities: grid.effectiveCapabilities,
@@ -141,6 +144,7 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       grid.exportCurrentView,
       grid.captureView,
       grid.refetch,
+      grid.refreshRows,
       grid.stores,
       announce,
       grid.effectiveCapabilities,

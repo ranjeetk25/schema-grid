@@ -51,6 +51,20 @@ const shots: { name: string; story: string; scheme?: "light" | "dark"; act?: (p:
       await p.waitForTimeout(400);
     },
   })),
+  // v0.3.1: the "save" banner (per-cell server messages) after a failed edit.
+  ...(["light", "dark"] as const).map((scheme) => ({
+    name: `W-23-save-failed-${scheme}`,
+    story: "8-workbench-states--save-errors",
+    scheme,
+    act: async (p: Page) => {
+      const cell = p.locator('.ag-row[row-id="r1"] .ag-cell[col-id="col_name"]');
+      await cell.dblclick();
+      await p.keyboard.type("Zed");
+      await p.keyboard.press("Enter");
+      await p.getByTestId("workbench-banner-save").waitFor();
+      await p.waitForTimeout(400);
+    },
+  })),
 ];
 const only = (process.env.ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const selected = only.length > 0 ? shots.filter((s) => only.some((prefix) => s.name.startsWith(prefix))) : shots;

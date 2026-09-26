@@ -18,6 +18,9 @@
  * with the workbench's own, "Add column" and the column panel only when the
  * source reports `schema.write`, an export banner with Retry, and the import
  * wizard / export dialog / column panel loaded lazily on first open.
+ *
+ * v0.3.1: the "save" banner (red, role alert, auto-dismiss paused on hover)
+ * and the neutral "schema-unavailable" banner.
  */
 import {
   ActionIcon,
@@ -177,6 +180,18 @@ const BANNER_TONE: Record<WorkbenchBanner["kind"], { bg: string; fg: string; ico
     icon: <IconAlertTriangle {...ICON} />,
     role: "alert",
   },
+  save: {
+    bg: "var(--mantine-color-red-light)",
+    fg: "var(--mantine-color-red-light-color)",
+    icon: <IconAlertTriangle {...ICON} />,
+    role: "alert",
+  },
+  "schema-unavailable": {
+    bg: "var(--mantine-color-default-hover)",
+    fg: "var(--mantine-color-text)",
+    icon: <IconInfoCircle {...ICON} />,
+    role: "status",
+  },
   unknown: {
     bg: "var(--mantine-color-default-hover)",
     fg: "var(--mantine-color-text)",
@@ -197,11 +212,13 @@ function Banner({ banner }: { banner: WorkbenchBanner }) {
       pl={12}
       pr={4}
       style={{ borderRadius: 6, background: tone.bg, color: tone.fg, fontSize: 13 }}
+      onMouseEnter={banner.pause}
+      onMouseLeave={banner.resume}
     >
       <Box aria-hidden style={{ display: "flex", flex: "none" }}>
         {tone.icon}
       </Box>
-      <Text fz={13} c="inherit" truncate style={{ flex: 1, minWidth: 0 }}>
+      <Text fz={13} c="inherit" truncate title={banner.message} style={{ flex: 1, minWidth: 0 }}>
         {banner.message}
       </Text>
       {banner.action ? (
@@ -502,6 +519,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               events={wb.events}
               height="100%"
               poll={wb.poll}
+              {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
               gridOptions={gridOptions}
               headerMenu={props.gridProps?.headerMenu ?? MantineHeaderMenu}
               onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}

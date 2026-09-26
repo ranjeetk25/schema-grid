@@ -69,6 +69,7 @@ export type {
   ChangeError,
   ChangeError as CellError,
   ChangeFeedEntry,
+  ChangeMeta,
   ChangeResult,
   ChangeSource,
   ColumnDef,

@@ -48,6 +48,32 @@ describe("mergeWorkbenchEvents", () => {
     expect(onHostError).toHaveBeenCalledWith(expect.any(Error), "onCellsChange");
   });
 
+  it("v0.3.1: a re-submit (resubmitOf) skips the host beforeCellsChange; the internal chain still runs", async () => {
+    const hostBefore = vi.fn((b: ChangeBatch) => b);
+    const internalBefore = vi.fn(async (b: ChangeBatch) => ({ ...b, meta: { internal: true } }));
+    const merged = mergeWorkbenchEvents({ beforeCellsChange: hostBefore }, { beforeCellsChange: internalBefore });
+    const resubmit: ChangeBatch = { ...batch, id: "b2", resubmitOf: "b1" };
+    const decided = await merged.beforeCellsChange?.(resubmit);
+    expect(hostBefore).not.toHaveBeenCalled();
+    expect(internalBefore).toHaveBeenCalledWith(resubmit);
+    expect(decided).toMatchObject({ id: "b2", meta: { internal: true } });
+    // No internal hook: the batch passes through unchanged.
+    const bare = mergeWorkbenchEvents({ beforeCellsChange: hostBefore }, {});
+    await expect(bare.beforeCellsChange?.(resubmit)).resolves.toBe(resubmit);
+    expect(hostBefore).not.toHaveBeenCalled();
+    // The original batch still reaches the host.
+    await merged.beforeCellsChange?.(batch);
+    expect(hostBefore).toHaveBeenCalledTimes(1);
+  });
+
+  it("v0.3.1: confirmOnResubmit: true asks the host for re-submits too", async () => {
+    const hostBefore = vi.fn((b: ChangeBatch) => b);
+    const merged = mergeWorkbenchEvents({ beforeCellsChange: hostBefore }, {}, { confirmOnResubmit: true });
+    const resubmit: ChangeBatch = { ...batch, id: "b2", resubmitOf: "b1" };
+    await merged.beforeCellsChange?.(resubmit);
+    expect(hostBefore).toHaveBeenCalledWith(resubmit);
+  });
+
   it("chains beforeCellsChange host → internal, preserving a reduced batch and its meta", async () => {
     const internalBefore = vi.fn(async (b: ChangeBatch) => b);
     const merged = mergeWorkbenchEvents(

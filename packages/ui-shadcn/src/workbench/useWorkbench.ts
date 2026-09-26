@@ -8,6 +8,12 @@
  * `capabilities.schema.write`, the column show / hide picker, "not saved"
  * counters for silently rejected changes, export naming + error banner, and
  * the io peer loaded on demand (`import()` inside runExport / commitImport).
+ *
+ * v0.3.1: the "save" banner (per-cell errors a save answered, grouped by
+ * message, auto-dismissed after 8s unless hovered, every failure re-reported
+ * through `onError`), the "schema-unavailable" banner (`schema.reason ===
+ * "store-unavailable"`), `refetchAfterSave` / `confirmOnResubmit` threaded
+ * to the grid / the events merge, and `slotContext.refreshRows`.
  */
 import type {
   ClipboardReport,
@@ -18,6 +24,7 @@ import type {
 import {
   type Access,
   type ChangeConflict,
+  type ChangeError,
   type ChangeFeedEntry,
   type ColumnDef,
   DEFAULT_TIME_ZONE,
@@ -77,11 +84,36 @@ export type WorkbenchExportScope = "view" | "all" | "selected";
 
 /** A banner the kit renders between the toolbar and the grid. */
 export interface WorkbenchBanner {
-  kind: WorkbenchErrorKind | "read-only" | "export";
+  kind: WorkbenchErrorKind | "read-only" | "export" | "schema-unavailable";
   message: string;
   /** "Retry" / "Reload" — absent for informational banners. */
   action?: { label: string; run(): void };
   dismiss(): void;
+  /**
+   * v0.3.1 (auto-dismissing banners): the kit calls `pause` on pointer enter
+   * and `resume` on pointer leave so a banner being read does not vanish.
+   */
+  pause?(): void;
+  resume?(): void;
+}
+
+/** How long the "save" banner stays before dismissing itself (paused while hovered). */
+export const SAVE_BANNER_MS = 8_000;
+/** Distinct messages shown in the "save" banner before "and N more". */
+const SAVE_BANNER_MAX_MESSAGES = 5;
+
+/**
+ * "N changes failed" plus the DISTINCT server messages, each once with its
+ * cell count when > 1 ("… Aadhaar card (3)"), at most five, then "and N more".
+ */
+export function saveFailureSummary(errors: readonly ChangeError[]): { title: string; lines: string[]; message: string } {
+  const counts = new Map<string, number>();
+  for (const e of errors) counts.set(e.message, (counts.get(e.message) ?? 0) + 1);
+  const all = [...counts].map(([message, n]) => (n > 1 ? `${message} (${n})` : message));
+  const lines = all.slice(0, SAVE_BANNER_MAX_MESSAGES);
+  if (all.length > SAVE_BANNER_MAX_MESSAGES) lines.push(`and ${all.length - SAVE_BANNER_MAX_MESSAGES} more`);
+  const title = errors.length === 1 ? "1 change failed" : `${errors.length} changes failed`;
+  return { title, lines, message: lines.length > 0 ? `${title}: ${lines.join(" · ")}` : title };
 }
 
 export interface UseWorkbenchOptions {
@@ -499,6 +531,40 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     },
     [report],
   );
+  // ---- save errors (v0.3.1) --------------------------------------------------
+  const [saveFailure, setSaveFailure] = useState<{ seq: number; title: string; message: string; errors: ChangeError[] } | null>(null);
+  const saveSeq = useRef(0);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const clearSaveTimer = useCallback(() => {
+    if (saveTimer.current === undefined) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+  }, []);
+  const startSaveTimer = useCallback(() => {
+    clearSaveTimer();
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = undefined;
+      setSaveFailure(null);
+    }, SAVE_BANNER_MS);
+  }, [clearSaveTimer]);
+  const saveSeqShown = saveFailure?.seq;
+  // A new failure (re)starts the 8s timer; dismissal / unmount clears it.
+  useEffect(() => {
+    if (saveSeqShown === undefined) {
+      clearSaveTimer();
+      return;
+    }
+    startSaveTimer();
+    return clearSaveTimer;
+  }, [saveSeqShown, startSaveTimer, clearSaveTimer]);
+  const reportSaveErrors = useCallback((errors: ChangeError[]) => {
+    const { title, message } = saveFailureSummary(errors);
+    saveSeq.current += 1;
+    setSaveFailure({ seq: saveSeq.current, title, message, errors });
+    // Never deduped: a second failed save must be heard again.
+    onErrorRef.current?.({ kind: "save", op: "applyChanges", message: title, error: errors });
+  }, []);
+
   const internalEvents: SchemaGridEvents = useMemo(
     () => ({
       onConflict,
@@ -506,6 +572,8 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
         if (result.applied.length > 0) setSaved((n) => n + result.applied.length);
         const rejected = result.rejected?.length ?? 0;
         if (rejected > 0) setNotSaved((n) => n + rejected);
+        // Conflicts stay on the conflict prompt; per-cell errors get the "save" banner.
+        if (result.errors.length > 0) reportSaveErrors(result.errors);
         bump();
       },
       onOptionCreate: (columnId: string, option: Option) => {
@@ -518,8 +586,9 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       },
       onSchemaChanged: flagSchemaVersion,
     }),
-    [onConflict, bump, flagSchemaVersion],
+    [onConflict, bump, flagSchemaVersion, reportSaveErrors],
   );
+  const confirmOnResubmit = props.confirmOnResubmit === true;
   const hostEvents = combineHostEvents(props.events, props.gridProps?.events);
   const hostEventsRef = useRef(hostEvents);
   hostEventsRef.current = hostEvents;
@@ -536,8 +605,9 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     return mergeWorkbenchEvents(live, internalEvents, {
       onHostError: (error, event) =>
         report({ kind: "unknown", op: event, error, message: error instanceof Error ? error.message : String(error) }),
+      confirmOnResubmit,
     });
-  }, [internalEvents, hostEventsKey, report]);
+  }, [internalEvents, hostEventsKey, report, confirmOnResubmit]);
   const onClipboardReport = useCallback((r: ClipboardReport) => setClipboard(r), []);
 
   // ---- offline / online -----------------------------------------------------
@@ -564,6 +634,13 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       // Reported through the tapped data source.
     }
   }, []);
+  const refreshRows = useCallback(async (ids: string[]) => {
+    try {
+      await handleRef.current?.refreshRows(ids);
+    } catch {
+      // Reported through the tapped data source.
+    }
+  }, []);
   const retry = useCallback(() => {
     clearKinds(["network", "permission-denied"]);
     if (!schemaRef.current) void loadSchema();
@@ -576,9 +653,18 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   }, [clearKinds, client, loadSchema, refetch]);
 
   const [readOnlyDismissed, setReadOnlyDismissed] = useState(false);
+  const [schemaUnavailableDismissed, setSchemaUnavailableDismissed] = useState(false);
   const [exportError, setExportError] = useState<{ message: string; retry(): void } | null>(null);
   const banners: WorkbenchBanner[] = [];
   const dismiss = (kind: WorkbenchErrorKind) => () => clearKinds([kind]);
+  if (saveFailure)
+    banners.push({
+      kind: "save",
+      message: saveFailure.message,
+      dismiss: () => setSaveFailure(null),
+      pause: clearSaveTimer,
+      resume: startSaveTimer,
+    });
   if (errors["schema-changed"])
     banners.push({
       kind: "schema-changed",
@@ -613,6 +699,12 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
       kind: "read-only",
       message: "Read-only. This data source doesn't accept edits.",
       dismiss: () => setReadOnlyDismissed(true),
+    });
+  if (capabilities?.schema.write === false && capabilities.schema.reason === "store-unavailable" && !schemaUnavailableDismissed)
+    banners.push({
+      kind: "schema-unavailable",
+      message: "Column changes are unavailable: the schema store isn't set up.",
+      dismiss: () => setSchemaUnavailableDismissed(true),
     });
 
   // ---- import / export ------------------------------------------------------
@@ -790,6 +882,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
         openExport: () => setExportOpen(true),
         openAddColumn: onAddColumn,
         refetch,
+        refreshRows,
       }
     : null;
 
@@ -819,6 +912,8 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     roles,
     poll,
     events,
+    /** v0.3.1: forwarded to the grid when the host set it (else the grid's default). */
+    refetchAfterSave: props.refetchAfterSave,
     // grid handle
     setHandle,
     handle,
@@ -828,6 +923,7 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     redo: () => void handle?.redo().then(bump),
     exportCsv,
     refetch,
+    refreshRows,
     // views / query
     views,
     activeViewId,

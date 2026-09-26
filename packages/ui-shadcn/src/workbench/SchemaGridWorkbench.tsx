@@ -20,6 +20,9 @@
  * with the workbench's own, "Add column" and the column panel only when the
  * source reports `schema.write`, an export banner with Retry, and the import
  * wizard / export dialog / column panel loaded lazily on first open.
+ *
+ * v0.3.1: the "save" banner (red, role alert, auto-dismiss paused on hover)
+ * and the neutral "schema-unavailable" banner.
  */
 import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
 import type { FilterNode } from "@ranjeetk25/schema-grid-core";
@@ -126,6 +129,8 @@ const BANNER_TONE: Record<WorkbenchBanner["kind"], { className: string; icon: Re
   "schema-changed": { className: "sg:bg-primary-subtle sg:text-foreground", icon: <RefreshCwIcon />, role: "status" },
   "read-only": { className: "sg:bg-subtle sg:text-muted-foreground", icon: <LockIcon />, role: "status" },
   export: { className: "sg:bg-danger-subtle sg:text-danger", icon: <CircleAlertIcon />, role: "alert" },
+  save: { className: "sg:bg-danger-subtle sg:text-danger", icon: <CircleAlertIcon />, role: "alert" },
+  "schema-unavailable": { className: "sg:bg-muted sg:text-foreground", icon: <InfoIcon />, role: "status" },
   unknown: { className: "sg:bg-muted sg:text-foreground", icon: <InfoIcon />, role: "status" },
 };
 
@@ -139,11 +144,15 @@ function Banner({ banner }: { banner: WorkbenchBanner }) {
         "sg:flex sg:h-9 sg:items-center sg:gap-2 sg:rounded-md sg:pr-1 sg:pl-3 sg:text-sm",
         tone.className,
       )}
+      onMouseEnter={banner.pause}
+      onMouseLeave={banner.resume}
     >
       <span aria-hidden className="sg:flex sg:shrink-0 sg:[&_svg]:size-4">
         {tone.icon}
       </span>
-      <span className="sg:min-w-0 sg:flex-1 sg:truncate">{banner.message}</span>
+      <span className="sg:min-w-0 sg:flex-1 sg:truncate" title={banner.message}>
+        {banner.message}
+      </span>
       {banner.action ? (
         <Button variant="ghost" size="sm" className="sg:text-inherit sg:hover:bg-black/5 sg:dark:hover:bg-white/10" onClick={banner.action.run}>
           {banner.action.label}
@@ -442,6 +451,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               events={wb.events}
               height="100%"
               poll={wb.poll}
+              {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
               theme={props.gridProps?.theme ?? theme}
               gridOptions={gridOptions}
               headerMenu={props.gridProps?.headerMenu ?? ShadcnHeaderMenu}

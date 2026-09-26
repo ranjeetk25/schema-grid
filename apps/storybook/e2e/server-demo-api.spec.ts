@@ -324,3 +324,46 @@ test("v0.2 leads over an existing table: §8 filter, unsortable header, paste sk
   await expect(page.locator(".ag-header-cell").filter({ hasText: "Follow up" })).toHaveCount(1);
   await expect(cell(page, "2", colId)).toHaveText("call again");
 });
+
+/**
+ * v0.3.1 refresh after save: editing `name` updates the server-computed
+ * `contact` column right away from the rows the save result carries — no
+ * change-feed poll needed. Lives in this serial file because every spec that
+ * talks to the demo-api resets the same database (`POST /__reset`).
+ */
+test("editing name refreshes the computed contact cell from the save result (no getChanges poll)", async ({ page }) => {
+  let applyRows: unknown[] | undefined;
+  let feedRowsBeforeRefresh = 0;
+  let refreshed = false;
+  page.on("response", async (res) => {
+    const url = res.url();
+    if (!url.includes("/grid/leads/")) return;
+    if (url.endsWith("/applyChanges")) {
+      const body = (await res.json().catch(() => null)) as { data?: { rows?: unknown[] } } | null;
+      applyRows = body?.data?.rows;
+    } else if (url.endsWith("/getChanges") && !refreshed) {
+      const body = (await res.json().catch(() => null)) as { data?: { rows?: unknown[] } } | null;
+      if ((body?.data?.rows?.length ?? 0) > 0) feedRowsBeforeRefresh += 1;
+    }
+  });
+  await page.goto(`/iframe.html?id=${STORIES.leads}&viewMode=story`);
+  await page.locator(".ag-row[row-id]").first().waitFor();
+
+  const contact = cell(page, "1", "contact");
+  await expect(contact).toHaveText("Lead 0001 <lead1@example.com>");
+  // Computed: read-only — no editor opens on a double click.
+  await contact.dblclick();
+  await expect(page.locator(".ag-cell-inline-editing")).toHaveCount(0);
+
+  await cell(page, "1", "name").dblclick();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Zed");
+  await page.keyboard.press("Enter");
+  await expect(contact).toHaveText("Zed <lead1@example.com>", { timeout: 3_000 });
+  refreshed = true;
+
+  // The save result carried the refreshed row (`rows`), and no poll delivered it first.
+  expect(Array.isArray(applyRows)).toBe(true);
+  expect(JSON.stringify(applyRows)).toContain("Zed <lead1@example.com>");
+  expect(feedRowsBeforeRefresh).toBe(0);
+});

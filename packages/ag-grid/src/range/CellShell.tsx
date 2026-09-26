@@ -14,14 +14,21 @@
  * above the grid) would run too late for the seam's `stopPropagation()` to
  * keep AG Grid from treating it as a cell mousedown.
  *
+ * Save errors (v0.3.1): the shell subscribes to the cell status store for
+ * ITS cell only and mirrors `CellStatus.error` onto the AG Grid cell element
+ * as a native `title` (plus `data-sg-error`), so hovering a red cell shows
+ * the server's message without AG Grid's tooltip module. Both are removed
+ * when the error clears or the shell unmounts.
+ *
  * `wrapWithCellShell` returns a STABLE component per input renderer (WeakMap
  * cache), as `compileColumns` requires.
  */
 import type { IRowNode } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
-import { type ComponentType, type ReactElement, useEffect, useRef } from "react";
+import { type ComponentType, type ReactElement, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { type FillHandlePointerEvent, getSchemaGridStores } from "../grid/gridContext";
 import type { GridRow } from "../internal/core";
+import { cellKey } from "../state/cellStatusStore";
 import { useStoreSelector } from "../state/createStore";
 import { createRangeStore } from "../state/rangeStore";
 import { SG_CLASSES } from "../theme/classNames";
@@ -46,9 +53,44 @@ export function createCellShell<Row extends GridRow = GridRow>(
   Inner: ComponentType<CustomCellRendererProps<Row>>,
 ): ComponentType<CustomCellRendererProps<Row>> {
   function CellShell(props: CustomCellRendererProps<Row>): ReactElement {
-    const store = getSchemaGridStores(props.context)?.range ?? DETACHED_RANGE_STORE;
+    const stores = getSchemaGridStores(props.context);
+    const store = stores?.range ?? DETACHED_RANGE_STORE;
     const node = props.node as IRowNode | undefined;
     const colId = props.column?.getColId();
+    // Save error → native tooltip on the cell element (v0.3.1).
+    const cellStatus = stores?.cellStatus;
+    const rowId = (props.data as GridRow | undefined)?.id ?? (node?.data as GridRow | undefined)?.id;
+    const subscribeError = useCallback(
+      (onChange: () => void) => {
+        if (!cellStatus || rowId === undefined || colId === undefined) return () => {};
+        const key = cellKey(rowId, colId);
+        return cellStatus.subscribeChanges((keys) => {
+          if (keys.includes(key)) onChange();
+        });
+      },
+      [cellStatus, rowId, colId],
+    );
+    const error = useSyncExternalStore(subscribeError, () =>
+      cellStatus && rowId !== undefined && colId !== undefined ? cellStatus.get(rowId, colId).error : undefined,
+    );
+    const eGridCell = props.eGridCell as HTMLElement | undefined;
+    useEffect(() => {
+      if (!eGridCell || error === undefined) return;
+      const apply = () => {
+        if (eGridCell.getAttribute("title") !== error) eGridCell.setAttribute("title", error);
+        if (!eGridCell.hasAttribute("data-sg-error")) eGridCell.setAttribute("data-sg-error", "");
+      };
+      apply();
+      // AG Grid's cell tooltip feature (attached once a cell has been edited) clears
+      // `title` on every refreshCell: put the message back whenever that happens.
+      const observer = typeof MutationObserver === "function" ? new MutationObserver(apply) : undefined;
+      observer?.observe(eGridCell, { attributes: true, attributeFilter: ["title"] });
+      return () => {
+        observer?.disconnect();
+        eGridCell.removeAttribute("title");
+        eGridCell.removeAttribute("data-sg-error");
+      };
+    }, [eGridCell, error]);
     // Row indexes change under a mounted renderer (sort, filter, inserts):
     // always read `node.rowIndex` live, never a render-time capture.
     const memo = useRef<{ range: CellRange; rowIndex: number; result: boolean } | null>(null);

@@ -5,7 +5,7 @@
  * with `submit` wrapped; after each submit settles it announces, ASSERTIVELY:
  *   - a veto (`beforeCellsChange` returned false) → "Edit cancelled"
  *   - conflicts → "Conflict on {column}, row {id}" (one) / "Conflicts on N cells"
- *   - errors    → "Edit rejected on {column}: {reason}" (one) / "N edits rejected"
+ *   - errors    → "Edit rejected on {column}: {reason}" (one) / "N edits rejected: {first reason}"
  * Conflicts win over errors when a batch has both (one assertive message per
  * batch; the region would otherwise overwrite itself).
  *
@@ -56,7 +56,7 @@ export function editOutcomeMessage(outcome: SubmitOutcome, source: ChangeSource,
   if (firstError) {
     return errors.length === 1
       ? editRejectedMessage(label(firstError.columnId), firstError.message)
-      : editsRejectedMessage(errors.length);
+      : editsRejectedMessage(errors.length, firstError.message);
   }
   return null;
 }
@@ -67,8 +67,8 @@ export function withEditAnnouncements<Row extends GridRow>(
 ): EditController<Row> {
   return {
     ...controller,
-    async submit(changes, source) {
-      const outcome = await controller.submit(changes, source);
+    async submit(changes, source, submitOptions) {
+      const outcome = await controller.submit(changes, source, submitOptions);
       const message = editOutcomeMessage(outcome, source, options.getSchema());
       if (message) options.announce(message, "assertive");
       else if (source !== "paste" && source !== "fill" && (outcome.rejected?.length ?? 0) > 0) {

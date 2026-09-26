@@ -161,6 +161,8 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     applyChanges: calls.applyChanges,
     createRows: (partials: RowPartial<Row>[]) => inner.createRows(partials),
     deleteRows: (ids: string[]) => inner.deleteRows(ids),
+    // v0.3.1: core's in-memory source answers `getRows` (rows as `fetch` would serve them).
+    getRows: (ids: string[]) => inner.getRows(ids),
     getChanges: calls.getChanges,
     getOptions: calls.getOptions,
     createOption: calls.createOption,

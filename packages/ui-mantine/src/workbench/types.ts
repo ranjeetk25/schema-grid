@@ -71,6 +71,12 @@ export type WorkbenchErrorKind =
   | "network"
   /** The server's schema moved past ours (change feed `schemaVersion`, SCHEMA_CHANGED). */
   | "schema-changed"
+  /**
+   * v0.3.1: a save answered per-cell errors (`ChangeResult.errors`, e.g. a
+   * server-side rule). `op` is "applyChanges", `message` the banner's title
+   * line ("N changes failed") and `error` the `ChangeError[]`.
+   */
+  | "save"
   /** Anything else (validation, conflicts are handled by the conflict prompt). */
   | "unknown";
 
@@ -78,8 +84,9 @@ export interface WorkbenchError {
   kind: WorkbenchErrorKind;
   /** Data-source operation that failed ("fetch", "applyChanges", "getChanges", "updateSchema", …). */
   op: string;
-  /** One friendly sentence. */
+  /** One friendly sentence (kind "save": the title line, "N changes failed"). */
   message: string;
+  /** What was thrown; for kind "save", the `ChangeError[]` the data source answered. */
   error: unknown;
 }
 
@@ -102,6 +109,8 @@ export interface WorkbenchSlotContext {
   openExport(): void;
   openAddColumn(): void;
   refetch(): Promise<void>;
+  /** v0.3.1: re-reads the given rows through `dataSource.getRows` (no-op without it). */
+  refreshRows(ids: string[]): Promise<void>;
 }
 
 export type WorkbenchSlot = ReactNode | ((ctx: WorkbenchSlotContext) => ReactNode);
@@ -142,6 +151,18 @@ export interface SchemaGridWorkbenchBaseProps {
   onError?(error: WorkbenchError): void;
   /** Change-feed interval. Default: the grid's (7s, paused while the tab is hidden). */
   pollIntervalMs?: number;
+  /**
+   * v0.3.1: after a save whose result carries no `rows`, re-read the changed
+   * rows with `dataSource.getRows` so computed cells update without a poll.
+   * Default: the grid's (true in server mode, false in client mode).
+   */
+  refetchAfterSave?: boolean;
+  /**
+   * v0.3.1: run the host's `beforeCellsChange` again for a re-submit (a
+   * conflict "Overwrite"; `batch.resubmitOf` set). Default false: a
+   * confirmation given for the original batch is not asked twice.
+   */
+  confirmOnResubmit?: boolean;
   /** "fill" (default) fills the parent (give it a height); a number is px; a string is any CSS height. */
   height?: "fill" | number | string;
   pageSize?: number;

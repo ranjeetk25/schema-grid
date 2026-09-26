@@ -35,6 +35,7 @@ Every operation takes one JSON value and returns one JSON value. Schemas are Zod
 | `getOptions` | yes | `{ columnId: string, search?: string }` | `Option[]` |
 | `createOption` | yes | `{ columnId: string, label: string }` | `Option` |
 | `lookup` | yes | `{ columnId: string, search: string }` | `LinkRef[]` |
+| `getRows` | yes | `{ ids: string[] }` | `GridRow[]` (v0.3.1: the current rows, projected for the caller, formulas / computed columns evaluated; unknown or invisible ids skipped; order follows `ids`) |
 | `getSchema` | grid | `null` | `GridSchema` |
 | `updateSchema` | grid | `GridSchema` (with the current `schemaVersion`) | `GridSchema` (stored, `schemaVersion` + 1) |
 
@@ -134,6 +135,25 @@ v0.3 removed the `GET {base}/{gridId}/schema` alias (it now answers `405 METHOD_
 decision message a `beforeCellsChange` hook attached). Servers ignore it for validation, hand it to the write
 hooks and echo it on the matching `applied` / `conflicts` entry; `ChangeResult.rejected` (v0.3) lists changes
 a source declined quietly (not applied, not an error).
+
+v0.3.1 additions (all optional, all passthrough — a v0.3 peer simply ignores them):
+
+- `ChangeResult.rows?: GridRow[]` — the refreshed rows for every row id in the batch that still exists, read
+  AFTER the write (formulas, `compute`, `mapRows` and projection applied). The in-memory source and both server
+  sources populate it; clients upsert these rows and skip the post-save `getRows` when they are present.
+- `ChangeBatch.resubmitOf?: string` — the id of the batch this one re-submits (a conflict "Overwrite"). Set by
+  the client's edit controller; the original batch's `meta` is carried onto the re-submit. Hosts use it to skip a
+  confirmation they already gave (the workbench does so unless `confirmOnResubmit`).
+- `getRows` (table above) — the operation clients call to refresh rows when `rows` is absent
+  (`refetchAfterSave`) or on demand (`handle.refreshRows(ids)`). A source without it answers `UNSUPPORTED_OPERATION`
+  501; there is deliberately no capabilities flag for it.
+- `capabilities.schema.reason?: "forbidden" | "no-store" | "store-unavailable"` — why `schema.write` is false. A
+  grid registry answers `no-store` (no `schemaStore`), `store-unavailable` (`SchemaStore.available()` is false —
+  e.g. the Drizzle store's table was never created) or `forbidden` (`permission(ctx, "updateSchema")` /
+  `schemaWritable(ctx)` said no). `updateSchema` on a missing / unavailable store is `UNSUPPORTED_OPERATION` 501
+  with `details.reason: "schema-store-unavailable"`, not 403.
+- `Option.settableMessage?: string` on `getOptions` / `createOption` answers and inside schemas: the message
+  shown instead of the generated "Option “X” can only be set by …" / "can’t be set manually".
 
 Checks run in this order: unknown grid (`UNKNOWN_GRID` 404) → unknown op (`UNKNOWN_OPERATION` 404) →
 `permission(ctx, op)` (`PERMISSION_DENIED` 403) → input validation → the operation. Responses use the same

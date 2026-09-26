@@ -19,6 +19,14 @@
  *      `ChangeResult.versions`, spec §4.5 addendum); only for a data source
  *      that omits it do we fall back to `baseVersions[row] + 1` (one bump per
  *      applyChanges call). Never lower than the current version.
+ *   4b. refresh (v0.3.1): when the result carries `rows` (the server's
+ *      refreshed rows, derived values included) they go to `upsertRows`;
+ *      otherwise, with `refetchAfterSave` and a `dataSource.getRows`, the
+ *      changed rows are fetched by id and upserted. This runs after the batch
+ *      settled its per-row send slot and BEFORE `onApplied`; a failing
+ *      `getRows` is swallowed (the save already succeeded). `upsertRows` is
+ *      expected to preserve cells that are pending from other in-flight
+ *      batches (`useSchemaGrid`'s `upsertIncoming` does).
  *   5. errors: the cell reverts to the EARLIEST `prev` of that cell in the
  *      batch and gets the error message.
  *   5b. rejected (v0.3, `ChangeResult.rejected`): the data source declined the
@@ -30,9 +38,12 @@
  *      - "keepTheirs": write serverValue, version = max(current, serverVersion),
  *        clear the remote-changed flag.
  *      - "overwrite": version = max(current, serverVersion), then re-submit our
- *        value (prev = serverValue) with the same source. Overwrites for the
- *        same row + source resolved in the same tick are coalesced into ONE
- *        re-submit (they go through the full pipeline, incl. beforeCellsChange).
+ *        value (prev = serverValue) with the same source, `resubmitOf` = the
+ *        original batch id and the original batch's `meta` (v0.3.1). Overwrites
+ *        for the same original batch + row + source resolved in the same tick
+ *        are coalesced into ONE re-submit (they go through the full pipeline,
+ *        incl. beforeCellsChange; hosts may skip a confirmation they already
+ *        gave by checking `batch.resubmitOf`).
  *      `resolve` acts once; later calls are no-ops. With no `onConflict`
  *      handler the controller resolves "keepTheirs" itself.
  *      A late resolution never clobbers a newer local edit: if a later submit
@@ -86,6 +97,7 @@ import type {
   CellChange,
   CellConflict,
   ChangeBatch,
+  ChangeMeta,
   ChangeResult,
   ChangeSource,
   ConflictResolution,
@@ -107,10 +119,12 @@ export interface AppliedInfo<Row extends GridRow = GridRow> {
   changedCells: CellRef[];
   /** Formula cells on changed rows whose inputs changed; the grid should refresh them. */
   formulaDependents: CellRef[];
+  /** v0.3.1: rows replaced from the server after the save (`ChangeResult.rows` or `getRows`); empty when none. */
+  refreshedRowIds: string[];
 }
 
 export interface EditControllerOptions<Row extends GridRow = GridRow> {
-  dataSource: Pick<DataSource<Row>, "applyChanges">;
+  dataSource: Pick<DataSource<Row>, "applyChanges" | "getRows">;
   schema: GridSchema;
   rowStore: RowStore<Row>;
   cellStatus: CellStatusStore;
@@ -129,6 +143,13 @@ export interface EditControllerOptions<Row extends GridRow = GridRow> {
    */
   canEditCell?(row: Row, columnId: string): boolean;
   idFactory?(): string;
+  /**
+   * v0.3.1: when a save result carries no `rows`, fetch the changed rows with
+   * `dataSource.getRows` and hand them to `upsertRows`. Default false.
+   */
+  refetchAfterSave?: boolean;
+  /** v0.3.1: receives the server's refreshed rows after a save (see file header, step 4b). */
+  upsertRows?(rows: Row[]): void;
 }
 
 /** `ChangeResult.errors[i].message` for cells the controller rejected client-side. */
@@ -153,9 +174,17 @@ export interface SubmitOutcome {
   rejected?: CellChange[];
 }
 
+/** v0.3.1: extra batch fields for a re-submit (conflict overwrite, retry). */
+export interface SubmitOptions {
+  /** The id of the batch this one re-submits (`ChangeBatch.resubmitOf`). */
+  resubmitOf?: string;
+  /** Batch-level meta to send (`ChangeBatch.meta`). */
+  meta?: ChangeMeta;
+}
+
 export interface EditController<Row extends GridRow = GridRow> {
-  submit(changes: CellChange[], source: ChangeSource): Promise<SubmitOutcome>;
-  buildBatch(changes: CellChange[], source: ChangeSource): ChangeBatch;
+  submit(changes: CellChange[], source: ChangeSource, options?: SubmitOptions): Promise<SubmitOutcome>;
+  buildBatch(changes: CellChange[], source: ChangeSource, options?: SubmitOptions): ChangeBatch;
 }
 
 function defaultIdFactory(): () => string {
@@ -208,6 +237,8 @@ interface CellSpan {
 
 interface PendingOverwrite {
   changes: CellChange[];
+  /** The original batch: its id becomes `resubmitOf`, its meta travels along. */
+  options: SubmitOptions;
   waiters: { resolve(): void; reject(e: unknown): void }[];
 }
 
@@ -221,7 +252,7 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
   const lastWrite = new Map<string, number>();
   /** rowId → promise settling when the latest in-flight batch touching the row settles. */
   const rowTails = new Map<string, Promise<void>>();
-  /** `${source}\0${rowId}` → overwrites collected in the current tick. */
+  /** `${originalBatchId}\0${source}\0${rowId}` → overwrites collected in the current tick. */
   const overwriteQueue = new Map<string, PendingOverwrite>();
 
   const keyOf = (columnId: string): string => opts.schema.columns.find((c) => c.id === columnId)?.key ?? columnId;
@@ -245,11 +276,13 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     return out;
   };
 
-  const buildBatch = (changes: CellChange[], source: ChangeSource): ChangeBatch => ({
+  const buildBatch = (changes: CellChange[], source: ChangeSource, options?: SubmitOptions): ChangeBatch => ({
     id: nextId(),
     changes,
     baseVersions: baseVersionsFor(changes),
     source,
+    ...(options?.resubmitOf !== undefined ? { resubmitOf: options.resubmitOf } : {}),
+    ...(options?.meta !== undefined ? { meta: options.meta } : {}),
   });
 
   /** Drops meta-only changes (`next` deep-equals `prev`): nothing to write. */
@@ -295,18 +328,23 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     overwriteQueue.delete(queueKey);
     if (!pending) return;
     try {
-      await submit(pending.changes, source);
+      await submit(pending.changes, source, pending.options);
       for (const w of pending.waiters) w.resolve();
     } catch (e) {
       for (const w of pending.waiters) w.reject(e);
     }
   };
 
-  const queueOverwrite = (change: CellChange, source: ChangeSource): Promise<void> => {
-    const queueKey = `${source}\u0000${change.rowId}`;
+  const queueOverwrite = (change: CellChange, original: ChangeBatch): Promise<void> => {
+    const source = original.source;
+    const queueKey = `${original.id}\u0000${source}\u0000${change.rowId}`;
     let pending = overwriteQueue.get(queueKey);
     if (!pending) {
-      pending = { changes: [], waiters: [] };
+      pending = {
+        changes: [],
+        options: { resubmitOf: original.id, ...(original.meta !== undefined ? { meta: original.meta } : {}) },
+        waiters: [],
+      };
       overwriteQueue.set(queueKey, pending);
       queueMicrotask(() => void flushOverwrites(queueKey, source));
     }
@@ -331,11 +369,11 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
       if (newerLocal) return;
       const ours = findChangeForConflict(batch.changes, conflict);
       if (!ours) return;
-      await queueOverwrite(conflictToChange(conflict, ours), batch.source);
+      await queueOverwrite(conflictToChange(conflict, ours), batch);
     };
   };
 
-  const collectApplied = (batch: ChangeBatch, result: ChangeResult): AppliedInfo<Row> => {
+  const collectApplied = (batch: ChangeBatch, result: ChangeResult, refreshedRowIds: string[]): AppliedInfo<Row> => {
     const changedRowIds: string[] = [];
     const changedCells: CellRef[] = [];
     const formulaDependents: CellRef[] = [];
@@ -359,7 +397,26 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
         formulaDependents.push({ rowId: c.rowId, columnId: depId });
       }
     }
-    return { batch, result, changedRowIds, changedCells, formulaDependents };
+    return { batch, result, changedRowIds, changedCells, formulaDependents, refreshedRowIds };
+  };
+
+  /**
+   * 4b. Refreshed rows after a save: `result.rows` when the source sent them,
+   * else `getRows(changedRowIds)` under `refetchAfterSave`. Returns the ids
+   * upserted; never throws.
+   */
+  const refreshAfterSave = (result: ChangeResult, changedRowIds: string[]): string[] | Promise<string[]> => {
+    const upsert = opts.upsertRows;
+    if (!upsert || changedRowIds.length === 0) return [];
+    const apply = (rows: Row[] | undefined): string[] => {
+      if (!rows || rows.length === 0) return [];
+      upsert(rows);
+      return rows.map((r) => r.id);
+    };
+    if (result.rows) return apply(result.rows as Row[]);
+    // Synchronous when there is nothing to fetch: no extra tick between "applied" and "onApplied".
+    if (!opts.refetchAfterSave || !dataSource.getRows) return [];
+    return dataSource.getRows(changedRowIds).then(apply, () => []);
   };
 
   /** Splits `changes` by the client write check; `rejected` collects distinct refused cells. */
@@ -375,9 +432,9 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     return allowed;
   };
 
-  async function submit(changes: CellChange[], source: ChangeSource): Promise<SubmitOutcome> {
+  async function submit(changes: CellChange[], source: ChangeSource, options?: SubmitOptions): Promise<SubmitOutcome> {
     const rejected = new Map<string, CellRef>();
-    const built = buildBatch(enforce(withoutNoOps(changes), rejected), source);
+    const built = buildBatch(enforce(withoutNoOps(changes), rejected), source, options);
     let batch = built;
     /** Changes `beforeCellsChange` dropped (v0.3): reported as rejected, never sent. */
     let hookDropped: CellChange[] = [];
@@ -510,7 +567,13 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
 
       const reverted = [...revertedErrors, ...revertedRejected, ...revertedConflicts];
       if (reverted.length > 0) opts.onReverted?.(reverted);
-      if (result.applied.length > 0) opts.onApplied?.(collectApplied(batch, result));
+      if (result.applied.length > 0) {
+        // 4b. Refresh (after this batch released its row slots, before onApplied).
+        const changedRowIds = [...new Set(result.applied.map((c) => c.rowId))];
+        const refreshed = refreshAfterSave(result, changedRowIds);
+        const refreshedRowIds = Array.isArray(refreshed) ? refreshed : await refreshed;
+        opts.onApplied?.(collectApplied(batch, result, refreshedRowIds));
+      }
     } catch (e) {
       finish();
       throw e;
