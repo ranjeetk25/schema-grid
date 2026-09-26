@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-io",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "CSV/XLSX import, export and clipboard parsing for Schema Grid.",
   "license": "MIT",
   "author": "Masai School",

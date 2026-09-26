@@ -1,6 +1,6 @@
 {
   "name": "@ranjeetk25/schema-grid-ag-grid",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AG Grid Community binding for Schema Grid: column compiler, editors, range selection, clipboard and fill handle.",
   "license": "MIT",
   "author": "Masai School",
