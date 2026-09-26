@@ -192,9 +192,17 @@ describe("<SchemaGridWorkbench>", () => {
         pollIntervalMs: 20,
         onRemoteChanges,
       });
+      // Polling starts as soon as the capabilities arrive, BEFORE AG Grid has painted the first
+      // fetch, so wait for the rows and then for a poll answered after they exist: only that
+      // poll could remove r1 from the DOM (an earlier one is overwritten by the initial load).
+      await waitFor(() => expect(rows(container).length).toBe(createFixtureRows().length), { timeout: 5000 });
       await waitFor(() => expect(getChanges).toHaveBeenCalled(), { timeout: 5000 });
-      await waitFor(() => expect(onRemoteChanges).toHaveBeenCalled(), { timeout: 5000 });
-      expect(onRemoteChanges.mock.calls[0]?.[0].deletedRowIds).toEqual([]);
+      const polled = onRemoteChanges.mock.calls.length;
+      await waitFor(() => expect(onRemoteChanges.mock.calls.length).toBeGreaterThan(polled), { timeout: 5000 });
+      // Every entry the grid saw had its deletions dropped (the host hears the same entry).
+      expect(onRemoteChanges.mock.calls.map(([entry]) => entry.deletedRowIds)).toEqual(
+        onRemoteChanges.mock.calls.map(() => []),
+      );
       expect(screen.getByTestId("workbench-status")).not.toHaveTextContent("remote update");
       expect(rows(container).length).toBe(createFixtureRows().length);
     });
