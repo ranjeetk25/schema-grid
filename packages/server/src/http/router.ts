@@ -21,7 +21,7 @@ export interface ExpressRouterOptions<Req, Ctx> {
 /**
  * Express-compatible middleware serving a grid registry. Mount it with a JSON
  * body parser: `app.use("/grid", express.json(), toExpressRouter(registry, { context }))`.
- * Routes: `POST /:gridId/:op`, `GET /:gridId/schema`, `GET /` (list). Other
+ * Routes: `POST /:gridId/:op` (incl. `getSchema`) and `GET /` (list). Other
  * paths go to `next()` (or 404 without one). Never rejects.
  */
 export function toExpressRouter<Ctx = undefined, Req extends ExpressLikeRouterRequest = ExpressLikeRouterRequest>(

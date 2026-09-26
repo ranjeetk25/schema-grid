@@ -364,8 +364,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
     });
 
     it("createOption appends a slugged option and bumps schemaVersion", async () => {
-      const before = (await call<GridSchema>("GET", "/schema")).json
-        .schemaVersion;
+      const before = (await op<GridSchema>("getSchema", null)).json.schemaVersion;
       const res = await op<{ id: string; label: string }>("createOption", {
         columnId: "col_stage",
         label: "Interview Scheduled",
@@ -374,7 +373,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
         id: "interview_scheduled",
         label: "Interview Scheduled",
       });
-      const schema = (await call<GridSchema>("GET", "/schema")).json;
+      const schema = (await op<GridSchema>("getSchema", null)).json;
       expect(schema.schemaVersion).toBe(before + 1);
       expect(
         await op("getOptions", { columnId: "col_stage", search: "interview" }),
@@ -383,7 +382,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
       });
     });
 
-    it("PUT /schema adds/drops gc_<key> generated columns idempotently; 409 on stale version", async () => {
+    it("updateSchema adds/drops gc_<key> generated columns idempotently; 409 on stale version", async () => {
       const gcColumns = async () =>
         (
           await rawQuery<{ name: string }>(
@@ -391,14 +390,14 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
             "SELECT COLUMN_NAME AS name FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'it_grid_rows' AND COLUMN_NAME LIKE 'gc\\_%'",
           )
         ).map((r) => r.name);
-      const current = (await call<GridSchema>("GET", "/schema")).json;
+      const current = (await op<GridSchema>("getSchema", null)).json;
       const indexed = {
         ...current,
         columns: current.columns.map((c) =>
           c.key === "fee" ? { ...c, indexed: true } : c,
         ),
       };
-      const put = await call<GridSchema>("PUT", "/schema", indexed);
+      const put = await op<GridSchema>("updateSchema", indexed);
       expect(put.status).toBe(200);
       expect(put.json.schemaVersion).toBe(current.schemaVersion + 1);
       expect(await gcColumns()).toEqual(["gc_fee"]);
@@ -406,23 +405,17 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")(
         await fetchIds({ columnId: "col_fee", operator: "eq", value: 50000 }),
       ).toEqual(["r1"]);
 
-      expect((await call("PUT", "/schema", indexed)).status).toBe(409);
-      const invalid = await call<{ error: { name: string } }>(
-        "PUT",
-        "/schema",
-        {
-          ...put.json,
-          columns: [...put.json.columns, { ...put.json.columns[0], order: 99 }],
-        },
-      );
+      expect((await op("updateSchema", indexed)).status).toBe(409);
+      const invalid = await op<GridSchema>("updateSchema", {
+        ...put.json,
+        columns: [...put.json.columns, { ...put.json.columns[0], order: 99 }],
+      });
       expect(invalid.status).toBe(400);
-      expect(invalid.json.error.name).toBe("SchemaValidationError");
+      expect(invalid.error?.code).toBe("SCHEMA_INVALID");
 
       expect((await call("POST", "/__reset")).status).toBe(200);
       expect(await gcColumns()).toEqual([]);
-      expect(
-        (await call<GridSchema>("GET", "/schema")).json.schemaVersion,
-      ).toBe(1);
+      expect((await op<GridSchema>("getSchema", null)).json.schemaVersion).toBe(1);
       expect(await fetchIds(SECTION_8_FILTER)).toEqual(["r2", "r3"]);
     });
   },

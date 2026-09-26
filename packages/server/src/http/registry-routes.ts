@@ -40,7 +40,8 @@ export function pathSegments(path: string): string[] | undefined {
 
 /**
  * The multi-grid HTTP binding shared by every registry adapter:
- * `GET /` → list, `GET /:gridId/schema` → getSchema, `POST /:gridId/:op` → op.
+ * `GET /` → list, `POST /:gridId/:op` → op (the schema is the `getSchema` op:
+ * `POST /:gridId/getSchema`; v0.3 removed the `GET /:gridId/schema` alias).
  * Returns undefined when the path is not a grid route (let the framework 404).
  * Never throws.
  */
@@ -55,13 +56,12 @@ export async function runRegistryRoute<Ctx>(
   const verb = method.toUpperCase();
   const [gridId, op] = segments as [string?, string?];
   const isList = gridId === undefined;
-  const isSchemaGet = op === "schema" && verb === "GET";
-  if (isList ? verb !== "GET" : verb !== "POST" && !isSchemaGet) {
+  if (isList ? verb !== "GET" : verb !== "POST") {
     return toHttpResponse(failed("METHOD_NOT_ALLOWED", `${verb} is not allowed here`));
   }
-  const opName = isList ? "list" : isSchemaGet ? "getSchema" : (op as string);
+  const opName = isList ? "list" : (op as string);
   try {
-    const parsed = isList || isSchemaGet ? { ok: true as const, value: null } : parseJsonBody(await readBody());
+    const parsed = isList ? { ok: true as const, value: null } : parseJsonBody(await readBody());
     if (!parsed.ok) return toHttpResponse({ ok: false, error: parsed.error, status: httpStatusFor(parsed.error.code) });
     const ctx = resolveContext ? await resolveContext() : undefined;
     if (isList) {

@@ -21,8 +21,8 @@ function stripBase(pathname: string, basePath: string): string | undefined {
  * Web-standard handler (`Request → Response`) for a grid registry: works with
  * Hono (`app.all("/grid/*", (c) => handler(c.req.raw))`), Bun.serve, Next.js
  * route handlers, Deno and Cloudflare Workers. Routes (below `basePath`):
- * `POST /:gridId/:op`, `GET /:gridId/schema`, `GET /` (grids the context may
- * open). Answers `200 { data }` / `<status> { error: WireError }`. Never rejects.
+ * `POST /:gridId/:op` (incl. `getSchema` / `updateSchema`) and `GET /` (grids
+ * the context may open). Answers `200 { data }` / `<status> { error: WireError }`. Never rejects.
  */
 export function toFetchHandler<Ctx = undefined>(
   registry: GridRegistry<Ctx>,

@@ -91,10 +91,13 @@ describe("toFetchHandler (Web Request → Response)", () => {
     expect(body.data.rows[0]?.cells).not.toHaveProperty("notes");
   });
 
-  it("GET /:gridId/schema is getSchema; GET / lists the permitted grids", async () => {
-    const res = await handler(new Request("http://test.local/api/grid/admissions/schema"));
+  it("POST /:gridId/getSchema is the one way to read the schema (GET /:gridId/schema is gone, v0.3); GET / lists the permitted grids", async () => {
+    const res = await post("/admissions/getSchema", "");
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: GridSchema }).data).toEqual(createFixtureSchema());
+    const legacy = await handler(new Request("http://test.local/api/grid/admissions/schema"));
+    expect(legacy.status).toBe(405);
+    expect(await legacy.json()).toMatchObject({ error: { code: "METHOD_NOT_ALLOWED" } });
     const list = await handler(new Request("http://test.local/api/grid", { headers: { "x-role": "counsellor" } }));
     expect(await list.json()).toEqual({ data: [{ id: "admissions" }] });
     const slash = await handler(new Request("http://test.local/api/grid/"));
@@ -151,7 +154,7 @@ describe("toFetchHandler (Web Request → Response)", () => {
 
   it("adds configured response headers", async () => {
     const h = toFetchHandler(registry(), { context: () => ({ role: "admin" as const }), headers: { "x-a": "1" } });
-    const res = await h(new Request("http://x/admissions/schema"));
+    const res = await h(new Request("http://x/admissions/getSchema", { method: "POST" }));
     expect(res.headers.get("x-a")).toBe("1");
   });
 });
@@ -188,11 +191,14 @@ describe("toExpressRouter", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("GET /:gridId/schema and GET / (list)", async () => {
+  it("POST /:gridId/getSchema and GET / (list); GET /:gridId/schema answers 405", async () => {
     const res = fakeRes();
-    await router({ method: "GET", path: "/admissions/schema", headers: { "x-role": "counsellor" } }, res);
+    await router({ method: "POST", path: "/admissions/getSchema", headers: { "x-role": "counsellor" } }, res);
     expect(res.statusCode).toBe(200);
     expect((res.body as { data: GridSchema }).data.id).toBe(createFixtureSchema().id);
+    const legacy = fakeRes();
+    await router({ method: "GET", path: "/admissions/schema", headers: { "x-role": "counsellor" } }, legacy);
+    expect(legacy.statusCode).toBe(405);
     const list = fakeRes();
     await router({ method: "GET", path: "/", headers: { "x-role": "counsellor" } }, list);
     expect(list.body).toEqual({ data: [{ id: "admissions" }] });
@@ -242,10 +248,12 @@ describe("toLambdaHandler(registry)", () => {
     expect((JSON.parse(v2.body) as { data: { rows: GridRow[] } }).data.rows[0]?.cells).not.toHaveProperty("notes");
   });
 
-  it("GET with only { gridId } is getSchema; GET without a grid lists", async () => {
-    const schema = await handler({ httpMethod: "GET", pathParameters: { gridId: "admissions" } });
+  it("POST { gridId, op: getSchema } reads the schema; GET with only { gridId } is 405; GET without a grid lists", async () => {
+    const schema = await handler({ httpMethod: "POST", pathParameters: { gridId: "admissions", op: "getSchema" } });
     expect(schema.statusCode).toBe(200);
     expect((JSON.parse(schema.body) as { data: GridSchema }).data.id).toBe(createFixtureSchema().id);
+    const legacy = await handler({ httpMethod: "GET", pathParameters: { gridId: "admissions" } });
+    expect(legacy.statusCode).toBe(405);
     const list = await handler({ httpMethod: "GET", pathParameters: null, headers: { "x-role": "counsellor" } });
     expect(JSON.parse(list.body)).toEqual({ data: [{ id: "admissions" }] });
   });

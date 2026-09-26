@@ -40,6 +40,9 @@ export { type DrizzleSchemaStoreOptions, createDrizzleSchemaStore } from "../sch
 export {
   SQL_VIEW_BASE_ALIAS,
   SQL_VIEW_EXTENSION_ALIAS,
+  type ComputedColumn,
+  isComputedColumn,
+  type SqlViewColumn,
   type SqlViewContext,
   type SqlViewDataSource,
   type SqlViewDataSourceOptions,

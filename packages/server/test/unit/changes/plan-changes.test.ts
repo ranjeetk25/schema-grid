@@ -136,3 +136,43 @@ describe("planChanges: ColumnDef.validation (parity with core)", () => {
     expect(planChanges(batch([ch("r1", "code", "ABC")], { r1: 1 }), vrows, vctx).errors).toEqual([]);
   });
 });
+
+describe("planChanges: option rules and meta (v0.3)", () => {
+  const restricted = {
+    ...schema,
+    columns: schema.columns.map((c) =>
+      c.id === "status"
+        ? { ...c, config: { options: [{ id: "paid", label: "Paid", settableBy: { roles: ["admin"] } }, { id: "pending", label: "Pending" }] } }
+        : c,
+    ),
+  };
+  const counsellor = makeCtx(restricted, { user: { id: "u1", roles: ["counsellor"] } });
+  const admin = makeCtx(restricted, { user: { id: "a1", roles: ["admin"] } });
+
+  it("rejects an option the user cannot set, with the option message; an allowed role passes", () => {
+    const b = batch([{ rowId: "r1", columnId: "status", prev: null, next: "paid" }]);
+    expect(planChanges(b, rows, counsellor).errors).toEqual([
+      { rowId: "r1", columnId: "status", message: "Option “Paid” can only be set by Admin" },
+    ]);
+    expect(planChanges(b, rows, admin).rowPlans[0]?.sets[0]?.next).toBe("paid");
+    expect(planChanges(batch([{ rowId: "r1", columnId: "status", prev: null, next: "pending" }]), rows, counsellor).errors).toEqual([]);
+  });
+
+  it("does not re-check an option the row already holds", () => {
+    const holding = new Map<string, CurrentRow | undefined>([["r1", row("r1", { cells: { name: "Old", fee: 10, status: "paid" } })]]);
+    const plan = planChanges(batch([{ rowId: "r1", columnId: "status", prev: "paid", next: "paid" }]), holding, counsellor);
+    expect(plan.errors).toEqual([]);
+  });
+
+  it("carries change meta on the planned set and never validates it", () => {
+    const plan = planChanges(
+      batch([{ rowId: "r1", columnId: "name", prev: "Old", next: "New", meta: { decisionMessage: "why", nested: { a: 1 } } }]),
+      rows,
+      ctx,
+    );
+    expect(plan.errors).toEqual([]);
+    expect(plan.rowPlans[0]?.sets[0]?.meta).toEqual({ decisionMessage: "why", nested: { a: 1 } });
+    const noMeta = planChanges(batch([{ rowId: "r1", columnId: "name", prev: "Old", next: "New" }]), rows, ctx);
+    expect(noMeta.rowPlans[0]?.sets[0]).not.toHaveProperty("meta");
+  });
+});

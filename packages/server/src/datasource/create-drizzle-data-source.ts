@@ -3,7 +3,7 @@ import { applyChanges } from "../changes/apply-changes";
 import type { GridDb } from "../changes/db";
 import { createRows, deleteRows } from "../changes/rows-crud";
 import { type ServerWarning, createServerContext } from "../context";
-import { PermissionError } from "../errors";
+import { PermissionError, type TableDdlHelper, guardMissingTable } from "../errors";
 import { getChanges } from "../feed/get-changes";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import { formulaTranslatability, planFormulaColumns } from "../formula/formula-plan";
@@ -82,6 +82,12 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
   const scope: GridSqlScope = { ...baseScope, formulaPlans: planFormulaColumns(baseScope), gridId: options.gridId };
   const deps = { db: options.db, tables, gridId: options.gridId };
   const byId = new Map(ctx.schema.columns.map((c) => [c.id, c]));
+  /** `MISSING_TABLE` (naming the DDL helper) instead of a raw driver error when the grid tables were never created. */
+  const known: Record<string, TableDdlHelper> = {
+    [tables.rowsTableName]: "createRowsTableDDL",
+    [tables.changeLogTableName]: "createChangeLogTableDDL",
+  };
+  const guarded = <T>(fn: () => Promise<T>): Promise<T> => guardMissingTable(known, fn);
 
   const readableColumn = (columnId: string) => {
     const column = byId.get(columnId);
@@ -91,17 +97,19 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
   };
 
   const ds: DataSource<GridRow> = {
-    async fetch(query) {
-      if (query.groupBy && query.groupBy.length > 0) {
-        return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
-      }
-      return runRowQuery(query, scope, options.db, access);
-    },
-    applyChanges: (batch) => applyChanges(batch, ctx, deps),
+    fetch: (query) =>
+      guarded(async () => {
+        if (query.groupBy && query.groupBy.length > 0) {
+          return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
+        }
+        return runRowQuery(query, scope, options.db, access);
+      }),
+    applyChanges: (batch) => guarded(() => applyChanges(batch, ctx, deps)),
     createRows: (partials) =>
-      createRows(partials, ctx, deps, { transformRows: (rows) => evaluateFormulaCells(rows, access, ctx) }),
-    deleteRows: (ids) => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {}),
-    getChanges: (since) => getChanges(since, ctx, deps),
+      guarded(() => createRows(partials, ctx, deps, { transformRows: (rows) => evaluateFormulaCells(rows, access, ctx) })),
+    deleteRows: (ids) =>
+      guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {})),
+    getChanges: (since) => guarded(() => getChanges(since, ctx, deps)),
     async getOptions(columnId, search) {
       const column = readableColumn(columnId);
       if (column.type === "user") return options.userDirectory ? options.userDirectory(search) : [];

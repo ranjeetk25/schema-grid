@@ -106,8 +106,10 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
 
   it("GET /grid lists both grids; each serves its own schema", async () => {
     expect(await (await created.app.request("/grid")).json()).toEqual({ data: [{ id: "admissions" }, { id: "leads" }] });
-    const leads = (await (await created.app.request("/grid/leads/schema")).json()) as { data: GridSchema };
+    const leads = await op<GridSchema>("leads", "getSchema", null);
     expect(leads.data.columns.map((c) => c.key)).toEqual(["name", "email", "paymentStatus", "callDate", "aiVerified"]);
+    // v0.3: the schema has exactly one route (the getSchema op); the old GET alias is a 405.
+    expect((await created.app.request("/grid/leads/schema")).status).toBe(405);
     const admissions = await op<GridSchema>("admissions", "getSchema", null);
     expect(admissions.data.id).toBe("admissions");
   });
@@ -172,6 +174,13 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
     const big = await fetchLeads({ page: { cursor: "", limit: 500 } });
     expect(big.data.rows).toHaveLength(200);
     expect(big.data.nextCursor).toBeTruthy();
+  });
+
+  it("capabilities.schema (v0.3): a counsellor sees write:false, an admin write:true (leads has a schema store)", async () => {
+    const counsellor = await op<DataSourceCapabilities>("leads", "capabilities", null, { "x-roles": "counsellor" });
+    expect(counsellor.data.schema).toEqual({ read: true, write: false });
+    const admin = await op<DataSourceCapabilities>("leads", "capabilities", null, { "x-roles": "admin" });
+    expect(admin.data.schema).toEqual({ read: true, write: true });
   });
 
   it("sort on the unsortable aiVerified column is rejected (400 UNSORTABLE_COLUMN)", async () => {

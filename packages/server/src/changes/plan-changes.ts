@@ -2,10 +2,12 @@ import type { ServerContext } from "../context";
 import {
   type ChangeBatch,
   type ChangeError,
+  type ChangeMeta,
   type ColumnDef,
   type GridRow,
   getColumnValueFieldType,
   isEmptyValue,
+  optionRuleViolation,
 } from "../internal/core";
 
 /** Current server state of a row; `deletedAt` set means soft-deleted. */
@@ -21,6 +23,8 @@ export interface PlannedSet {
   prev: unknown;
   /** Empty value: stored by removing the key (JSON_REMOVE) / NULL for physical columns. */
   remove: boolean;
+  /** The change's input-only `meta` (v0.3), echoed on the applied / conflict entry and stored in the change log. */
+  meta?: ChangeMeta;
 }
 
 export interface RowWritePlan {
@@ -55,15 +59,22 @@ function configWithLimits(column: ColumnDef): unknown {
     : limits;
 }
 
+export interface ValidateCellOptions {
+  /** The cell's current value: option ids already present are never re-checked against `Option.settableBy`. */
+  prev?: unknown;
+}
+
 /**
  * Validates + serializes one value for a column (shared by applyChanges and createRows).
  * Mirrors core's `validateCellValue`: required, `valueSchema` with validation limits,
- * `validation.pattern`, `validation.message` override.
+ * `validation.pattern`, `validation.message` override, then (v0.3) per-option
+ * `settableBy` rules for the acting user ("Option “Verified” can only be set by Admin").
  */
 export function validateCellValue(
   column: ColumnDef,
   value: unknown,
   ctx: ServerContext,
+  options: ValidateCellOptions = {},
 ): ValidatedCell | { ok: false; message: string } {
   const ft = getColumnValueFieldType(column, ctx.registry);
   if (!ft) return { ok: false, message: `Unknown field type "${column.type}"` };
@@ -87,6 +98,8 @@ export function validateCellValue(
     }
   }
   const next = isEmptyValue(parsed.data) ? null : parsed.data;
+  const violation = optionRuleViolation(column, next, ctx.user, { prev: options.prev });
+  if (violation) return { ok: false, message: violation };
   if (next === null) return { ok: true, next: null, serialized: null, remove: true };
   const serialized = ft.serialize(next);
   if (isEmptyValue(serialized)) return { ok: true, next: null, serialized: null, remove: true };
@@ -97,7 +110,8 @@ export function validateCellValue(
  * Validation phase of `applyChanges` (no DB access). Collapses repeated edits of
  * one cell to the last, rejects per-change (missing/deleted row, missing base
  * version, unknown column, not editable for this user+row or `settable: false`, invalid value) and
- * returns one write plan per row with at least one valid change.
+ * returns one write plan per row with at least one valid change. `meta` on a
+ * change is carried on its `PlannedSet` and ignored by validation.
  */
 export function planChanges(
   batch: ChangeBatch,
@@ -108,7 +122,8 @@ export function planChanges(
   const byId = new Map(ctx.schema.columns.map((c) => [c.id, c]));
 
   // Last write wins per (row, column); rows keep first-seen order, a repeated cell moves to its last position.
-  const collapsed = new Map<string, Map<string, unknown>>();
+  // `meta` rides along untouched: it is never validated (v0.3 input-only side data).
+  const collapsed = new Map<string, Map<string, { next: unknown; meta?: ChangeMeta }>>();
   for (const change of batch.changes) {
     let cells = collapsed.get(change.rowId);
     if (!cells) {
@@ -116,7 +131,7 @@ export function planChanges(
       collapsed.set(change.rowId, cells);
     }
     cells.delete(change.columnId);
-    cells.set(change.columnId, change.next);
+    cells.set(change.columnId, { next: change.next, ...(change.meta ? { meta: change.meta } : {}) });
   }
 
   const rowPlans: RowWritePlan[] = [];
@@ -133,7 +148,7 @@ export function planChanges(
       continue;
     }
     const sets: PlannedSet[] = [];
-    for (const [columnId, next] of cells) {
+    for (const [columnId, { next, meta }] of cells) {
       const column = byId.get(columnId);
       if (!column) {
         fail(columnId, "Unknown column");
@@ -154,12 +169,13 @@ export function planChanges(
         fail(columnId, "Column is read-only");
         continue;
       }
-      const v = validateCellValue(column, next, ctx);
+      const prev = row.cells[column.key] ?? null;
+      const v = validateCellValue(column, next, ctx, { prev });
       if (!v.ok) {
         fail(columnId, v.message);
         continue;
       }
-      sets.push({ column, next: v.next, serialized: v.serialized, prev: row.cells[column.key] ?? null, remove: v.remove });
+      sets.push({ column, next: v.next, serialized: v.serialized, prev, remove: v.remove, ...(meta ? { meta } : {}) });
     }
     if (sets.length > 0) rowPlans.push({ rowId, baseVersion, sets });
   }

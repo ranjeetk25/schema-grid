@@ -13,6 +13,7 @@ import {
   FilterValidationError,
   FormulaQueryLimitError,
   GroupingError,
+  MissingTableError,
   PermissionError,
   RowValidationError,
   SchemaValidationError,
@@ -108,9 +109,22 @@ describe("createGridRouterAdapter", () => {
     [new GroupingError("nope"), "GROUPING_INVALID", 400],
     [new RowValidationError(0, "col_name", "bad"), "ROW_INVALID", 400],
     [new Error("socket hang up"), "INTERNAL", 500],
+    [new MissingTableError("grid_rows", "createRowsTableDDL"), "MISSING_TABLE", 500],
   ])("maps server error %o to %s %i", async (err, code, status) => {
     const res = await createGridRouterAdapter(throwing(err)).handle("fetch", q());
     expect(res).toMatchObject({ ok: false, status, error: { code } });
+  });
+
+  it("MISSING_TABLE keeps its message (naming the DDL helper) and details, and a caller's mapError still wins", async () => {
+    const err = new MissingTableError("grid_schemas", "createGridSchemasTableDDL");
+    const res = await createGridRouterAdapter(throwing(err)).handle("fetch", q());
+    expect(!res.ok && res.error).toEqual({
+      code: "MISSING_TABLE",
+      message: expect.stringContaining('createGridSchemasTableDDL({ table: "grid_schemas" })'),
+      details: { table: "grid_schemas", ddl: "createGridSchemasTableDDL" },
+    });
+    const custom = await createGridRouterAdapter(throwing(err), { mapError: () => ({ code: "UNAUTHENTICATED", message: "x" }) }).handle("fetch", q());
+    expect(custom).toMatchObject({ status: 401 });
   });
 
   it("keeps server error details on the wire", async () => {

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createGridSchemasTableDDL } from "../../src/ddl/schema-store-ddl";
 import type { GridSchema, SchemaStore } from "../../src/internal/core";
+import { MissingTableError } from "../../src/errors";
 import { createDrizzleSchemaStore } from "../../src/schema-store/drizzle-schema-store";
 import { type StartedMysql, describeMysql, startMysql } from "./mysql";
 
@@ -70,5 +71,16 @@ describeMysql("drizzle schema store (MySQL 8.4)", () => {
 
   it("grid ids are matched exactly (binary collation)", async () => {
     await expect(store.get("LEADS")).resolves.toBeNull();
+  });
+
+  it("v0.3: a dropped schema table is a MISSING_TABLE error naming createGridSchemasTableDDL", async () => {
+    await exec(`DROP TABLE \`${TABLE}\``);
+    await expect(store.get("leads")).rejects.toBeInstanceOf(MissingTableError);
+    await expect(store.put("leads", v1)).rejects.toMatchObject({
+      code: "MISSING_TABLE",
+      details: { table: TABLE, ddl: "createGridSchemasTableDDL" },
+    });
+    await exec(createGridSchemasTableDDL({ table: TABLE }).sql);
+    await expect(store.get("leads")).resolves.toBeNull();
   });
 });

@@ -128,9 +128,11 @@ describe("app routes that need no database", () => {
     );
   });
 
-  it("GET /schema returns the fixture schema", async () => {
-    const res = await app.request("/schema");
-    expect(((await res.json()) as { id: string }).id).toBe("admissions");
+  it("POST /grid/admissions/getSchema returns the fixture schema; the old GET /schema alias is gone (v0.3)", async () => {
+    const res = await app.request("/grid/admissions/getSchema", { method: "POST" });
+    expect(((await res.json()) as { data: { id: string } }).data.id).toBe("admissions");
+    expect((await app.request("/schema")).status).toBe(404);
+    expect((await app.request("/grid/admissions/schema")).status).toBe(405);
   });
 
   it("grid route speaks the wire contract: unknown op 404, bad x-now / non-JSON / bad input 400", async () => {
@@ -169,12 +171,13 @@ describe("app routes that need no database", () => {
     });
   });
 
-  it("PUT /schema with a stale schemaVersion → 409", async () => {
-    const res = await app.request("/schema", {
-      method: "PUT",
+  it("updateSchema with a stale schemaVersion → 409 SCHEMA_CONFLICT", async () => {
+    const res = await app.request("/grid/admissions/updateSchema", {
+      method: "POST",
       body: JSON.stringify({ ...createFixtureSchema(), schemaVersion: 0 }),
     });
     expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ error: { code: "SCHEMA_CONFLICT" } });
   });
 });
 
@@ -296,11 +299,18 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
     expect(await (await app.request("/grid")).json()).toEqual({ data: [{ id: "admissions" }, { id: "leads" }] });
   });
 
-  it("GET /grid/:gridId/schema serves each grid's schema", async () => {
-    const admissions = (await (await app.request("/grid/admissions/schema")).json()) as { data: GridSchema };
+  it("POST /grid/:gridId/getSchema serves each grid's schema", async () => {
+    const admissions = (await (await app.request("/grid/admissions/getSchema", { method: "POST" })).json()) as { data: GridSchema };
     expect(admissions.data.id).toBe("admissions");
-    const leads = (await (await app.request("/grid/leads/schema")).json()) as { data: GridSchema };
+    const leads = (await (await app.request("/grid/leads/getSchema", { method: "POST" })).json()) as { data: GridSchema };
     expect(leads.data).toEqual(leadsSchema);
+  });
+
+  it("capabilities.schema: counsellor cannot change the leads schema, admin can (v0.3)", async () => {
+    const caps = async (roles: string) =>
+      ((await (await post("/grid/leads/capabilities", null, { "x-roles": roles })).json()) as { data: { schema: unknown } }).data.schema;
+    expect(await caps("counsellor")).toEqual({ read: true, write: false });
+    expect(await caps("admin")).toEqual({ read: true, write: true });
   });
 
   it("POST /grid/admissions/fetch reaches the fixture grid's source with the header context", async () => {
@@ -333,17 +343,14 @@ describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
     expect(res.status).toBe(200);
     const saved = ((await res.json()) as { data: GridSchema }).data;
     expect(saved.schemaVersion).toBe(leadsSchema.schemaVersion + 1);
-    const again = (await (await app.request("/grid/leads/schema")).json()) as { data: GridSchema };
+    const again = (await (await app.request("/grid/leads/getSchema", { method: "POST" })).json()) as { data: GridSchema };
     expect(again.data.columns.find((c) => c.key === "email")?.label).toBe("E-mail");
   });
 
-  it("PUT /schema (legacy) still answers 409 SchemaVersionConflict on a stale version", async () => {
-    const res = await app.request("/schema", {
-      method: "PUT",
-      body: JSON.stringify({ ...createFixtureSchema(), schemaVersion: 0 }),
-    });
+  it("a stale updateSchema on the fixture grid answers 409 SCHEMA_CONFLICT with the current version", async () => {
+    const res = await post("/grid/admissions/updateSchema", { ...createFixtureSchema(), schemaVersion: 0 });
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: { name: "SchemaVersionConflict" } });
+    expect(await res.json()).toMatchObject({ error: { code: "SCHEMA_CONFLICT", details: { currentVersion: 1 } } });
   });
 });
 

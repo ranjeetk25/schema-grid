@@ -1,6 +1,6 @@
 import { varchar } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
-import { defineGridTables } from "../../../src/storage/tables";
+import { defineGridTables, legacyChangeLogTableFor } from "../../../src/storage/tables";
 import { mockDb, renderQuery } from "../../helpers/sql";
 
 describe("defineGridTables", () => {
@@ -30,8 +30,10 @@ describe("defineGridTables", () => {
     const t = defineGridTables({ rowsTable: "grid_rows", changeLogTable: "grid_change_log" });
     const q = renderQuery(mockDb().select().from(t.changeLog));
     expect(q.sql).toBe(
-      "select `id`, `grid_id`, `row_id`, `column_id`, `kind`, `prev`, `next`, `actor`, `at`, `batch_id` from `grid_change_log`",
+      "select `id`, `grid_id`, `row_id`, `column_id`, `kind`, `prev`, `next`, `actor`, `at`, `batch_id`, `meta` from `grid_change_log`",
     );
+    const legacy = renderQuery(mockDb().select().from(legacyChangeLogTableFor("grid_change_log")));
+    expect(legacy.sql).not.toContain("`meta`");
   });
 
   it("rejects unsafe table names and reserved physical names", () => {

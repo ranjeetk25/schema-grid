@@ -14,6 +14,7 @@ export type {
   ChangeConflict,
   ChangeError,
   ChangeFeedEntry,
+  ChangeMeta,
   ChangeResult,
   ChangeSource,
   ColumnDef,
@@ -35,6 +36,7 @@ export type {
   PermissionResolver,
   PermissionUser,
   QueryResult,
+  RoleRule,
   RowPartial,
   SchemaStore,
   SortSpec,
@@ -45,6 +47,7 @@ export {
   DEFAULT_TIME_ZONE,
   createRolePermissionResolver,
   isAggregationAllowed,
+  optionRuleViolation,
   readableColumnIds,
   resolveColumnAccess,
 } from "@ranjeetk25/schema-grid-core";

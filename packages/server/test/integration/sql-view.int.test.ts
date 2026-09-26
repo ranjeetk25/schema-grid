@@ -414,4 +414,74 @@ describeMysql("SQL view over a plain table (MySQL 8.4)", () => {
     const schema: GridSchema = { ...leadsSchema, columns: [...leadsSchema.columns, noteColumn] };
     expect(() => make({ schema })).toThrow(/no mapped expression/);
   });
+
+  it("v0.3 computed column: derived after fetch, not selected, unsortable / unfilterable / read-only, absent from capabilities scopes", async () => {
+    const contact: ColumnDef = { id: "col_contact", key: "contact", label: "Contact", type: "text", config: {}, order: 30, createdAt: T, updatedAt: T };
+    const source = make({
+      schema: { ...leadsSchema, columns: [...leadsSchema.columns, contact] },
+      columns: {
+        name: { expr: leads.name },
+        email: { expr: leads.email },
+        status: { expr: leads.paymentStatus },
+        callDate: { expr: leads.callDate },
+        isActive: { expr: leads.aiVerified },
+        fee: { expr: leads.fee },
+        contact: { compute: (r) => (r.cells.name ? `${r.cells.name} <${r.cells.email ?? "?"}>` : null) },
+      },
+    });
+    const first = (await source.fetch({ filter: null, sort: [{ columnId: col.name, dir: "asc" }], page: { offset: 0, limit: 1 } })).rows[0] as GridRow;
+    expect(first.cells.contact).toBe(`${first.cells.name} <${first.cells.email ?? "?"}>`);
+    const caps = source.capabilities();
+    expect(caps.sort).toEqual({ columnIds: leadsSchema.columns.map((c) => c.id) });
+    expect(caps.filter).toEqual({ columnIds: leadsSchema.columns.map((c) => c.id) });
+    await expect(source.fetch({ filter: null, sort: [{ columnId: "col_contact", dir: "asc" }], page: { offset: 0, limit: 5 } })).rejects.toMatchObject({
+      code: "UNSORTABLE_COLUMN",
+    });
+    const write = await source.applyChanges({
+      id: "cmp1",
+      changes: [{ rowId: first.id, columnId: "col_contact", prev: first.cells.contact, next: "x" }],
+      baseVersions: { [first.id]: first.version },
+      source: "edit",
+    });
+    expect(write.errors).toEqual([{ rowId: first.id, columnId: "col_contact", message: "Column is read-only" }]);
+    const feed = await source.getChanges?.("");
+    expect(feed?.cursor).toBeTruthy();
+  });
+
+  it("v0.3 meta reaches write.update (change + batch) and a hook's `rejected` is passed through", async () => {
+    const seen: unknown[] = [];
+    const base = hooks();
+    const source = make({
+      write: {
+        ...base,
+        update: async (ctx, input) => {
+          seen.push(input);
+          const [keep, ...drop] = input.changes;
+          const res = await (base.update as NonNullable<SqlViewWriteHooks["update"]>)(ctx, { ...input, changes: keep ? [keep] : [] });
+          return "conflict" in res ? res : { ...res, rejected: drop };
+        },
+      },
+    });
+    const r1 = await row(source, "1");
+    if (!r1) throw new Error("row 1");
+    const res = await source.applyChanges({
+      id: "meta-view",
+      meta: { reuploadDeadline: "2026-10-01" },
+      changes: [
+        { rowId: "1", columnId: col.name, prev: r1.cells.name, next: "Meta name", meta: { decisionMessage: "ok" } },
+        { rowId: "1", columnId: col.email, prev: r1.cells.email, next: "meta@example.com" },
+      ],
+      baseVersions: { "1": r1.version },
+      source: "edit",
+    });
+    expect(seen[0]).toMatchObject({
+      rowId: "1",
+      meta: { reuploadDeadline: "2026-10-01" },
+      changes: [{ columnId: col.name, meta: { decisionMessage: "ok" } }, { columnId: col.email }],
+    });
+    expect(res.applied).toEqual([{ rowId: "1", columnId: col.name, prev: r1.cells.name, next: "Meta name", meta: { decisionMessage: "ok" } }]);
+    expect(res.rejected).toEqual([{ rowId: "1", columnId: col.email, prev: r1.cells.email, next: "meta@example.com" }]);
+    expect(res.errors).toEqual([]);
+    expect((await row(source, "1"))?.cells.email).toBe(r1.cells.email);
+  });
 });

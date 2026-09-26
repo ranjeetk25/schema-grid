@@ -116,9 +116,20 @@ A grid registry (`createGridRegistry([defineGrid(…), …])`) serves many grids
 
 | route | op | body |
 |---|---|---|
-| `POST {base}/{gridId}/{op}` | any wire op | the op input (an empty body is `null`) |
-| `GET {base}/{gridId}/schema` | `getSchema` | — |
+| `POST {base}/{gridId}/{op}` | any wire op, incl. `getSchema` (empty body) and `updateSchema` | the op input (an empty body is `null`) |
 | `GET {base}` | list | — → `200 { data: [{ id }] }` (grids whose `getSchema` the caller may run) |
+
+There is exactly one way to read a grid's schema: the `getSchema` op (`POST {base}/{gridId}/getSchema`).
+v0.3 removed the `GET {base}/{gridId}/schema` alias (it now answers `405 METHOD_NOT_ALLOWED`).
+
+`capabilities` on a registry grid carries `schema: { read, write }` (v0.3): `read` = the caller passes
+`permission(ctx, "getSchema")`, `write` = the grid has a `schemaStore` AND the caller passes
+`permission(ctx, "updateSchema")`. Clients hide every column-editing entry point when `write` is false.
+
+`ChangeBatch.meta` and `CellChange.meta` (v0.3) carry JSON side data that is never a cell value (e.g. a
+decision message a `beforeCellsChange` hook attached). Servers ignore it for validation, hand it to the write
+hooks and echo it on the matching `applied` / `conflicts` entry; `ChangeResult.rejected` (v0.3) lists changes
+a source declined quietly (not applied, not an error).
 
 Checks run in this order: unknown grid (`UNKNOWN_GRID` 404) → unknown op (`UNKNOWN_OPERATION` 404) →
 `permission(ctx, op)` (`PERMISSION_DENIED` 403) → input validation → the operation. Responses use the same
