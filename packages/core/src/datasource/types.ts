@@ -1,3 +1,4 @@
+import type { CellColorBatch, CellColorResult } from "../colors/types";
 import type { LinkRef, Option } from "../common/types";
 import type { GridQuery, QueryResult } from "../query/types";
 import type { DataSourceCapabilities } from "./capabilities";
@@ -25,6 +26,13 @@ export interface DataSource<Row extends GridRow = GridRow> {
    * refresh rows after a save when `ChangeResult.rows` is absent.
    */
   getRows?(ids: string[]): Promise<Row[]>;
+  /**
+   * v0.4: write manual cell colors (`color: null` clears). Last write wins;
+   * rows' `version` / `updatedAt` are NOT bumped, but colored rows appear in
+   * the next `getChanges`. Cells the caller cannot edit (`canColorCell`) and
+   * unknown rows go to `rejected`.
+   */
+  setCellColors?(batch: CellColorBatch): Promise<CellColorResult>;
   /** What this source supports (see `DataSourceCapabilities`). Absent → `inferCapabilities`. */
   capabilities?(): Promise<DataSourceCapabilities> | DataSourceCapabilities;
 }

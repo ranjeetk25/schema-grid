@@ -12,10 +12,12 @@ export type {
 } from "./types";
 export {
   BOOLEAN_OPERATORS,
+  COLOR_OPERATORS,
   DATE_OPERATORS,
   type FilterOperatorDef,
   type FilterValueKind,
   findOperator,
+  hasColorCondition,
   isNegativeOperator,
   LINK_OPERATORS,
   MULTI_SELECT_OPERATORS,

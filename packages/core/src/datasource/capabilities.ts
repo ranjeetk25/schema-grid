@@ -46,6 +46,14 @@ export interface DataSourceCapabilities {
    * show it as the "default" header state. Absent = row id order.
    */
   defaultSort?: SortSpec[];
+  /**
+   * v0.4 cell colors: `read` = rows carry manual `colors`; `write` = the source
+   * implements `setCellColors`; `filter` = it evaluates `colorIs` /
+   * `colorIsNone`. `normalizeCapabilities` defaults all three to false. With
+   * `read` false the grid still renders rule colors but hides manual colors
+   * and the paint UI; with `filter` false the color operators are hidden.
+   */
+  cellColors?: { read: boolean; write: boolean; filter: boolean };
 }
 
 /** Everything allowed except schema writes; `maxPageSize` 500. */
@@ -61,9 +69,12 @@ export const DEFAULT_CAPABILITIES: Readonly<DataSourceCapabilities> = Object.fre
   lookup: true,
   export: Object.freeze({}),
   schema: Object.freeze({ read: true, write: false }),
+  cellColors: Object.freeze({ read: false, write: false, filter: false }),
 }) as Readonly<DataSourceCapabilities>;
 
-/** A partial capabilities object filled from `DEFAULT_CAPABILITIES` (`write`/`export`/`schema` merged field by field). */
+const NO_CELL_COLORS = { read: false, write: false, filter: false };
+
+/** A partial capabilities object filled from `DEFAULT_CAPABILITIES` (`write`/`export`/`schema`/`cellColors` merged field by field). */
 export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> = {}): DataSourceCapabilities {
   const out: DataSourceCapabilities = {
     maxPageSize: partial.maxPageSize ?? DEFAULT_CAPABILITIES.maxPageSize,
@@ -77,6 +88,7 @@ export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> =
     lookup: partial.lookup ?? DEFAULT_CAPABILITIES.lookup,
     export: { ...DEFAULT_CAPABILITIES.export, ...(partial.export ?? {}) },
     schema: { ...DEFAULT_CAPABILITIES.schema, ...(partial.schema ?? {}) },
+    cellColors: { ...NO_CELL_COLORS, ...(partial.cellColors ?? {}) },
   };
   if (partial.operators) out.operators = partial.operators;
   if (partial.defaultSort) out.defaultSort = partial.defaultSort.map((s) => ({ ...s }));
@@ -86,13 +98,15 @@ export function normalizeCapabilities(partial: Partial<DataSourceCapabilities> =
 /**
  * The capabilities of a source that does not implement `capabilities()`:
  * everything the defaults allow, with `changeFeed`/`options`/`lookup` off
- * when the matching optional operation is missing.
+ * when the matching optional operation is missing, and `cellColors.write`
+ * on when it implements `setCellColors` (read / filter stay unknown = false).
  */
 export function inferCapabilities<Row extends GridRow>(dataSource: DataSource<Row>): DataSourceCapabilities {
   return normalizeCapabilities({
     changeFeed: typeof dataSource.getChanges === "function",
     options: typeof dataSource.getOptions === "function",
     lookup: typeof dataSource.lookup === "function",
+    cellColors: { ...NO_CELL_COLORS, write: typeof dataSource.setCellColors === "function" },
   });
 }
 
@@ -145,6 +159,7 @@ export function mergeCapabilities(schema: GridSchema, caps: DataSourceCapabiliti
     lookup: caps.lookup,
     export: { ...caps.export },
     schema: { ...caps.schema },
+    cellColors: { ...NO_CELL_COLORS, ...(caps.cellColors ?? {}) },
     columns,
   };
   if (caps.defaultSort) out.defaultSort = caps.defaultSort.map((s) => ({ ...s }));

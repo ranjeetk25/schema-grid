@@ -1,3 +1,4 @@
+import type { ColorRule } from "../colors/types";
 import type { ISODateTimeString, RoleRule } from "../common/types";
 import type { FieldTypeId } from "../field-types/ids";
 import type { FilterNode } from "../filter/types";
@@ -75,6 +76,8 @@ export interface ViewDef {
    */
   collapsedGroups?: string[];
   pageSize: number;
+  /** v0.4: conditional colors, in order; the first match wins within its tier (see `resolveCellColor`). */
+  colorRules?: ColorRule[];
 }
 
 export interface GridSchema {

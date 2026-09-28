@@ -1,3 +1,4 @@
+import type { ColorRule } from "../colors/types";
 import type { GridRow } from "../rows/types";
 import type { FilterNode } from "../filter/types";
 
@@ -31,6 +32,12 @@ export interface GridQuery {
   groupBy?: GroupSpec[];
   page: PageRequest;
   includeTotal?: boolean;
+  /**
+   * v0.4: the active view's color rules, so a source can evaluate `colorIs` /
+   * `colorIsNone` conditions against the SHOWN color. Sources ignore them
+   * unless the filter has a color condition (see `hasColorCondition`).
+   */
+  colorRules?: ColorRule[];
 }
 
 export interface GroupAggregateValue {

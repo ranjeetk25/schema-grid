@@ -1,3 +1,4 @@
+import { type CellColor, type ColorRule, isCellColor } from "../colors/types";
 import { getColumnOperators, getColumnValueFieldType } from "../field-types/column-operators";
 import { isEmptyValue } from "../field-types/empty";
 import type { FieldTypeRegistry } from "../field-types/registry";
@@ -6,7 +7,7 @@ import { getColumnById } from "../schema/lookup";
 import type { ColumnDef, GridSchema } from "../schema/types";
 import { addCalendarDays, getZonedParts, zonedToInstant } from "../time/zoned";
 import { isFilterGroup } from "./guards";
-import { isNegativeOperator } from "./operators";
+import { isColorOperator, isNegativeOperator } from "./operators";
 import { resolveRelativeDate } from "./relative-date";
 import type { FilterCondition, FilterNode, RelativeDate } from "./types";
 
@@ -16,6 +17,12 @@ export interface FilterMatchContext {
   now: Date;
   tz: string;
   userId?: string;
+  /**
+   * v0.4: the active view's color rules, used by the color operators
+   * (`colorIs` / `colorIsNone`) to compute the color a cell shows. Absent =
+   * only manual colors (`GridRow.colors`) count.
+   */
+  colorRules?: readonly ColorRule[];
 }
 
 /** Negative operator → its positive counterpart (negative = !positive on non-empty cells). */
@@ -58,6 +65,9 @@ const DATE_TYPES = new Set(["date", "datetime"]);
  *   EVERY row, empty cells included (vacuous truth: "none of nothing" always
  *   holds — clearing the list removes the constraint). A non-empty list with no
  *   usable id (e.g. `isNoneOf [true]`) is unusable like any other bad value.
+ * - Colors (v0.4): `colorIs [..]` matches when the cell's SHOWN color
+ *   (`resolveCellColor` with `ctx.colorRules`) is in the list; `colorIsNone`
+ *   when it shows none. Any existing column, whatever its type or `filterable`.
  */
 export function matchesFilter(node: FilterNode | null, row: GridRow, ctx: FilterMatchContext): boolean {
   if (node === null || node === undefined) return true;
@@ -86,6 +96,7 @@ function matchCondition(cond: FilterCondition, row: GridRow, ctx: FilterMatchCon
   const column = getColumnById(ctx.schema, cond.columnId);
   if (!column) return false;
   const op = cond.operator;
+  if (isColorOperator(op)) return matchColor(op, cond.value, column.id, row, ctx);
   if (!getColumnOperators(column, ctx.registry).some((def) => def.id === op)) return false;
 
   const cells = row?.cells ?? {};
@@ -108,6 +119,77 @@ function matchCondition(cond: FilterCondition, row: GridRow, ctx: FilterMatchCon
     return !matchPositive(typeId, positive, cell, cond.value, ctx);
   }
   return matchPositive(typeId, op, cell, cond.value, ctx);
+}
+
+// ---------------------------------------------------------------- color (v0.4)
+
+/** Contexts evaluating a color rule's own `when`: color conditions never match there (no recursion). */
+const RULE_CONTEXTS = new WeakSet<FilterMatchContext>();
+const ruleContextCache = new WeakMap<FilterMatchContext, FilterMatchContext>();
+
+function ruleContext(ctx: FilterMatchContext): FilterMatchContext {
+  if (RULE_CONTEXTS.has(ctx)) return ctx;
+  let inner = ruleContextCache.get(ctx);
+  if (!inner) {
+    const { colorRules: _rules, ...rest } = ctx;
+    inner = rest;
+    RULE_CONTEXTS.add(inner);
+    ruleContextCache.set(ctx, inner);
+  }
+  return inner;
+}
+
+function ruleMatches(rule: ColorRule, row: GridRow, ctx: FilterMatchContext): boolean {
+  if (typeof rule !== "object" || rule === null || rule.enabled === false || !isCellColor(rule.color)) return false;
+  if (rule.when === null || rule.when === undefined) return false;
+  return matchesFilter(rule.when, row, ruleContext(ctx));
+}
+
+/**
+ * The color a cell shows, or null. Precedence: the row's manual color for the
+ * column > the first matching enabled `cells` rule targeting the column > the
+ * first matching enabled `row` rule. A rule whose `when` is null never
+ * matches; color conditions inside a rule's `when` never match. Never throws.
+ */
+export function resolveCellColor(
+  row: GridRow,
+  columnId: string,
+  rules: readonly ColorRule[] | undefined,
+  ctx: FilterMatchContext,
+): CellColor | null {
+  const colors = row?.colors;
+  if (typeof colors === "object" && colors !== null && Object.hasOwn(colors, columnId)) {
+    const manual = colors[columnId];
+    if (isCellColor(manual)) return manual;
+  }
+  if (!Array.isArray(rules)) return null;
+  for (const rule of rules) {
+    const target = rule?.target;
+    if (target?.kind !== "cells" || !Array.isArray(target.columnIds) || !target.columnIds.includes(columnId)) continue;
+    if (ruleMatches(rule, row, ctx)) return rule.color;
+  }
+  return resolveRowColor(row, rules, ctx);
+}
+
+/** The first matching enabled `row` rule's color, or null (the row background). Never throws. */
+export function resolveRowColor(
+  row: GridRow,
+  rules: readonly ColorRule[] | undefined,
+  ctx: FilterMatchContext,
+): CellColor | null {
+  if (!Array.isArray(rules)) return null;
+  for (const rule of rules) {
+    if (rule?.target?.kind !== "row") continue;
+    if (ruleMatches(rule, row, ctx)) return rule.color;
+  }
+  return null;
+}
+
+function matchColor(op: string, value: unknown, columnId: string, row: GridRow, ctx: FilterMatchContext): boolean {
+  if (RULE_CONTEXTS.has(ctx)) return false;
+  const shown = resolveCellColor(row, columnId, ctx.colorRules, ctx);
+  if (op === "colorIsNone") return shown === null;
+  return shown !== null && Array.isArray(value) && value.includes(shown);
 }
 
 /**

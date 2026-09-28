@@ -39,6 +39,7 @@ describe("DEFAULT_CAPABILITIES", () => {
       lookup: true,
       export: {},
       schema: { read: true, write: false },
+      cellColors: { read: false, write: false, filter: false },
     });
     expect(Object.isFrozen(DEFAULT_CAPABILITIES)).toBe(true);
   });
@@ -164,5 +165,34 @@ describe("defaultSort (v0.3)", () => {
     expect(normalized.defaultSort).toEqual(sort);
     expect(mergeCapabilities(createFixtureSchema(), normalized).defaultSort).toEqual(sort);
     expect(mergeCapabilities(createFixtureSchema(), caps())).not.toHaveProperty("defaultSort");
+  });
+});
+
+describe("cellColors (v0.4)", () => {
+  it("normalizeCapabilities defaults to all-false and merges field by field", () => {
+    expect(normalizeCapabilities({}).cellColors).toEqual({ read: false, write: false, filter: false });
+    expect(normalizeCapabilities({ cellColors: { read: true } as never }).cellColors).toEqual({
+      read: true,
+      write: false,
+      filter: false,
+    });
+  });
+
+  it("inferCapabilities sets write when the source implements setCellColors", () => {
+    expect(inferCapabilities(minimal()).cellColors).toEqual({ read: false, write: false, filter: false });
+    const painter = minimal({ setCellColors: async () => ({ applied: [], rejected: [] }) });
+    expect(inferCapabilities(painter).cellColors).toEqual({ read: false, write: true, filter: false });
+  });
+
+  it("mergeCapabilities carries cellColors (defaulted when the input lacks it)", () => {
+    const schema = createFixtureSchema();
+    const on = { read: true, write: true, filter: true };
+    expect(mergeCapabilities(schema, caps({ cellColors: on })).cellColors).toEqual(on);
+    const { cellColors: _omit, ...legacy } = caps();
+    expect(mergeCapabilities(schema, legacy as DataSourceCapabilities).cellColors).toEqual({
+      read: false,
+      write: false,
+      filter: false,
+    });
   });
 });
