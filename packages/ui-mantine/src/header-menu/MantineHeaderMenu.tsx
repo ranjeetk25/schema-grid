@@ -5,6 +5,7 @@ import {
   IconArrowsSort,
   IconCheck,
   IconColumnInsertLeft,
+  IconColorSwatch,
   IconColumnInsertRight,
   IconEyeOff,
   IconFilter,
@@ -17,6 +18,8 @@ import {
 } from "../internal/icons";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CELL_COLOR_PALETTE, CellColorSwatch } from "../theme/cellColorPalette";
+import { useCellColorFilter } from "./cellColorFilterContext";
 import type { HeaderMenuProps } from "./contracts";
 
 const ICON = { size: 16, stroke: 1.75 } as const;
@@ -45,7 +48,10 @@ interface Rect {
  * Mantine column menu for ag-grid's `SchemaHeader` slot:
  * `<SchemaGrid headerMenu={MantineHeaderMenu} …/>`.
  *
- * Sections: sort (only when `actions.canSort`) · filter / group · pin · autosize · edit / insert · hide.
+ * Sections: sort (only when `actions.canSort`) · filter / filter by color / group · pin · autosize · edit / insert · hide.
+ * v0.4 "Filter by color" (palette swatches, "No color", "Clear color filter")
+ * shows only inside a `CellColorFilterProvider` (the workbench provides one
+ * when the source filters by color).
  * Host-only actions (`groupBy`, `editColumn`, `insertColumn`) appear only when
  * the grid got the matching callback. The menu portals to `document.body`
  * (it is not inside an AG Grid popup, so that is safe) and anchors to a fixed
@@ -55,6 +61,7 @@ interface Rect {
  */
 export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: HeaderMenuProps) {
   const [rect, setRect] = useState<Rect | null>(null);
+  const colorFilter = useCellColorFilter();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -99,7 +106,12 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
   const insert = actions.insertColumn;
   // `sortable: false` / capability-limited columns: no sort section at all (v0.2 C1).
   const canSort = actions.canSort !== false;
-  const hasFilterGroup = Boolean(actions.canFilter || (actions.groupBy && actions.canGroup));
+  const hasFilterGroup = Boolean(actions.canFilter || colorFilter || (actions.groupBy && actions.canGroup));
+  const activeColors = colorFilter?.activeColors(column.colId) ?? null;
+  const pickColor = (colors: Parameters<NonNullable<typeof colorFilter>["filterByColor"]>[1]) => {
+    colorFilter?.filterByColor(column.colId, colors);
+    onClose();
+  };
 
   return createPortal(
     <Menu
@@ -145,6 +157,43 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
           <Menu.Item leftSection={<IconFilter {...ICON} />} rightSection={<Hint>{isMac() ? "⌘↵" : "Ctrl+↵"}</Hint>} onClick={actions.openFilter}>
             Filter…
           </Menu.Item>
+        ) : null}
+        {colorFilter ? (
+          <Menu.Sub position="right-start" offset={4}>
+            <Menu.Sub.Target>
+              <Menu.Sub.Item leftSection={<IconColorSwatch {...ICON} />}>Filter by color</Menu.Sub.Item>
+            </Menu.Sub.Target>
+            <Menu.Sub.Dropdown data-sg-color-filter-menu="">
+              {CELL_COLOR_PALETTE.map((p) => {
+                const on = Array.isArray(activeColors) && activeColors.includes(p.color);
+                return (
+                  <Menu.Item
+                    key={p.color}
+                    leftSection={<CellColorSwatch color={p.color} size={14} />}
+                    rightSection={on ? check : null}
+                    data-active={on || undefined}
+                    onClick={() => pickColor([p.color])}
+                  >
+                    {p.label}
+                  </Menu.Item>
+                );
+              })}
+              <Menu.Item
+                leftSection={<CellColorSwatch color={null} size={14} />}
+                rightSection={activeColors === "none" ? check : null}
+                data-active={activeColors === "none" || undefined}
+                onClick={() => pickColor("none")}
+              >
+                No color
+              </Menu.Item>
+              {activeColors !== null ? (
+                <>
+                  <Menu.Divider />
+                  <Menu.Item onClick={() => pickColor(null)}>Clear color filter</Menu.Item>
+                </>
+              ) : null}
+            </Menu.Sub.Dropdown>
+          </Menu.Sub>
         ) : null}
         {actions.groupBy && actions.canGroup ? (
           <Menu.Item leftSection={<IconLayoutList {...ICON} />} onClick={actions.groupBy}>

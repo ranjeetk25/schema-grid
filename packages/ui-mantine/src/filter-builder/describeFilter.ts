@@ -1,4 +1,7 @@
+import { cellColorLabel } from "../theme/cellColorPalette";
 import {
+  COLOR_OPERATORS,
+  isCellColor,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterCondition,
@@ -59,6 +62,12 @@ export function describeConditionParts(
   if (access && !isReadable(access, cond.columnId)) return { label: "Hidden column", operator: "", value: null };
   const column = schema.columns.find((c) => c.id === cond.columnId);
   const label = column?.label ?? cond.columnId;
+  // v0.4: "color is Red, Blue" / "has no color" on any column.
+  const colorOperator = COLOR_OPERATORS.find((o) => o.id === cond.operator);
+  if (colorOperator) {
+    const colors = Array.isArray(cond.value) ? cond.value.filter(isCellColor) : [];
+    return { label, operator: colorOperator.label, value: colorOperator.valueKind === "none" ? null : colors.map(cellColorLabel).join(", ") };
+  }
   const operator = column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined;
   const opLabel = operator?.label ?? cond.operator;
   const fmt = formatter(column, registry);

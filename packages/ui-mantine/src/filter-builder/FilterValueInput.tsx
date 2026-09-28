@@ -16,6 +16,8 @@ import {
 } from "../internal/core-contracts";
 import { type UiFieldTypeRegistry, filterInputFor } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
+import { ColorSwatchMultiSelect } from "../cell-colors/ColorSwatchMultiSelect";
+import { isCellColor, isColorOperatorId } from "../internal/core-contracts";
 
 export interface FilterValueInputProps {
   column: ColumnDef;
@@ -131,6 +133,20 @@ export function FilterValueInput(props: FilterValueInputProps) {
     const Filter = filterInputFor(registry, type);
     return Filter ? <Filter column={column} operator={operator} value={v} onChange={emit} dataSource={dataSource} /> : null;
   };
+
+  // v0.4 "color is": palette swatches, whatever the column's type.
+  if (operator.valueKind === "multi" && isColorOperatorId(operator.id)) {
+    return (
+      <Stack gap={2}>
+        <ColorSwatchMultiSelect
+          value={Array.isArray(value) ? value.filter(isCellColor) : []}
+          onChange={(v) => onChange(v)}
+          {...(error ? { error } : {})}
+        />
+        <ErrorText error={error} />
+      </Stack>
+    );
+  }
 
   switch (operator.valueKind) {
     case "none":
