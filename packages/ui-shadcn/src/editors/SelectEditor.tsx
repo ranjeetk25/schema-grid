@@ -34,8 +34,9 @@ export function SelectEditor({
   error,
   cellWidth,
   user,
+  capabilities,
 }: UiEditorProps<string, SelectEditorConfig>) {
-  const allOptions = useSelectOptions(config, dataSource, column);
+  const allOptions = useSelectOptions(config, dataSource, column, capabilities);
   // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
   const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
   const options = useMemo(() => pickable.map((p) => p.option), [pickable]);

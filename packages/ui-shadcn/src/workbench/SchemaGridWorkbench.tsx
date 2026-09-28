@@ -61,7 +61,7 @@ import { FilterChips } from "../filter-builder/FilterChips";
 import { columnColorFilter, setColumnColorFilter } from "../filter-builder/model";
 import { CellColorFilterProvider, type CellColorFilterValue } from "../header-menu/cellColorFilter";
 import { ShadcnHeaderMenu } from "../header-menu/ShadcnHeaderMenu";
-import { type CellColorReport, canFilterByColor } from "../internal/grid-contracts";
+import { type CellColorReport, canFilterByColor, colorFilterBlockedReason } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { cellColorSummary, notifyCellColorReport } from "../notifications/notifyCellColorReport";
 import { notifyClipboardReport } from "../notifications/notifyClipboardReport";
@@ -250,15 +250,22 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   const filterRef = useRef(wb.filter);
   filterRef.current = wb.filter;
   const applyFilter = wb.applyFilter;
+  // v0.4.1: a column a view color rule blocks (it tests a column the server can't filter on) can't be filtered by color.
+  const blockSchema = wb.effectiveSchema ?? schema;
+  const blockCapabilities = wb.effectiveCapabilities;
   const colorFilter = useMemo<CellColorFilterValue | null>(
     () =>
       colorFilterOn
         ? {
             activeColors: (columnId) => columnColorFilter(filterRef.current, columnId),
             filterByColor: (columnId, next) => applyFilter(setColumnColorFilter(filterRef.current, columnId, next)),
+            blockedReason: (columnId) => {
+              const column = blockSchema?.columns.find((c) => c.id === columnId);
+              return column && blockSchema ? colorFilterBlockedReason(column, colorRules, blockSchema, blockCapabilities) : null;
+            },
           }
         : null,
-    [colorFilterOn, applyFilter],
+    [colorFilterOn, applyFilter, blockSchema, blockCapabilities, colorRules],
   );
   const hostColorReport = props.gridProps?.onCellColorReport;
   const onCellColorReport = (report: CellColorReport) => {
@@ -382,6 +389,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                   onDraftChange={(draft, dirty) => setFilterDraft({ draft, dirty })}
                   dataSource={wb.dataSource}
                   capabilities={wb.effectiveCapabilities}
+                  colorRules={colorRules}
                 />
               ) : null}
               {features.group ? (
@@ -597,6 +605,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               onSave={(c) => void wb.panel.save(c)}
               onDelete={(id) => void wb.panel.remove(id)}
               dataSource={wb.dataSource}
+              capabilities={wb.effectiveCapabilities}
               width={PANEL_WIDTH}
             />
           </Suspense>
@@ -613,6 +622,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               rules={colorRules}
               onSave={(rules) => wb.handle?.setColorRules(rules)}
               dataSource={wb.dataSource}
+              capabilities={wb.effectiveCapabilities}
             />
           </Suspense>
         ) : null}

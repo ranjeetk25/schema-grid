@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
-import type { ColumnDef, DataSource, FieldTypeId, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
+import type { ColumnDef, DataSource, FieldTypeCapabilitiesLike, FieldTypeId, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 import { cn } from "../lib/cn";
@@ -49,6 +49,13 @@ export interface ColumnBuilderProps {
   initialType?: FieldTypeId;
   /** v0.4: People pickers in "Who can access" and option "Who can set" (per-person permissions). */
   userDirectory?: UserDirectory;
+  /**
+   * v0.4.1: the grid's capabilities (the workbench passes `effectiveCapabilities`).
+   * The type picker hides types they can't back (core `fieldTypeAvailability`);
+   * an existing column keeps its type, shown with the reason. The default value
+   * picker gets them too (no lookup / people search without them).
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 const defaultId = () =>
@@ -248,7 +255,7 @@ export function ColumnFormBody({
   portalled?: boolean;
 }) {
   const { draft, dispatch, visibleErrors, touch, setFormulaValid, editing, submitted, requirements, nameRef, save } = state;
-  const { schema, registry, uiRegistry, access, roles, dataSource, sampleRows, userDirectory } = props;
+  const { schema, registry, uiRegistry, access, roles, dataSource, sampleRows, userDirectory, capabilities } = props;
   const peopleNames = usePeopleNames(
     userDirectory,
     [draft.permissions.read, draft.permissions.edit].flatMap((rule) => (rule === "all" ? [] : (rule.users ?? []))),
@@ -285,6 +292,7 @@ export function ColumnFormBody({
           error={visibleErrors.type}
           onBlur={() => touch("type")}
           portalled={portalled}
+          capabilities={capabilities}
           onChange={(fieldType) => dispatch({ type: "setType", fieldType, registry })}
         />
         <Reveal open={!!draft.type}>
@@ -317,7 +325,7 @@ export function ColumnFormBody({
 
       <div className="sg:flex sg:flex-col sg:gap-3">
         <Section title="Options" summary={optionsSummary(draft)} open={optionsOpen} onOpenChange={setOptionsOpen}>
-          <ColumnOptionsFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} dataSource={dataSource} />
+          <ColumnOptionsFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} dataSource={dataSource} capabilities={capabilities} />
         </Section>
         <Section
           title="Who can access"

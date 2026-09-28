@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ColumnDef, DataSource, Option } from "../internal/core-contracts";
+import type { ColumnDef, DataSource, FieldTypeCapabilitiesLike, Option } from "../internal/core-contracts";
 import { getSelectOptions } from "../internal/options";
 
 /**
  * Options for a select-family editor. Static options follow `config` live
  * (e.g. a column builder adding options); with `config.dynamic` they are
  * fetched once from `dataSource.getOptions(column.id)` (static until then).
+ * v0.4.1: never fetched when `capabilities.options` is false (the static options stay).
  */
-export function useSelectOptions(config: unknown, dataSource: DataSource | undefined, column: ColumnDef): Option[] {
+export function useSelectOptions(
+  config: unknown,
+  dataSource: DataSource | undefined,
+  column: ColumnDef,
+  capabilities?: FieldTypeCapabilitiesLike,
+): Option[] {
   const configOptions = useMemo(() => getSelectOptions(config), [config]);
   const [fetched, setFetched] = useState<Option[] | null>(null);
-  const dynamic = !!config && typeof config === "object" && (config as { dynamic?: unknown }).dynamic === true;
+  const dynamic =
+    !!config && typeof config === "object" && (config as { dynamic?: unknown }).dynamic === true && capabilities?.options !== false;
 
   useEffect(() => {
     if (!dynamic || !dataSource?.getOptions) return;

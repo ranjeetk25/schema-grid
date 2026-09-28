@@ -4,6 +4,7 @@ import {
   type DataSource,
   type DataSourceCapabilities,
   type GridSchema,
+  PERMISSION_EDIT_DENIED_MESSAGE,
   type ViewDef,
   normalizeCapabilities,
 } from "@ranjeetk25/schema-grid-core";
@@ -357,6 +358,26 @@ describe("<SchemaGridWorkbench>", () => {
     expect(await client.getSchema()).toMatchObject({ schemaVersion: createFixtureSchema().schemaVersion + 1 });
   });
 
+  it("the column builder hides types the source can't back (v0.4.1: no lookup → no Link)", async () => {
+    const { container, user } = renderUi(
+      <SchemaGridWorkbench
+        dataSource={source({ lookup: false, options: true })}
+        schema={createFixtureSchema()}
+        user={ADMIN}
+        viewStore={createMemoryViewStore()}
+        height={400}
+        gridProps={TEST_GRID}
+      />,
+    );
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    await user.click(await screen.findByRole("button", { name: "Add column" }));
+    const dialog = await screen.findByRole("dialog", { name: "New column" });
+    await user.click(within(dialog).getByRole("button", { name: /^Type/ }));
+    const names = (await screen.findAllByRole("option")).map((o) => o.textContent ?? "");
+    expect(names.some((n) => n.startsWith("Text"))).toBe(true);
+    expect(names.some((n) => n.startsWith("Link"))).toBe(false);
+  });
+
   it("the client's wire capabilities drive features", async () => {
     const { client } = gridClient({ groupBy: false, search: false });
     const { container } = renderUi(
@@ -594,6 +615,16 @@ describe("<SchemaGridWorkbench>", () => {
       expect(screen.getByTestId("saved-count")).toHaveTextContent("0");
       await user.click(within(banner).getByRole("button", { name: "Dismiss" }));
       await waitFor(() => expect(screen.queryByTestId("workbench-banner-save")).toBeNull());
+    });
+
+    it("a per-person refusal reaches the banner and the cell unchanged (v0.4.1)", async () => {
+      const { container } = renderWorkbench({ dataSource: failingSource(PERMISSION_EDIT_DENIED_MESSAGE) });
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      await editCell(container, "r1", C.name, "Zed");
+      const banner = await screen.findByTestId("workbench-banner-save");
+      expect(banner).toHaveTextContent("1 change failed");
+      expect(banner).toHaveTextContent("Only specific people can edit this column");
+      await waitFor(() => expect(cellOf(container, "r1", C.name).getAttribute("title")).toBe(PERMISSION_EDIT_DENIED_MESSAGE));
     });
 
     it("a second failed save re-announces (same message, new banner) and groups distinct messages with counts", async () => {

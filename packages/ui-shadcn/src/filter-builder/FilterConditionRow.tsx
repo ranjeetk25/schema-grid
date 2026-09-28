@@ -45,6 +45,7 @@ export function FilterConditionRow({
   const invalid = Boolean(errors?.column || errors?.operator || errors?.value);
   const errorId = useId();
   const rowError = errors?.column ?? errors?.operator;
+  const colorBlocked = api.colorBlockedReasonFor?.(condition.columnId);
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the row; a labelled group is the intent
@@ -84,6 +85,7 @@ export function FilterConditionRow({
           onChange={(v) => api.updateCondition(condition.id, { operator: v })}
           invalid={Boolean(errors?.operator)}
           describedBy={errors?.operator ? errorId : undefined}
+          note={colorBlocked ? `Can't filter by color: ${colorBlocked}` : undefined}
         />
         <div className="sg:min-w-0 sg:flex-1">
           {column && operator ? (
@@ -94,6 +96,7 @@ export function FilterConditionRow({
               schema={schema}
               registry={uiRegistry}
               dataSource={dataSource}
+              capabilities={api.capabilities}
               error={errors?.value}
               onChange={(v) => api.updateCondition(condition.id, { value: v })}
             />

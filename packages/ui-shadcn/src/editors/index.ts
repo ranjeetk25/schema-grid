@@ -9,6 +9,7 @@ export { DateEditor, DatePopupEditor, DateTimeEditor, DateTimePopupEditor } from
 export { SelectEditor, SelectPopupEditor, type SelectEditorConfig } from "./SelectEditor";
 export { MultiSelectEditor, MultiSelectPopupEditor, type MultiSelectEditorConfig } from "./MultiSelectEditor";
 export {
+  CREATE_OPTION_UNAVAILABLE_MESSAGE,
   CREATE_OPTION_VALUE,
   CreatableSelectEditor,
   CreatableSelectPopupEditor,

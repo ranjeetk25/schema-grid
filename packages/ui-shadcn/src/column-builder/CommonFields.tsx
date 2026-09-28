@@ -1,6 +1,6 @@
 import { ChevronRight, Lock } from "lucide-react";
 import { type Dispatch, type Ref, useId, useState } from "react";
-import type { ColumnDef, DataSource } from "../internal/core-contracts";
+import type { ColumnDef, DataSource, FieldTypeCapabilitiesLike } from "../internal/core-contracts";
 import { type UiFieldTypeRegistry, resolveEditorComponent } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { Field } from "../ui/field";
@@ -20,6 +20,8 @@ export interface CommonFieldsProps {
   /** Called when a field loses focus (the form reveals its error from then on). */
   onFieldBlur?(field: "label" | "key"): void;
   autoFocus?: boolean;
+  /** v0.4.1: the grid's capabilities, for the default-value editor (no lookup / people search without them). */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 const noop = () => {};
@@ -162,7 +164,13 @@ function SwitchRow({
 }
 
 /** Required, default value (the type's own editor in form mode) and indexed. */
-export function ColumnOptionsFields({ draft, dispatch, uiRegistry, dataSource }: Pick<CommonFieldsProps, "draft" | "dispatch" | "uiRegistry" | "dataSource">) {
+export function ColumnOptionsFields({
+  draft,
+  dispatch,
+  uiRegistry,
+  dataSource,
+  capabilities,
+}: Pick<CommonFieldsProps, "draft" | "dispatch" | "uiRegistry" | "dataSource" | "capabilities">) {
   const defaultLabelId = useId();
   const isFormula = draft.type === "formula";
   const DefaultEditor = draft.type && !isFormula ? resolveEditorComponent(uiRegistry.get(draft.type).editor) : undefined;
@@ -196,6 +204,7 @@ export function ColumnOptionsFields({ draft, dispatch, uiRegistry, dataSource }:
               config={draft.config}
               autoFocus={false}
               dataSource={dataSource}
+              {...(capabilities ? { capabilities } : {})}
             />
           </div>
           <p className="sg:text-xs sg:text-muted-foreground">Pre-filled for new rows</p>
@@ -212,11 +221,11 @@ export function ColumnOptionsFields({ draft, dispatch, uiRegistry, dataSource }:
 }
 
 /** Name + key, then required / default value / indexed. */
-export function CommonFields({ draft, dispatch, uiRegistry, errors = {}, dataSource, onFieldBlur, autoFocus }: CommonFieldsProps) {
+export function CommonFields({ draft, dispatch, uiRegistry, errors = {}, dataSource, onFieldBlur, autoFocus, capabilities }: CommonFieldsProps) {
   return (
     <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-5")}>
       <NameField draft={draft} dispatch={dispatch} errors={errors} onFieldBlur={onFieldBlur} autoFocus={autoFocus} />
-      <ColumnOptionsFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} dataSource={dataSource} />
+      <ColumnOptionsFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} dataSource={dataSource} capabilities={capabilities} />
     </div>
   );
 }

@@ -91,9 +91,11 @@ export interface SelectFieldProps {
   describedBy?: string;
   className?: string;
   size?: "sm" | "md";
+  /** A muted note under the items (e.g. why some are missing). */
+  note?: string;
 }
 
-export function SelectField({ items, value, onChange, placeholder, disabled, invalid, describedBy, className, size, ...rest }: SelectFieldProps) {
+export function SelectField({ items, value, onChange, placeholder, disabled, invalid, describedBy, className, size, note, ...rest }: SelectFieldProps) {
   return (
     <Select value={value ?? ""} onValueChange={(v) => v && onChange(v)} disabled={disabled}>
       <SelectTrigger
@@ -112,6 +114,11 @@ export function SelectField({ items, value, onChange, placeholder, disabled, inv
             {item.label}
           </SelectItem>
         ))}
+        {note ? (
+          <p data-slot="select-note" className="sg:mt-1 sg:max-w-64 sg:border-t sg:border-border sg:px-2 sg:pt-1.5 sg:pb-1 sg:text-xs sg:text-muted-foreground">
+            {note}
+          </p>
+        ) : null}
       </SelectContent>
     </Select>
   );

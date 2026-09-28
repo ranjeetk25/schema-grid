@@ -145,6 +145,56 @@ describe("<SchemaGridWorkbench> cell colors", () => {
     expect(await screen.findByRole("option", { name: "color is" })).toBeInTheDocument();
   });
 
+  describe("a color rule the server can't evaluate (v0.4.1)", () => {
+    /** Name is `filterable: false` (like a SQL-view computed column); the rule colors Payment status from it. */
+    function blockedSetup() {
+      const base = createFixtureSchema();
+      const schema: GridSchema = { ...base, columns: base.columns.map((c) => (c.id === C.name ? { ...c, filterable: false } : c)) };
+      return renderWorkbench({ schema, dataSource: memory(schema) });
+    }
+    const RULE = {
+      id: "r1",
+      color: "red" as const,
+      target: { kind: "cells" as const, columnIds: [C.status] },
+      when: { columnId: C.name, operator: "isNotEmpty" },
+    };
+    const REASON = `Can't filter by color: a color rule on it uses "Name", which can't be filtered on the server`;
+
+    it("disables the header menu's Filter by color on the blocked column, with the reason", async () => {
+      const { container, getHandle, user } = blockedSetup();
+      await ready(container);
+      act(() => getHandle().setColorRules([RULE]));
+      await user.click(screen.getByRole("button", { name: "Column menu: Payment status" }));
+      const item = await screen.findByRole("menuitem", { name: /Filter by color/ });
+      expect(item).toHaveAttribute("aria-disabled", "true");
+      expect(item).toHaveTextContent(REASON);
+    });
+
+    it("leaves the color operators out of the filter builder for the blocked column", async () => {
+      const { container, getHandle, user } = blockedSetup();
+      await ready(container);
+      act(() => getHandle().setColorRules([RULE]));
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const panel = await screen.findByRole("dialog", { name: /^Filter/ });
+      await user.click(within(panel).getByRole("button", { name: "Add condition" }));
+      await user.click(within(panel).getByRole("combobox", { name: "Column" }));
+      await user.click(await screen.findByRole("option", { name: "Payment status" }));
+      await user.click(within(panel).getByRole("combobox", { name: "Operator" }));
+      await screen.findAllByRole("option");
+      expect(screen.queryByRole("option", { name: "color is" })).toBeNull();
+      expect(screen.getByText(REASON)).toBeInTheDocument();
+    });
+
+    it("the rules dialog notes the rule", async () => {
+      const { container, getHandle, user } = blockedSetup();
+      await ready(container);
+      act(() => getHandle().setColorRules([RULE]));
+      await user.click(screen.getByRole("button", { name: /^Color rules/ }));
+      const dialog = await screen.findByRole("dialog", { name: "Color rules" });
+      expect(within(dialog).getByText("Can't be used to filter by color")).toBeInTheDocument();
+    });
+  });
+
   it("filters by color from the column header menu", async () => {
     const { container, user } = renderWorkbench();
     await ready(container);

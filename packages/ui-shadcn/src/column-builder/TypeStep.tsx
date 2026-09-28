@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useId, useRef, useState } from "react";
-import type { FieldTypeId, FieldTypeRegistry } from "../internal/core-contracts";
+import { type FieldTypeCapabilitiesLike, type FieldTypeId, type FieldTypeRegistry, fieldTypeAvailability } from "../internal/core-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { fieldTypeMeta } from "./type-meta";
 
@@ -11,14 +11,16 @@ export interface TypeStepProps {
   locked?: boolean;
   /** Grid columns (default 3). */
   columns?: number;
+  /** v0.4.1: types the capabilities can't back are hidden; the selected one stays, described by the reason. See `TypePickerProps.capabilities`. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /**
  * Grid of field-type cards (radio group). Arrow keys move focus across the
  * grid; Enter / Space / click selects.
  */
-export function TypeStep({ registry, value, onChange, locked = false, columns = 3 }: TypeStepProps) {
-  const types = registry.list();
+export function TypeStep({ registry, value, onChange, locked = false, columns = 3, capabilities }: TypeStepProps) {
+  const types = registry.list().filter((t) => t.id === value || fieldTypeAvailability(t.id, capabilities, registry).available);
   const baseId = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const selectedIndex = types.findIndex((t) => t.id === value);
@@ -48,6 +50,7 @@ export function TypeStep({ registry, value, onChange, locked = false, columns = 
         const meta = fieldTypeMeta(t.id, t);
         const Icon = meta.icon;
         const disabled = locked && !selected;
+        const reason = fieldTypeAvailability(t.id, capabilities, registry).reason;
         return (
           <button
             key={t.id}
@@ -79,7 +82,7 @@ export function TypeStep({ registry, value, onChange, locked = false, columns = 
             <span className="sg:flex sg:min-w-0 sg:flex-col sg:gap-0.5">
               <span className="sg:text-sm sg:font-medium sg:text-foreground">{t.label}</span>
               <span id={`${baseId}-${t.id}`} className="sg:text-xs sg:text-muted-foreground">
-                {meta.description}
+                {reason ?? meta.description}
               </span>
             </span>
           </button>

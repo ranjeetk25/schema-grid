@@ -3,8 +3,11 @@ import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState }
 import type { AccessMap } from "../internal/access";
 import { readableColumnIds } from "../internal/access";
 import {
+  type ColorRule,
   type ColumnDef,
+  type ColumnScope,
   type DataSource,
+  type FieldTypeCapabilitiesLike,
   type FieldTypeRegistry,
   type FilterNode,
   type FilterOperatorDef,
@@ -15,7 +18,7 @@ import {
   validateFilter,
   valueMatchesKind,
 } from "../internal/core-contracts";
-import { type CellColorCapabilitiesLike, type UiFieldTypeRegistry, canFilterByColor } from "../internal/grid-contracts";
+import { type UiCapabilitiesLike, type UiFieldTypeRegistry, canFilterByColor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
@@ -29,11 +32,12 @@ import {
   addCondition as addConditionTo,
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
+  colorBlockedReason,
   filterableColumns,
   findNode,
   findOperator,
   fromDraftIndexed,
-  operatorsFor,
+  operatorsInContext,
   removeNode,
   setGroupOp,
   toDraft,
@@ -57,8 +61,16 @@ export interface UseFilterDraftOptions {
   value: FilterNode | null;
   onChange(node: FilterNode | null): void;
   maxDepth?: number;
-  /** v0.4: `cellColors.filter` adds the color operators (`colorIs` / `colorIsNone`). */
-  capabilities?: CellColorCapabilitiesLike;
+  /**
+   * v0.4: `cellColors.filter` adds the color operators (`colorIs` / `colorIsNone`).
+   * v0.4.1: `lookup` / `options` gate the value pickers; the `filter` scope /
+   * per-column `filterable` feed the `colorRules` check.
+   */
+  capabilities?: UiCapabilitiesLike | null;
+  /** v0.4.1: the view's color rules; a column one of them blocks offers no color operators. */
+  colorRules?: readonly ColorRule[];
+  /** v0.4.1: pick and validate `filterable: false` columns too (color rule conditions). */
+  allowUnfilterable?: boolean;
 }
 
 export interface FilterDraftApi {
@@ -75,6 +87,10 @@ export interface FilterDraftApi {
   readable?: ReadonlySet<string>;
   maxDepth: number;
   operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
+  /** v0.4.1: why the column can't be filtered by color (a color rule blocks it), when color filtering is otherwise on; else null. */
+  colorBlockedReasonFor?(columnId: string | null): string | null;
+  /** v0.4.1: the builder's capabilities, for the value pickers (`lookup` / `options`). */
+  capabilities?: FieldTypeCapabilitiesLike;
   addCondition(groupId: string): void;
   /** Adds a nested group seeded with one blank condition. */
   addGroup(groupId: string): void;
@@ -107,8 +123,15 @@ function errorsToRows(errors: FilterValidationError[], idByPath: Map<string, str
  * Core validation plus the UI's stricter completeness rule: a blank string is
  * a valid single value for core, but an unfinished draft here.
  */
+/** `schema` with `filterable: false` lifted, so `validateFilter` accepts those columns (color rule conditions). */
+const withoutUnfilterable = (schema: GridSchema): GridSchema =>
+  schema.columns.some((c) => c.filterable === false)
+    ? { ...schema, columns: schema.columns.map((c) => (c.filterable === false ? { ...c, filterable: true } : c)) }
+    : schema;
+
 function draftErrors(node: FilterNode, ctx: DraftContext, readable: ReadonlySet<string>): FilterValidationError[] {
-  const errors = validateFilter(node, ctx.schema, ctx.registry, readable);
+  const schema = ctx.allowUnfilterable ? withoutUnfilterable(ctx.schema) : ctx.schema;
+  const errors = validateFilter(node, schema, ctx.registry, readable);
   const flagged = new Set(errors.map((e) => e.path.join(".")));
   const walk = (n: FilterNode, path: number[]) => {
     if (isFilterGroup(n)) {
@@ -139,7 +162,7 @@ function draftErrors(node: FilterNode, ctx: DraftContext, readable: ReadonlySet<
  * `maxDepth` is capped at core's `MAX_FILTER_DEPTH`.
  */
 export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
-  const { schema, registry, access, value, onChange, capabilities } = options;
+  const { schema, registry, access, value, onChange, capabilities, colorRules, allowUnfilterable = false } = options;
   const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
   const draftRef = useRef(draft);
@@ -149,12 +172,37 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
 
   // Only the flag matters: a new capabilities object with the same answer keeps the context.
   const colors = canFilterByColor(capabilities);
-  const ctx: DraftContext = useMemo(
-    () => ({ schema, registry, ...(colors ? { capabilities: COLORS_ON } : {}) }),
-    [schema, registry, colors],
-  );
+  // v0.4.1: the filter scope only matters for color rules while colors filter. Keyed by content, so an equal answer keeps the context.
+  const scopeKey =
+    colors && colorRules && colorRules.length > 0
+      ? JSON.stringify({
+          filter: capabilities?.filter ?? "all",
+          off: Object.entries(capabilities?.columns ?? {})
+            .filter(([, c]) => c?.filterable === false)
+            .map(([id]) => id),
+        })
+      : "";
+  const ctx: DraftContext = useMemo(() => {
+    const scope = scopeKey ? (JSON.parse(scopeKey) as { filter: ColumnScope; off: string[] }) : null;
+    return {
+      schema,
+      registry,
+      ...(colors
+        ? {
+            capabilities: scope
+              ? { ...COLORS_ON, filter: scope.filter, columns: Object.fromEntries(scope.off.map((id) => [id, { filterable: false }])) }
+              : COLORS_ON,
+          }
+        : {}),
+      ...(scope && colorRules ? { colorRules: { rules: colorRules, schema } } : {}),
+      ...(allowUnfilterable ? { allowUnfilterable } : {}),
+    };
+  }, [schema, registry, colors, scopeKey, colorRules, allowUnfilterable]);
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
-  const columns = useMemo(() => filterableColumns(schema, access, ctx.capabilities), [schema, access, ctx]);
+  const columns = useMemo(
+    () => filterableColumns(schema, access, ctx.capabilities, { colorRules: ctx.colorRules, allowUnfilterable: ctx.allowUnfilterable }),
+    [schema, access, ctx],
+  );
 
   useEffect(() => {
     const incoming = serialize(value);
@@ -191,10 +239,18 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, registry, ctx.capabilities) : [];
+      return column ? operatorsInContext(column, ctx) : [];
     },
-    [schema, registry, ctx],
+    [schema, ctx],
   );
+  const colorBlockedReasonFor = useCallback(
+    (columnId: string | null) => {
+      const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
+      return column ? colorBlockedReason(column, ctx.capabilities, ctx.colorRules) : null;
+    },
+    [schema, ctx],
+  );
+  const pickerCapabilities = capabilities ? { lookup: capabilities.lookup, options: capabilities.options } : undefined;
 
   const addGroup = (groupId: string) => {
     const next = addGroupTo(draftRef.current, groupId, maxDepth);
@@ -211,6 +267,8 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
     readable,
     maxDepth,
     operatorsForColumnId,
+    colorBlockedReasonFor,
+    ...(pickerCapabilities ? { capabilities: pickerCapabilities } : {}),
     addCondition: (groupId) => commit(addConditionTo(draftRef.current, groupId)),
     addGroup,
     remove: (id) => commit(removeNode(draftRef.current, id)),
@@ -241,8 +299,22 @@ export interface FilterBuilderProps extends FilterApplyOptions {
   /**
    * v0.4: the source's capabilities (`handle.effectiveCapabilities`). With
    * `cellColors.filter`, every column offers "color is" / "has no color".
+   * v0.4.1: `lookup` / `options` gate the value pickers (no search is called
+   * without them).
    */
-  capabilities?: CellColorCapabilitiesLike;
+  capabilities?: UiCapabilitiesLike | null;
+  /**
+   * v0.4.1: the view's color rules (`handle.colorRules`). A column one of them
+   * blocks (a rule that can color it tests a column the server can't filter
+   * on) offers no color operators; the operator list says why.
+   */
+  colorRules?: readonly ColorRule[];
+  /**
+   * v0.4.1: offer and accept `filterable: false` columns with their own
+   * operators. For conditions evaluated client-side, like the color rules
+   * dialog's rule conditions; a grid filter should leave it off.
+   */
+  allowUnfilterable?: boolean;
 }
 
 /** Calls `onDraftChange` whenever the apply state's draft/dirty change (not on mount). */
@@ -279,8 +351,20 @@ export function FilterBuilderPanel({
   variant = "inline",
   className,
   capabilities,
+  colorRules,
+  allowUnfilterable,
 }: FilterBuilderPanelProps) {
-  const api = useFilterDraft({ schema, registry, access, value: apply.draft, onChange: apply.setDraft, maxDepth, capabilities });
+  const api = useFilterDraft({
+    schema,
+    registry,
+    access,
+    value: apply.draft,
+    onChange: apply.setDraft,
+    maxDepth,
+    capabilities,
+    colorRules,
+    allowUnfilterable,
+  });
   const popover = variant === "popover";
   const pending = apply.pendingChanges;
 

@@ -1,6 +1,6 @@
 import { Check, ChevronsUpDown, Lock } from "lucide-react";
 import { useId, useState } from "react";
-import type { FieldTypeId, FieldTypeRegistry } from "../internal/core-contracts";
+import { type FieldTypeCapabilitiesLike, type FieldTypeId, type FieldTypeRegistry, fieldTypeAvailability } from "../internal/core-contracts";
 import { cn } from "../lib/cn";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { inputClasses } from "../ui/input";
@@ -18,15 +18,25 @@ export interface TypePickerProps {
   onBlur?(): void;
   /** Render the list in place (inside AG Grid popups). */
   portalled?: boolean;
+  /**
+   * v0.4.1: the grid's capabilities (the workbench passes `effectiveCapabilities`).
+   * Types they can't back (core `fieldTypeAvailability`: link needs `lookup`,
+   * user needs `options`, custom types their `requires`) are hidden; the current
+   * type always stays, shown with the reason.
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /** Notion-style "Property type" picker: a trigger button + searchable list (icon, label, one-liner). */
-export function TypePicker({ registry, value, onChange, locked = false, error, onBlur, portalled = true }: TypePickerProps) {
+export function TypePicker({ registry, value, onChange, locked = false, error, onBlur, portalled = true, capabilities }: TypePickerProps) {
   const labelId = useId();
   const valueId = useId();
   const errorId = useId();
+  const reasonId = useId();
   const [open, setOpen] = useState(false);
   const current = value ? registry.get(value) : undefined;
+  const currentReason = value ? fieldTypeAvailability(value, capabilities, registry).reason : undefined;
+  const types = registry.list().filter((t) => t.id === value || fieldTypeAvailability(t.id, capabilities, registry).available);
   const meta = value ? fieldTypeMeta(value, current) : undefined;
   const Icon = meta?.icon;
 
@@ -34,7 +44,7 @@ export function TypePicker({ registry, value, onChange, locked = false, error, o
     <button
       type="button"
       aria-labelledby={`${labelId} ${valueId}`}
-      aria-describedby={error ? errorId : undefined}
+      aria-describedby={[error ? errorId : "", currentReason ? reasonId : ""].filter(Boolean).join(" ") || undefined}
       aria-invalid={error ? true : undefined}
       aria-haspopup="listbox"
       aria-expanded={open}
@@ -84,7 +94,7 @@ export function TypePicker({ registry, value, onChange, locked = false, error, o
               <CommandInput placeholder="Search types…" />
               <CommandList className="sg:max-h-80">
                 <CommandEmpty>No type matches</CommandEmpty>
-                {registry.list().map((t) => {
+                {types.map((t) => {
                   const m = fieldTypeMeta(t.id, t);
                   const TypeIcon = m.icon;
                   const selected = t.id === value;
@@ -113,6 +123,11 @@ export function TypePicker({ registry, value, onChange, locked = false, error, o
           </PopoverContent>
         </Popover>
       )}
+      {currentReason ? (
+        <p id={reasonId} className="sg:text-xs sg:text-muted-foreground">
+          {currentReason}
+        </p>
+      ) : null}
       {error ? (
         <p id={errorId} role="alert" className="sg:text-xs sg:text-danger">
           {error}

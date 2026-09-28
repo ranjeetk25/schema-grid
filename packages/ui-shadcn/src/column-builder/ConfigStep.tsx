@@ -1,7 +1,7 @@
 import { Lightbulb } from "lucide-react";
 import { type Dispatch, useMemo } from "react";
 import type { AccessMap } from "../internal/access";
-import type { DataSource, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
+import type { DataSource, FieldTypeCapabilitiesLike, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { CommonFields } from "./CommonFields";
@@ -25,6 +25,8 @@ export interface ConfigStepProps {
   sampleRows?: GridRow[];
   /** Roles for option lists' "Who can set" control (v0.3). */
   roles?: string[];
+  /** v0.4.1: the grid's capabilities, for the default-value editor. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /** Sample inputs for the live format preview of number-like and date types. */
@@ -153,10 +155,11 @@ export function ConfigStep({
   dataSource,
   sampleRows,
   roles,
+  capabilities,
 }: ConfigStepProps) {
   return (
     <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-6")}>
-      <CommonFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} errors={errors} dataSource={dataSource} />
+      <CommonFields draft={draft} dispatch={dispatch} uiRegistry={uiRegistry} errors={errors} dataSource={dataSource} capabilities={capabilities} />
       <div className="sg:border-t sg:border-border sg:pt-5">
         <TypeConfigFields
           draft={draft}
