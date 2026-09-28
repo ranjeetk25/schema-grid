@@ -1,5 +1,56 @@
 # @ranjeetk25/schema-grid-server
 
+## 0.4.0
+
+### Minor Changes
+
+- 190bd69: v0.4.0: cell colors. This adds Excel-style color coding with conditional color rules, shared manual colors and filter by color.
+
+  **Core contract**
+
+  - A fixed named palette: `CellColor` (`red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`, `gray`), `CELL_COLORS` and `isCellColor`. Colors are background fills with light and dark theme variants and no hex values.
+  - Color rules (`ColorRule`: `{ id, color, target: { kind: "cells", columnIds } | { kind: "row" }, when: FilterNode | null, enabled? }`) are saved per view as `ViewDef.colorRules`. Precedence runs from the manual color, to the first matching `cells` rule for the column, to the first matching `row` rule. `resolveCellColor` / `resolveRowColor` compute the shown color. `validateColorRules` checks structure and access, and rejects color conditions inside a rule (`colorInRule`).
+  - Manual colors live in `GridRow.colors` (keyed by column id) and are written with `DataSource.setCellColors?(batch: CellColorBatch): Promise<CellColorResult>`. Last write wins. They don't bump `version` / `updatedAt`, but they do appear in the change feed. `canColorCell` means the effective access to the cell is `edit`.
+  - Filter by color: `COLOR_OPERATORS` (`colorIs` with a list of colors, `colorIsNone`) work on every readable column, `filterable: false` included, and match the shown color. `GridQuery.colorRules` carries the active view's rules so sources can evaluate them. `hasColorCondition(filter)` tells whether they matter.
+  - `DataSourceCapabilities.cellColors?: { read, write, filter }`, all false by default. `inferCapabilities` sets `write` when the source has `setCellColors`.
+  - Wire: a new optional operation `setCellColors` answers 501 when absent. `colorRules`, `colors` and `cellColors` are in the wire schemas, and malformed `colorRules` answer `FILTER_INVALID`. `createRemoteDataSource` supports `setCellColors`.
+  - The in-memory data source stores colors, implements `setCellColors`, filters by color and reports `cellColors` as all true.
+
+  **Server**
+
+  - `createCellColorsTableDDL` / `createCellColorStore` (`grid_cell_colors` table). Both data sources accept `colors`, hydrate `row.colors` (for readable columns only), implement `setCellColors` with the edit permission check, compile `colorIs` / `colorIsNone` to SQL for the shown color, and include color changes in `getChanges`.
+
+  **Grid and UI kits**
+
+  - Cells and rows render their shown color. `useSchemaGrid` sends the view's `colorRules` with every fetch. New handle methods: `setCellColor`, `colorRules`, `setColorRules` and `canPaint`. Painting is optimistic, can be undone and follows the change feed.
+  - Both kits add a "Cell color" paint popover, a "Color rules" editor, "color is" / "has no color" operators in the filter builder, and a "Filter by color" header submenu.
+
+- 070cacd: v0.4 — per-person column permissions: mark a column (or a select option) as viewable / editable by a few named people, not only by roles.
+
+  **Core**
+
+  - `RoleRule` is now `"all" | { roles?: string[]; users?: string[] }`. A user matches when any of their roles is in `roles` **or** their `PermissionUser.id` is in `users`; `superRoles` still bypass; `{}` or empty lists match nobody. Existing `{ roles }` rules keep their meaning. Code that read `rule.roles` directly must handle it being absent.
+  - New `matchesRoleRule(rule, user, superRoles?)`: the one matcher behind `createRolePermissionResolver` and `canSetOption` (so `applyChanges`, `createRows`, the SQL-view write path and option pickers all pick up `users`).
+  - Wire / option-config schemas accept `users` (non-empty ids). `optionNotSettableMessage` says "…can only be set by Admin or specific people" and never lists ids.
+
+  **Server**
+
+  - `getSchema` redacts per-person lists for callers without schema-write permission (`permission(ctx, "updateSchema")` + `schemaWritable`): every `users` list (column `permissions.read/edit`, option `settableBy`) becomes `[caller.id]` when the caller is listed, else `[]`. Writers get the full lists. Opt out with `defineGrid({ redactPermissionUsers: false })`.
+  - `defineGrid({ user: ctx => PermissionUser })` names the caller for redaction (default: `ctx.user` when it is a `{ id, roles }` object; no user → lists are emptied).
+  - `updateSchema` dedupes `users` lists before persisting.
+
+  **UI kits (ui-mantine, ui-shadcn)**
+
+  - New optional `userDirectory: { search(query), resolve(ids) }` prop on `<SchemaGridWorkbench>`, the column panel / form / builder dialog, `AccessSection` / `PermissionsStep` and `OptionListField`. It adds a People multi-select (async search) beside the roles pickers in "Who can access" and option "Who can set". Names come from `resolve`; unknown ids show the raw id marked "unknown user". Summaries read "Only Finance team and Priya, Rahul can edit" ("N people" beyond 3). Editors who can't view are added to view with the usual note.
+  - Without `userDirectory` the People pickers are hidden and stored `users` are kept untouched on save.
+  - Exports: `PeoplePicker`, `UserDirectory`, `UserDirectoryProvider`, `usePeopleNames`, `PeopleNames`.
+
+### Patch Changes
+
+- Updated dependencies [190bd69]
+- Updated dependencies [070cacd]
+  - @ranjeetk25/schema-grid-core@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

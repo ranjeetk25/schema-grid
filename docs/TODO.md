@@ -1,6 +1,6 @@
 # Backlog
 
-Current release: **0.3.1** (all six `@ranjeetk25/schema-grid-*`). Items below are queued for the next patch/minor; none block the admissions integration.
+Current release: **0.4.0** (cell colors, per-person permissions) (all six `@ranjeetk25/schema-grid-*`). Items below are queued for the next patch/minor; none block the admissions integration.
 
 ## 0.3.2 — leftovers from the admissions integration (all additive)
 
@@ -11,6 +11,14 @@ Current release: **0.3.1** (all six `@ranjeetk25/schema-grid-*`). Items below ar
 5. **Workbench surfaces `schema.reason` `no-store` / `forbidden`** — only `store-unavailable` is shown today. Quiet status-bar note ("Columns are read-only: no schema store configured" / "…: you don't have permission"); both kits + WorkbenchStates story variants + tests.
 
 Release: one `patch` changeset for all six (fixed group) → `bun run version` → local publish recipe (see `docs/releasing.md`; npm token must have NO IP allow-list) → push `--follow-tags` → notify the admissions session.
+
+## Capability-gated field types (reported by admissions, 2026-09-28)
+
+The UI decides support by `typeof dataSource.x === "function"`, which the HTTP/remote client always satisfies, instead of reading `capabilities`. Fix:
+- Column builder takes `capabilities` (workbench passes `effectiveCapabilities`); hide types the source can't back — Link needs `lookup`, User needs `options` — keeping an existing column's type with a reason. Core helper `fieldTypeAvailability(typeId, capabilities)`.
+- LinkPicker / UserPicker / CreatableSelect "create" gate on capabilities, not method presence.
+- `defineGrid` `updateSchema` rejects a newly added / retyped column the source can't back (400, "can't be a link column: this grid has no records to link to"), so hosts can drop hand-written guards (admissions `guardSchemaChange`).
+- Both kits + tests.
 
 ## Known gaps (older)
 
