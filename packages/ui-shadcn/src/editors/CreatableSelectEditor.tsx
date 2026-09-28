@@ -18,6 +18,9 @@ const CREATE_ITEM_VALUE = "c:create";
 
 export type CreatableSelectEditorProps = UiEditorProps<string, unknown>;
 
+/** v0.4.1: shown instead of "Create …" when the grid's capabilities say `options: false`. */
+const CREATE_UNAVAILABLE_MESSAGE = "Adding options isn't set up for this grid";
+
 const errorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : typeof err === "string" && err ? err : "Could not create option";
 
@@ -28,9 +31,11 @@ const errorMessage = (err: unknown): string =>
  * picking it creates the option, reports it via `onOptionCreate`, then
  * emits and commits its id. While creating, the input is disabled and busy;
  * a failure shows inline and keeps the editor open.
+ * v0.4.1: "Create" is gated on `capabilities.options` (not only on the
+ * method's presence); without it a typed, unmatched label says why instead.
  */
 export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
-  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, cellWidth, user } = props;
+  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, cellWidth, user, capabilities } = props;
   // Latest props for async continuations (avoids stale closures after await).
   const latest = useRef(props);
   latest.current = props;
@@ -66,8 +71,10 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
 
   const filtered = isSearching ? filterOptions(options, query) : options;
   const exactMatch = options.some((o) => o.label.toLowerCase() === query.toLowerCase());
-  const canCreate = typeof dataSource?.createOption === "function";
+  const createOff = capabilities?.options === false;
+  const canCreate = !createOff && typeof dataSource?.createOption === "function";
   const showCreate = canCreate && query !== "" && !exactMatch;
+  const showCreateOff = createOff && typeof dataSource?.createOption === "function" && query !== "" && !exactMatch;
 
   const pick = (option: Option) => {
     setCreateError(null);
@@ -78,7 +85,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   };
 
   const create = async (label: string) => {
-    const createOption = dataSource?.createOption;
+    const createOption = canCreate ? dataSource?.createOption : undefined;
     if (!createOption || creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
@@ -150,6 +157,9 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
         <p role="alert" className="sg:border-b sg:border-border sg:bg-danger-subtle sg:px-2.5 sg:py-1.5 sg:text-xs sg:text-danger">
           {createError ?? error}
         </p>
+      ) : null}
+      {showCreateOff ? (
+        <p className="sg:border-b sg:border-border sg:px-2.5 sg:py-1.5 sg:text-xs sg:text-muted-foreground">{CREATE_UNAVAILABLE_MESSAGE}</p>
       ) : null}
       <CommandList {...highlight.listProps}>
         {!showCreate ? <CommandEmpty>Nothing found</CommandEmpty> : null}

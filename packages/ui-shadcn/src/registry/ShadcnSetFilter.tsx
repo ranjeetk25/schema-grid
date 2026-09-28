@@ -34,7 +34,8 @@ function selectedFrom(model: FilterCondition | null, isBoolean: boolean): string
  * Searchable checkbox list for select, multiSelect, user and boolean
  * columns (Radix checkboxes, option tone dots / user avatars). Options come
  * from `context.dataSource.getOptions(columnId)` once per mount (falling back
- * to the column's static `config.options`). Every toggle emits, exactly like
+ * to the column's static `config.options`; v0.4.1: never fetched when
+ * `context.effectiveCapabilities.options` is false). Every toggle emits, exactly like
  * ag-grid's `SetFilter`: `isAnyOf` (select/user), `hasAnyOf` (multiSelect),
  * `isTrue` / `isFalse` (boolean; null for both or neither). An empty
  * selection emits null.
@@ -61,8 +62,10 @@ export function ShadcnSetFilter(props: SchemaFilterProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally mount-only.
   useEffect(() => {
     if (isBoolean || !columnId) return;
-    const getOptions = getSchemaGridContext(props.context)?.dataSource.getOptions;
-    if (!getOptions) return;
+    const gridContext = getSchemaGridContext(props.context);
+    const getOptions = gridContext?.dataSource.getOptions;
+    // v0.4.1: by capability, not only by method presence; the static options stay.
+    if (!getOptions || gridContext?.effectiveCapabilities?.options === false) return;
     let cancelled = false;
     getOptions(columnId).then(
       (opts) => {

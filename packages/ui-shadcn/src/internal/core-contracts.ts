@@ -98,6 +98,13 @@ export type {
 } from "@ranjeetk25/schema-grid-core";
 export { CELL_COLORS, isCellColor, validateColorRules } from "@ranjeetk25/schema-grid-core";
 export { COLOR_OPERATORS } from "@ranjeetk25/schema-grid-core/filter";
+// v0.4.1 color rules the server can't evaluate (rules dialog note, blocked color filters).
+export type { ColumnScope, FilterScopeCapabilitiesLike } from "@ranjeetk25/schema-grid-core";
+export { colorRuleUnfilterableColumn, sqlFilterablePredicate } from "@ranjeetk25/schema-grid-core";
+
+// v0.4.1 capability-gated field types (column builder type list, link / user pickers).
+export type { FieldTypeAvailability, FieldTypeCapabilitiesLike } from "@ranjeetk25/schema-grid-core";
+export { fieldTypeAvailability } from "@ranjeetk25/schema-grid-core";
 
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API

@@ -288,6 +288,17 @@ describe("ShadcnSetFilter", () => {
     expect(lastModel(onModelChange)).toEqual({ columnId: "payment", operator: "isAnyOf", value: ["paid", "pending"] });
   });
 
+  it("keeps the static options and never calls getOptions when capabilities.options is false (v0.4.1)", async () => {
+    const getOptions = vi.fn(async () => PAYMENT_OPTIONS);
+    const withStatic = col({ id: "payment", type: "select", label: "Payment", config: { options: [{ id: "static", label: "Static one" }] } });
+    const context = { ...makeContext(getOptions), effectiveCapabilities: { options: false } };
+    const { props } = filterProps(withStatic, null, context);
+    renderUi(<ShadcnSetFilter {...props} />);
+    await flush();
+    expect(getOptions).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Static one")).toBeInTheDocument();
+  });
+
   it("keeps the doesFilterPass identity stable across re-renders (no spurious filterChanged)", async () => {
     const { props } = filterProps(payment, null, makeContext(async () => PAYMENT_OPTIONS));
     const { rerender } = renderUi(<ShadcnSetFilter {...props} />);

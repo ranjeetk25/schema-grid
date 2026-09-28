@@ -55,6 +55,26 @@ function Harness({
   );
 }
 
+describe("FilterValueInput capabilities (v0.4.1)", () => {
+  it("a user `is any of` never calls getOptions when capabilities.options is false", async () => {
+    const dataSource = buildStubDataSource();
+    renderUi(
+      <FilterValueInput
+        column={fixtureColumn(FIXTURE_IDS.owner)}
+        operator={opOf(FIXTURE_IDS.owner, "isAnyOf")}
+        value={[]}
+        schema={schema}
+        registry={ui}
+        dataSource={dataSource}
+        capabilities={{ options: false }}
+        onChange={vi.fn()}
+      />,
+    );
+    await Promise.resolve();
+    expect(dataSource.getOptions).not.toHaveBeenCalled();
+  });
+});
+
 describe("FilterValueInput", () => {
   it("isEmpty renders no input", () => {
     const { container } = renderUi(<Harness columnId={FIXTURE_IDS.notes} opId="isEmpty" initial={undefined} onChange={vi.fn()} />);

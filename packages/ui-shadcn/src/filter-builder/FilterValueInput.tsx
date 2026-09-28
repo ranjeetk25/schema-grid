@@ -3,6 +3,7 @@ import {
   type CellColor,
   type ColumnDef,
   type DataSource,
+  type FieldTypeCapabilitiesLike,
   type FieldTypeId,
   type FilterOperatorDef,
   type FilterPrimitive,
@@ -31,6 +32,8 @@ export interface FilterValueInputProps {
   /** @deprecated Unused: formula columns resolve through `config.resultType`. */
   schema?: GridSchema;
   error?: string;
+  /** v0.4.1: the grid's capabilities; without `options` no people / option search is called. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /** Picker labels per relative-date kind (core `RELATIVE_DATE_PRESETS`). */
@@ -115,17 +118,23 @@ function Stack({ children, error, errorId }: { children: ReactNode; error?: stri
  * picking an option never counts as an outside click.
  */
 export function FilterValueInput(props: FilterValueInputProps) {
-  const { column, operator, value, onChange, registry, dataSource, error } = props;
+  const { column, operator, value, onChange, registry, dataSource, error, capabilities } = props;
   const type = effectiveFilterType(column);
   const isOptionType = OPTION_TYPES.has(type);
-  const userOptions = useUserOptions(operator.valueKind === "multi" && type === "user", column, dataSource);
+  const userOptions = useUserOptions(
+    operator.valueKind === "multi" && type === "user" && capabilities?.options !== false,
+    column,
+    dataSource,
+  );
   const errorId = useId();
   const invalid = Boolean(error);
   const describedBy = error ? errorId : undefined;
 
   const registryInput = (v: FilterValue | null | undefined, emit: (v: FilterValue | null) => void): ReactNode => {
     const Filter = filterInputFor(registry, type);
-    return Filter ? <Filter column={column} operator={operator} value={v} onChange={emit} dataSource={dataSource} /> : null;
+    return Filter ? (
+      <Filter column={column} operator={operator} value={v} onChange={emit} dataSource={dataSource} capabilities={capabilities} />
+    ) : null;
   };
 
   switch (operator.valueKind) {

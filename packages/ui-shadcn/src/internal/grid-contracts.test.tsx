@@ -30,6 +30,7 @@ function ProbeEditor(props: UiEditorProps<string>) {
     <div>
       <span data-testid="editor-props">{`${String(props.value)}|${props.column.key}|${String(props.autoFocus)}|${props.dataSource ? "ds" : "no-ds"}`}</span>
       <span data-testid="cell-width">{String(props.cellWidth)}</span>
+      <span data-testid="capabilities">{JSON.stringify(props.capabilities ?? null)}</span>
       <button type="button" onClick={() => props.onChange("typed")}>
         change
       </button>
@@ -106,6 +107,14 @@ describe("inline editor adapter", () => {
     expect(props.api.stopEditing).toHaveBeenCalledWith(true);
   });
 
+  it("passes the grid context's effectiveCapabilities as `capabilities` (v0.4.1)", () => {
+    const { props } = gridEditorProps({
+      context: { dataSource: buildStubDataSource(), events: () => ({}), effectiveCapabilities: { lookup: false, options: true } },
+    });
+    renderAny(toInlineGridEditor(ProbeEditor), props);
+    expect(screen.getByTestId("capabilities")).toHaveTextContent('{"lookup":false,"options":true}');
+  });
+
   it("routes onOptionCreate to events.onOptionCreate(columnId, option)", () => {
     const { props, onOptionCreate } = gridEditorProps();
     renderAny(toInlineGridEditor(ProbeEditor), props);
@@ -172,5 +181,13 @@ describe("registry helpers", () => {
     fireEvent.click(screen.getByText("commit-explicit"));
     expect(onChange).toHaveBeenLastCalledWith("explicit");
     expect(filterInputFor(createDefaultUiRegistry(), "text")).toBeUndefined();
+  });
+
+  it("toFilterInput forwards `capabilities` to the widget (v0.4.1)", () => {
+    const Filter = toFilterInput(ProbeEditor);
+    const op = buildFixtureRegistry().get("text")?.operators[0];
+    if (!op) throw new Error("op");
+    render(<Filter column={fixtureColumn(FIXTURE_IDS.notes)} operator={op} value="x" onChange={vi.fn()} capabilities={{ options: false }} />);
+    expect(screen.getByTestId("capabilities")).toHaveTextContent('{"options":false}');
   });
 });

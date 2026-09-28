@@ -27,7 +27,9 @@ import { type CustomCellEditorProps, type CustomCellRendererProps, useGridCellEd
 import { type ComponentType, createElement, useCallback, useRef } from "react";
 import {
   type ColumnDef,
+  type ColumnScope,
   type DataSource,
+  type FieldTypeCapabilitiesLike,
   type FieldTypeId,
   type FieldTypeRegistry,
   type FilterOperatorDef,
@@ -78,6 +80,7 @@ export {
   CELL_COLOR_TOKENS,
   canFilterByColor,
   cellColorCssVariables,
+  colorFilterBlockedReason,
   columnOperatorsWithColors,
   withColorOperators,
   type CellColorCapabilitiesLike,
@@ -85,6 +88,21 @@ export {
   type CellColorToken,
   type SchemaGridHandle,
 } from "@ranjeetk25/schema-grid-ag-grid";
+
+/**
+ * v0.4.1: the capability fields the kit reads, structurally: `cellColors.filter`
+ * (color operators), `lookup` / `options` (link / user pickers, option search,
+ * "+ Create"), and the `filter` scope / per-column `filterable` (color rules the
+ * server can't evaluate). `EffectiveCapabilities` (`handle.effectiveCapabilities`)
+ * and `DataSourceCapabilities` both fit. Absent fields = assumed available.
+ */
+export interface UiCapabilitiesLike {
+  cellColors?: { filter?: boolean } | undefined;
+  lookup?: boolean;
+  options?: boolean;
+  filter?: ColumnScope;
+  columns?: Record<string, { filterable?: boolean } | undefined>;
+}
 
 // ---------------------------------------------------------------------------
 // Widget contracts (owned by ui-shadcn)
@@ -110,6 +128,13 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
   onOptionCreate?(option: Option): void;
   /** The signed-in user (from the grid context); option pickers hide options they cannot set (`Option.settableBy`). */
   user?: PermissionUser;
+  /**
+   * v0.4.1: the grid's capabilities (`effectiveCapabilities`; the grid context in
+   * a cell). Pickers gate on them, not on method presence: no `lookup` → the link
+   * picker shows why instead of calling; no `options` → no people search, no
+   * option search (static options) and no "+ Create".
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 export interface UiRendererProps<TValue = unknown, TConfig = unknown> {
@@ -126,6 +151,8 @@ export interface UiFilterInputProps<TValue = unknown> {
   value: TValue | null | undefined;
   onChange(value: TValue | null): void;
   dataSource?: DataSource;
+  /** v0.4.1: see `UiEditorProps.capabilities`. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: heterogeneous widget registry
@@ -160,6 +187,7 @@ function contextExtras(context: unknown, column: ColumnDef | undefined) {
   return {
     dataSource: ctx?.dataSource as DataSource | undefined,
     ...(ctx?.user ? { user: ctx.user as PermissionUser } : {}),
+    ...(ctx?.effectiveCapabilities ? { capabilities: ctx.effectiveCapabilities } : {}),
     onOptionCreate: (option: Option) => {
       if (column) ctx?.events()?.onOptionCreate?.(column.id, option);
     },
@@ -362,7 +390,7 @@ const filterInputCache = new WeakMap<object, ComponentType<UiFilterInputProps>>(
 export function toFilterInput(widget: AnyEditorWidget): ComponentType<UiFilterInputProps> {
   const cached = filterInputCache.get(widget);
   if (cached) return cached;
-  function FilterInput({ column, value, onChange, dataSource }: UiFilterInputProps) {
+  function FilterInput({ column, value, onChange, dataSource, capabilities }: UiFilterInputProps) {
     return createElement(widget, {
       value: value ?? null,
       onChange,
@@ -373,6 +401,7 @@ export function toFilterInput(widget: AnyEditorWidget): ComponentType<UiFilterIn
       column,
       config: column.config,
       dataSource,
+      capabilities,
       autoFocus: false,
     });
   }
