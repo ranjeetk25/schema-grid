@@ -18,6 +18,13 @@ export {
 export {
   astToFilterModel,
   filterModelToAst,
+  type AstToFilterModelOptions,
   type AstToFilterModelResult,
   type ColumnFilterModel,
 } from "./filterModel";
+export {
+  canFilterByColor,
+  columnOperatorsWithColors,
+  withColorOperators,
+  type CellColorCapabilitiesLike,
+} from "./colorOperators";

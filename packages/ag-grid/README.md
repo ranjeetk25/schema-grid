@@ -97,6 +97,7 @@ interface SchemaGridProps<Row extends GridRow = GridRow> {
   pageMode?: "offset" | "cursor";            // default "offset"; server mode only
   externalFilter?: FilterNode | null;
   onClipboardReport?(report: ClipboardReport): void;
+  onCellColorReport?(report: CellColorReport): void; // v0.4: after each setCellColor paint
   poll?: { intervalMs?: number; enabled?: boolean };
   theme?: Theme;                             // default createSchemaGridTheme()
   popupParent?: HTMLElement | null;          // default document.body (null = AG Grid's default)
@@ -403,6 +404,30 @@ exact class name constants if you need to target them yourself; `SG_CSS` (raw st
 `src/theme/classNames.ts` for a consumer that can't use the Theming API's part mechanism and needs to ship the
 CSS as a plain stylesheet instead.
 
+### Cell color tokens
+
+Cell colors (v0.4, see [Cell colors](#cell-colors)) are background fills from a fixed palette. A colored cell
+carries `sg-cell-colored` + `sg-color-<name>` (`cellColorClass(color)`), a row colored by a `row` rule carries
+`sg-row-colored` + `sg-color-<name>`. `sg-color-<name>` sets `--sg-cell-color` from **`--sg-color-<name>`**,
+falling back to the light token:
+
+| Token | Light (fallback) | Dark | Swatch |
+|---|---|---|---|
+| `--sg-color-red` | `#fee2e2` | `rgba(239, 68, 68, .24)` | `#ef4444` |
+| `--sg-color-orange` | `#ffedd5` | `rgba(249, 115, 22, .24)` | `#f97316` |
+| `--sg-color-yellow` | `#fef9c3` | `rgba(234, 179, 8, .22)` | `#eab308` |
+| `--sg-color-green` | `#dcfce7` | `rgba(34, 197, 94, .22)` | `#22c55e` |
+| `--sg-color-teal` | `#ccfbf1` | `rgba(20, 184, 166, .22)` | `#14b8a6` |
+| `--sg-color-blue` | `#dbeafe` | `rgba(59, 130, 246, .24)` | `#3b82f6` |
+| `--sg-color-purple` | `#f3e8ff` | `rgba(168, 85, 247, .24)` | `#a855f7` |
+| `--sg-color-pink` | `#fce7f3` | `rgba(236, 72, 153, .24)` | `#ec4899` |
+| `--sg-color-gray` | `#f4f4f5` | `rgba(161, 161, 170, .22)` | `#a1a1aa` |
+
+`CELL_COLOR_TOKENS` (label / light / dark / swatch per color) and `cellColorCssVariables("light" | "dark")`
+(the `--sg-color-*` map for a scheme) are exported, so a dark host just spreads
+`cellColorCssVariables("dark")` next to its other `--sg-*` variables. Range selection layers its tint over a
+colored cell, and the range edges and the focus border stay on top; pending / error tints win while they last.
+
 ## Export: CSV and XLSX
 
 - **`exportCsv(fileName?)`** — client mode: uses AG Grid's own `exportDataAsCsv` over the currently displayed
@@ -477,12 +502,58 @@ AG Grid Community has no range module; `src/range/useRangeSelection.ts` implemen
 
 The grid records every applied batch (edit, paste, fill) in `createUndoStack` and replays inverted changes
 through the normal edit pipeline (`"undo"` / `"redo"` sources), so a conflict during undo goes to
-`onConflict` like any edit. A paste or fill is one step.
+`onConflict` like any edit. A paste or fill is one step, and so is a cell-color paint (v0.4, replayed through
+`setCellColors`).
 
 - **Ctrl/Cmd+Z** undoes; **Ctrl/Cmd+Shift+Z** and **Ctrl+Y** redo (`src/undo/useUndoKeybindings.ts`).
   Ignored while a cell editor is open (the editor's own undo wins).
 - Announced: "Undone" / "Redone", or "Nothing to undo" / "Nothing to redo".
 - Also exposed as `undo()` / `redo()` / `canUndo()` / `canRedo()` on the handle.
+
+### Cell colors
+
+Excel-style color coding (v0.4): **color rules** saved on the view ("when <filter> then color <cells | row>"),
+**manual colors** painted on cells and shared by everyone (`GridRow.colors`), and **filter by color** on the
+color a cell *shows*. Precedence: manual > first matching `cells` rule for the column > first matching `row`
+rule. Rules are evaluated client-side (on computed formula values too) by a resolver memoised per row object
+and rules identity; rules that read or target a column the user can't see are ignored.
+
+Handle API:
+
+```ts
+handle.colorRules: ColorRule[];                 // the current view's rules
+handle.setColorRules(rules: ColorRule[]): void; // → onViewChange, like filter/sort
+handle.canPaint(): boolean;                     // cellColors.read + write, and some target cell paintable
+handle.setCellColor(
+  color: CellColor | null,                      // null clears
+  target?: "selection" | { rowId: string; columnId: string }[], // default: range selection, else focused cell
+): Promise<CellColorResult | null>;
+```
+
+- **Views:** `captureView()` / `applyViewState` carry `colorRules`; applying drops unknown / hidden targets and
+  conditions, and a schema change that deletes a column drops the rule targets on it (a rule left without a
+  target is removed).
+- **Painting:** a cell is paintable when the user's effective access is `edit` (`canColorCell`: permission
+  edit, not `settable: false`, not a formula). Other target cells are skipped client-side and listed in the
+  result's `rejected` with `"Read-only"`; the `onCellColorReport` prop gets `{ color, requested, applied,
+  skipped, rejected }` after each paint (e.g. "3 cells skipped"). Paints are optimistic and roll back on a
+  rejection or error (the promise then rejects). Each paint is **one** undo step; undo / redo write the
+  previous / painted colors back through `setCellColors`. `null` when the source can't read + write colors
+  (`capabilities.cellColors`) or nothing is targeted.
+- **Capabilities:** `effectiveCapabilities.cellColors` (`{ read, write, filter }`). With `read` false only
+  rule colors render and nothing is paintable; with `filter` false the color operators are hidden.
+- **Query:** every server fetch and export page carries `GridQuery.colorRules`; a rules change refetches only
+  when the filter has a color condition (`hasColorCondition`), otherwise it just redraws. Client mode filters
+  locally with the same rules.
+- **Filters:** core keeps `COLOR_OPERATORS` (`colorIs`, `colorIsNone`) out of the field types' operator
+  lists. The column filters append them when `cellColors.filter` is true ("color is…" with palette
+  checkboxes in `ConditionFilter`, a Values / Color mode in `SetFilter`). Filter builders can reuse
+  `columnOperatorsWithColors(column, registry, capabilities)` (or `withColorOperators(operators,
+  capabilities)`), exported from the main entry and `./filters`. A color condition on a column without a
+  column filter (e.g. `filterable: false`) is kept in the residual filter.
+- **Live sync:** the change feed's same-version rows with new `colors` are merged (cells being painted keep
+  their local color); saves, `refreshRows` and refetches keep colors.
+- Copy / paste / fill and CSV / XLSX exports carry values only, never colors.
 
 ### Grouping
 

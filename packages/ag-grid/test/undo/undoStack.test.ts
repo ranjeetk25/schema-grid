@@ -116,4 +116,44 @@ describe("createUndoStack", () => {
     expect(stack.canUndo()).toBe(false);
     expect(stack.canRedo()).toBe(false);
   });
+
+  it("v0.4: a paint is one entry; undo hands back the previous colors, redo the painted ones", () => {
+    const stack = createUndoStack();
+    const edit = [change("r1", "a", 1, 2)];
+    stack.record(batch("b1", edit), edit);
+    stack.recordColors([
+      { rowId: "r1", columnId: "a", prev: null, next: "red" },
+      { rowId: "r2", columnId: "a", prev: "blue", next: "red" },
+    ]);
+
+    expect(stack.undo()).toEqual({
+      changes: [],
+      colors: [
+        { rowId: "r1", columnId: "a", color: null },
+        { rowId: "r2", columnId: "a", color: "blue" },
+      ],
+      source: "undo",
+    });
+    expect(stack.undo()).toEqual({ changes: [change("r1", "a", 2, 1)], source: "undo" });
+    stack.redo();
+    expect(stack.redo()).toEqual({
+      changes: [],
+      colors: [
+        { rowId: "r1", columnId: "a", color: "red" },
+        { rowId: "r2", columnId: "a", color: "red" },
+      ],
+      source: "redo",
+    });
+  });
+
+  it("v0.4: an empty paint records nothing; a paint clears redo", () => {
+    const stack = createUndoStack();
+    stack.recordColors([]);
+    expect(stack.canUndo()).toBe(false);
+    const edit = [change("r1", "a", 1, 2)];
+    stack.record(batch("b1", edit), edit);
+    stack.undo();
+    stack.recordColors([{ rowId: "r1", columnId: "a", prev: null, next: "red" }]);
+    expect(stack.canRedo()).toBe(false);
+  });
 });

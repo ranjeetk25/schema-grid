@@ -1,6 +1,7 @@
 import type { IFilter } from "ag-grid-community";
 import type { CustomFloatingFilterProps } from "ag-grid-react";
-import type { FilterCondition, FilterPrimitive, FilterValue, GridRow } from "../internal/core";
+import { COLOR_OPERATORS, type FilterCondition, type FilterPrimitive, type FilterValue, type GridRow, isCellColor } from "../internal/core";
+import { CELL_COLOR_TOKENS } from "../theme/cellColorTokens";
 import { configOptions, RELATIVE_DATE_LABELS, type ResolvedFilterColumn, resolveFilterColumn } from "./ConditionFilter";
 
 /**
@@ -62,10 +63,17 @@ function formatValue(resolved: ResolvedFilterColumn, value: FilterValue | undefi
   return formatPrimitive(resolved, value);
 }
 
-/** `{label} {operatorLabel} {formatted value}` — the text the floating chip shows. */
+/** `{label} {operatorLabel} {formatted value}` — the text the floating chip shows (v0.4: color names for `colorIs`). */
 export function summarizeCondition(resolved: ResolvedFilterColumn, condition: FilterCondition): string {
-  const opLabel = resolved.operators.find((o) => o.id === condition.operator)?.label ?? condition.operator;
-  const value = formatValue(resolved, condition.value);
+  const opLabel =
+    [...resolved.operators, ...COLOR_OPERATORS].find((o) => o.id === condition.operator)?.label ?? condition.operator;
+  const value =
+    condition.operator === "colorIs" && Array.isArray(condition.value)
+      ? condition.value
+          .filter(isCellColor)
+          .map((c) => CELL_COLOR_TOKENS[c].label)
+          .join(", ")
+      : formatValue(resolved, condition.value);
   return [resolved.column.label, opLabel, value].filter((s) => s !== "").join(" ");
 }
 

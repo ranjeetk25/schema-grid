@@ -72,6 +72,20 @@
  *   `maxPageSize` clamps every page request (client load, server blocks and
  *   groups, export). Paging never stops on a short page.
  *
+ * - Cell colors (v0.4): the view's `colorRules` live in the query store
+ *   (captured into / applied from views like filter/sort). The rules usable
+ *   by this user (`sanitizeColorRules`) drive a memoised resolver
+ *   (`context.cellColors`) behind the `sg-cell-colored` / `sg-row-colored` /
+ *   `sg-color-<name>` class rules; a new resolver refreshes the classes of
+ *   rendered cells (rows are redrawn when row rules are involved). The rules
+ *   ride on every server fetch / export page (`GridQuery.colorRules`), but
+ *   the server query KEY ignores them unless the filter has a color
+ *   condition, so a rules change only refetches then. Paints go through
+ *   `createColorController` (optimistic, rollback, one undo entry each);
+ *   fetched and polled rows keep the local color of cells being painted.
+ *   Manual colors show only when `capabilities.cellColors.read`. A schema
+ *   change drops rule targets on deleted columns.
+ *
  * `schema`, `dataSource`, `resolver`, `registry`, `uiRegistry` and `theme` are
  * compared by reference: pass stable instances. `user` and `externalFilter`
  * are compared by value. `mode` must not change after mount.
@@ -100,13 +114,31 @@ import type {
   Theme,
 } from "ag-grid-community";
 import type { AgGridReactProps, CustomCellRendererProps } from "ag-grid-react";
-import { type ComponentType, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { SCHEMA_GRID_CLIENT_MODULES, SCHEMA_GRID_INFINITE_MODULES } from "../agModules";
 import { withEditAnnouncements } from "../a11y/editAnnouncements";
 import { combineFilters } from "../client/combineFilters";
 import { deriveClientRows, makePostSortRows } from "../client/deriveClientRows";
 import type { ClipboardReport } from "../clipboard/types";
 import { type ClipboardHandlers, useClipboard } from "../clipboard/useClipboard";
+import {
+  type CellColorResolver,
+  createCellColorClassRules,
+  createCellColorResolver,
+  createRowColorClassRules,
+  pruneColorRules,
+  sanitizeColorRules,
+} from "../colors/cellColors";
+import { createColorController, keepPendingColors } from "../colors/colorController";
 import { createCellAccess } from "../compile/cellAccess";
 import { compileColumns } from "../compile/compileColumns";
 import { compileFormulaColumns } from "../compile/formulaColumns";
@@ -120,6 +152,10 @@ import { buildClientGroups, type DisplayRow, type GroupDisplayRow, isGroupRow, i
 import {
   type Access,
   applyEffectiveCapabilities,
+  canColorCell,
+  type CellColor,
+  type CellColorResult,
+  type ColorRule,
   type ColumnDef,
   createDefaultRegistry,
   createRolePermissionResolver,
@@ -138,7 +174,9 @@ import {
   type IoExportModule,
   type GroupSpec,
   getDataSourceCapabilities,
+  hasColorCondition,
   inferCapabilities,
+  isCellColor,
   isFilterGroup,
   isFormulaError,
   matchesFilter,
@@ -156,7 +194,7 @@ import { type CellRef, type CellStatusStore, createCellStatusStore, parseCellKey
 import { createExpansionStore } from "../state/expansionStore";
 import { createQueryStore, type QueryState } from "../state/queryStore";
 import { createRangeStore } from "../state/rangeStore";
-import { useRangeSelection } from "../range/useRangeSelection";
+import { normalizedRangeFor, useRangeSelection } from "../range/useRangeSelection";
 import { useFillHandle } from "../fill/useFillHandle";
 import { createRowStore, type RowStore } from "../state/rowStore";
 import { rowMatchesView, useRemoteSync } from "../sync/applyRemotePatch";
@@ -225,6 +263,12 @@ export interface SchemaGridProps<Row extends GridRow = GridRow> {
    */
   externalFilter?: FilterNode | null;
   onClipboardReport?(report: ClipboardReport): void;
+  /**
+   * v0.4: after every `setCellColor` paint (not undo / redo): how many cells
+   * were asked for, painted, skipped client-side (not paintable for this
+   * user) and rejected by the source — e.g. to show "N skipped".
+   */
+  onCellColorReport?(report: CellColorReport): void;
   /** Change-feed polling (needs `dataSource.getChanges`). Default interval 7s; enabled defaults to document visibility. */
   poll?: SchemaGridPollOptions;
   /**
@@ -299,6 +343,23 @@ export interface UseSchemaGridSeams<Row extends GridRow = GridRow> {
   onApplied?(info: AppliedInfo<Row>): void;
 }
 
+/** v0.4: what one `setCellColor` paint did (see `SchemaGridProps.onCellColorReport`). */
+export interface CellColorReport {
+  /** The color painted; null = cleared. */
+  color: CellColor | null;
+  /** Target cells asked for. */
+  requested: number;
+  /** Cells the source applied. */
+  applied: number;
+  /** Cells skipped client-side (not paintable for this user; never sent). */
+  skipped: number;
+  /** Cells the source rejected (rolled back). */
+  rejected: number;
+}
+
+/** v0.4: explicit paint targets for `setCellColor` (default: the range selection, else the focused cell). */
+export type CellColorTarget = "selection" | { rowId: string; columnId: string }[];
+
 export interface SchemaGridUndo {
   undo(): Promise<void>;
   redo(): Promise<void>;
@@ -358,6 +419,24 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   effectiveCapabilities: EffectiveCapabilities;
   /** The source's raw capabilities; undefined until loaded. */
   capabilities: DataSourceCapabilities | undefined;
+  /** v0.4: the current view's color rules (as set; `[]` when none). */
+  colorRules: ColorRule[];
+  /** v0.4: replaces the view's color rules (unknown columns pruned) → `onViewChange`. */
+  setColorRules(rules: ColorRule[]): void;
+  /**
+   * v0.4: paints (or, with `null`, clears) the manual color of the target
+   * cells — default the range selection, else the focused cell. Cells the
+   * user can't paint are skipped (listed in `rejected` as "Read-only", see
+   * `onCellColorReport` for the counts). Optimistic; rolled back on
+   * rejection, and on error (the promise then rejects). One undo entry per
+   * paint. `null` when the source can't read + write colors or nothing is
+   * targeted.
+   */
+  setCellColor(color: CellColor | null, target?: CellColorTarget): Promise<CellColorResult | null>;
+  /** v0.4: the source can read + write colors and some target cell is paintable by this user. */
+  canPaint(): boolean;
+  /** v0.4: the resolver behind the color classes (shown color per cell / row). */
+  cellColors: CellColorResolver;
 }
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -397,6 +476,18 @@ const LOCKED_KEYS = [
 ] as const;
 
 const NO_FILTER_ERRORS: SchemaGridFilterErrors = { user: [], external: [] };
+const NO_COLOR_RULES = Object.freeze([]) as unknown as ColorRule[];
+
+/**
+ * The key a server query is compared by: its `colorRules` only count when
+ * the filter has a color condition (otherwise the source ignores them, and a
+ * rules change must redraw, not refetch).
+ */
+export function serverQueryKey(query: Omit<GridQuery, "page">): string {
+  if (!query.colorRules || hasColorCondition(query.filter)) return json(query);
+  const { colorRules: _ignored, ...rest } = query;
+  return json(rest);
+}
 
 function json(value: unknown): string {
   return JSON.stringify(value ?? null);
@@ -500,6 +591,9 @@ function initialQuery(view: ViewDef | null | undefined, readable: ReadonlySet<st
     sort: pruneSortToReadable(view.sort, readable),
     groupBy: pruneGroupByToReadable(view.groupBy, readable),
     ...(view.search !== undefined ? { search: view.search } : {}),
+    ...(view.colorRules && view.colorRules.length > 0
+      ? { colorRules: pruneColorRules(view.colorRules, (id) => readable.has(id)) }
+      : {}),
   };
 }
 
@@ -513,7 +607,9 @@ function preservePending<Row extends GridRow>(
   schema: GridSchema,
   rowStore: RowStore<Row>,
   cellStatus: CellStatusStore,
+  colorPending: (rowId: string, columnId: string) => boolean,
 ): Row[] {
+  const columnIds = schema.columns.map((c) => c.id);
   return rows.map((incoming) => {
     const local = rowStore.getRow(incoming.id);
     if (!local) return incoming;
@@ -523,7 +619,8 @@ function preservePending<Row extends GridRow>(
       cells ??= { ...incoming.cells };
       cells[column.key] = local.cells[column.key];
     }
-    return cells ? { ...incoming, cells } : incoming;
+    // v0.4: a cell whose paint is in flight keeps its local color.
+    return keepPendingColors(cells ? { ...incoming, cells } : incoming, local, columnIds, colorPending);
   });
 }
 
@@ -614,6 +711,17 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     () => createCellAccess<Row>(schema, access, resolver, stableUser),
     [schema, access, resolver, stableUser],
   );
+  /** v0.4: who may paint a cell — effective access "edit" (`canColorCell`) on a readable column. */
+  const canColor = useCallback(
+    (row: Row, column: ColumnDef) =>
+      access.get(column.id) !== undefined &&
+      access.get(column.id) !== "hidden" &&
+      canColorCell(row, column, stableUser, resolver),
+    [access, stableUser, resolver],
+  );
+  const cellColorCaps = effectiveCapabilities.cellColors;
+  const manualColors = cellColorCaps?.read === true;
+  const canWriteColors = manualColors && cellColorCaps?.write === true;
 
   /** Everything the imperative (non-React) paths read; refreshed every render. */
   const cfg = useRef({
@@ -631,6 +739,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     getCellValue,
     tz,
     stableUser,
+    canColor,
+    canWriteColors,
   });
   cfg.current = {
     schema,
@@ -647,6 +757,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     getCellValue,
     tz,
     stableUser,
+    canColor,
+    canWriteColors,
   };
 
   // ---- Stable per-instance state -------------------------------------------------
@@ -658,6 +770,39 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     expansion: createExpansionStore(),
   }));
   const [undoStack] = useState(() => createUndoStack());
+
+  // ---- Cell colors (v0.4) -----------------------------------------------------------------
+  const colorRules = useSyncExternalStore(
+    stores.query.subscribe,
+    () => stores.query.getState().colorRules ?? NO_COLOR_RULES,
+  );
+  const activeRulesCache = useRef<{ rules: unknown; schema: unknown; registry: unknown; readable: unknown; out: readonly ColorRule[] }>();
+  /** The query store's rules usable by this user (`sanitizeColorRules`), cached by input identity. */
+  const activeColorRules = useCallback((): readonly ColorRule[] => {
+    const c = cfg.current;
+    const rules = stores.query.getState().colorRules;
+    const hit = activeRulesCache.current;
+    if (hit && hit.rules === rules && hit.schema === c.schema && hit.registry === c.registry && hit.readable === c.readable) {
+      return hit.out;
+    }
+    const out = sanitizeColorRules(rules, c.schema, c.registry, c.readable);
+    activeRulesCache.current = { rules, schema: c.schema, registry: c.registry, readable: c.readable, out };
+    return out;
+  }, [stores]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: colorRules/schema/registry/readable are what activeColorRules() reads (via the store / cfg.current); they're the triggers.
+  const cellColors = useMemo(
+    () =>
+      createCellColorResolver({
+        rules: activeColorRules(),
+        schema,
+        registry,
+        user: { id: stableUser.id },
+        tz,
+        getCellValue,
+        manual: manualColors,
+      }),
+    [colorRules, schema, registry, readable, stableUser, tz, getCellValue, manualColors, activeColorRules],
+  );
   const apiRef = useRef<GridApi<Row> | null>(null);
   // Keyboard registry (grid/keyboard.ts) + range selection (T23).
   const [keyboard] = useState(() => createKeyboardRegistry<Row>({ getApi: () => apiRef.current }));
@@ -716,6 +861,16 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   }, [stores]);
 
   // ---- Context (stable object; fields refreshed in a layout effect) ---------------
+  /**
+   * v0.4: columns with a column filter (set once columns compile). Conditions
+   * on others — e.g. `colorIs` on a `filterable: false` column — stay in the
+   * residual, since AG Grid's filter model would drop them.
+   */
+  const filterColumnIdsRef = useRef<ReadonlySet<string> | null>(null);
+  const splitFilter = useCallback((filter: FilterNode | null) => {
+    const ids = filterColumnIdsRef.current;
+    return astToFilterModel(filter, ids ? { isModelColumn: (id) => ids.has(id) } : {});
+  }, []);
   const advancedCache = useRef<{ filter: FilterNode | null | undefined; ids: ReadonlySet<string> }>({
     filter: undefined,
     ids: new Set(),
@@ -723,10 +878,10 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const advancedColumnIds = useCallback((): ReadonlySet<string> => {
     const filter = stores.query.getState().filter;
     if (advancedCache.current.filter !== filter) {
-      advancedCache.current = { filter, ids: new Set(astToFilterModel(filter).advancedColumnIds) };
+      advancedCache.current = { filter, ids: new Set(splitFilter(filter).advancedColumnIds) };
     }
     return advancedCache.current.ids;
-  }, [stores]);
+  }, [stores, splitFilter]);
   const getEvents = useCallback((): SchemaGridEvents<Row> | undefined => latest.current.events, []);
   // T27: group toggle / load-more for the full-width renderers (`context.grouping`).
   const serverGroupsRef = useRef<ServerGroupsHandle<Row> | null>(null);
@@ -769,6 +924,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     canEditCell,
     user: stableUser,
     mode,
+    effectiveCapabilities,
+    cellColors,
   };
   const [context] = useState<SchemaGridHookContext<Row>>(() => ({ ...contextFields }));
   useLayoutEffect(() => {
@@ -816,7 +973,14 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     if (c.externalErrors.length === 0) {
       const all = stores.rows.all();
       const external = c.externalFilter;
-      const matchCtx = { schema: c.schema, registry: c.registry, user: { id: c.stableUser.id }, tz: c.tz, getCellValue: c.getCellValue };
+      const matchCtx = {
+        schema: c.schema,
+        registry: c.registry,
+        user: { id: c.stableUser.id },
+        tz: c.tz,
+        getCellValue: c.getCellValue,
+        colorRules: activeColorRules(),
+      };
       base = external ? all.filter((r) => matchesFilter(r, external, matchCtx)) : all;
     }
 
@@ -835,6 +999,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
         user: { id: c.stableUser.id },
         tz: c.tz,
         getCellValue: c.getCellValue,
+        colorRules: activeColorRules(),
       },
     );
     errors.user = derived.errors;
@@ -910,6 +1075,9 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     });
   }, []);
 
+  /** v0.4: the color controller's `isPending` (the controller is created further down). */
+  const colorPendingRef = useRef<(rowId: string, columnId: string) => boolean>(() => false);
+
   // ---- Remote changes (T28) --------------------------------------------------------------
   /** The host's events, plus a capabilities refetch on a schema change. */
   const getSyncEvents = useCallback((): SchemaGridEvents<Row> => {
@@ -930,7 +1098,8 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     ...(pollOptions ? { poll: pollOptions } : {}),
     schema,
     events: getSyncEvents,
-    matchesView: (row) => rowMatchesView(row, cfg.current, stores.query.getState()),
+    matchesView: (row) => rowMatchesView(row, { ...cfg.current, colorRules: activeColorRules() }, stores.query.getState()),
+    colorPending: (rowId, columnId) => colorPendingRef.current(rowId, columnId),
   });
   const { flushAfterGridUpdate, onCellEditingStopped } = remote;
 
@@ -997,7 +1166,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   // ---- Incoming rows (both modes) -----------------------------------------------------
   const upsertIncoming = useCallback(
     (rows: readonly Row[]) => {
-      stores.rows.upsert(preservePending(rows, cfg.current.schema, stores.rows, stores.cellStatus));
+      stores.rows.upsert(
+        preservePending(rows, cfg.current.schema, stores.rows, stores.cellStatus, (rowId, columnId) =>
+          colorPendingRef.current(rowId, columnId),
+        ),
+      );
     },
     [stores],
   );
@@ -1020,12 +1193,12 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       if (pushed && sameModel(model, pushed)) return;
       lastPushedModel.current = undefined;
       const current = stores.query.getState().filter;
-      const split = astToFilterModel(current);
+      const split = splitFilter(current);
       if (sameModel(model, split.model)) return;
       const next = filterModelToAst(model, split.residual);
       if (json(next) !== json(current)) stores.query.setFilter(next);
     },
-    [stores],
+    [stores, splitFilter],
   );
 
   // ---- Server datasource -------------------------------------------------------------
@@ -1042,8 +1215,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     if (c.canSearch && state.search !== undefined && state.search !== "") query.search = state.search;
     const groupBy = c.canGroup ? pruneGroupByToReadable(state.groupBy, c.readable) : [];
     if (groupBy.length > 0) query.groupBy = groupBy;
+    // v0.4: every fetch / export page carries the rules (sources use them for colorIs only).
+    const rules = activeColorRules();
+    if (rules.length > 0) query.colorRules = [...rules];
     return query;
-  }, [stores]);
+  }, [stores, activeColorRules]);
 
   const pushQueryToGridRef = useRef<() => boolean>(() => false);
   /** Key of the query the current datasource last fetched with (undefined: nothing fetched yet). */
@@ -1087,7 +1263,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
           params.successCallback([], 0);
           return;
         }
-        lastServerQueryKey.current = json(getServerQuery());
+        lastServerQueryKey.current = serverQueryKey(getServerQuery());
         setLoadState("loading");
         inner.getRows({
           ...params,
@@ -1134,7 +1310,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   const syncServerQuery = useCallback(() => {
     if ((latest.current.mode ?? "client") !== "server") return;
     if (lastServerQueryKey.current === undefined) return; // nothing fetched yet; the first getRows reads the latest query
-    if (json(getServerQuery()) === lastServerQueryKey.current) return;
+    if (serverQueryKey(getServerQuery()) === lastServerQueryKey.current) return;
     replaceServerDatasource();
   }, [getServerQuery, replaceServerDatasource]);
 
@@ -1158,6 +1334,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     queryStore: stores.query,
     rowStore: stores.rows,
     getQuery: getServerQuery,
+    queryKey: serverQueryKey,
     getDataSource: () => latest.current.dataSource,
     dataSource,
     pageSize,
@@ -1192,7 +1369,14 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       let offset = 0;
       for (;;) {
         const limit = cfg.current.pageSize;
-        const result = await ds.fetch({ filter: external, sort: [], page: { offset, limit }, includeTotal: true });
+        const rules = activeColorRules();
+        const result = await ds.fetch({
+          filter: external,
+          sort: [],
+          page: { offset, limit },
+          includeTotal: true,
+          ...(rules.length > 0 ? { colorRules: [...rules] } : {}),
+        });
         if (generation !== loadGeneration.current || !mountedRef.current) return;
         upsertIncoming(result.rows);
         for (const r of result.rows) seen.add(r.id);
@@ -1214,7 +1398,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     stores.rows.clearNotInView();
     setLastError(undefined);
     setLoadState("idle");
-  }, [stores, upsertIncoming, setLoadState, setLastError]);
+  }, [stores, upsertIncoming, setLoadState, setLastError, activeColorRules]);
 
   const refetch = useCallback(async (): Promise<void> => {
     if ((latest.current.mode ?? "client") === "client") {
@@ -1339,20 +1523,142 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     },
     [fill, rangeSelection],
   );
+  // ---- Manual cell colors (v0.4) ---------------------------------------------------------
+  const [colorController] = useState(() =>
+    createColorController<Row>({
+      getSetCellColors: () => {
+        const source = latest.current.dataSource;
+        if (typeof source.setCellColors !== "function") return undefined;
+        return (batch) => source.setCellColors?.(batch) as Promise<CellColorResult>;
+      },
+      rowStore: stores.rows,
+      getSchema: () => cfg.current.schema,
+      canColor: (row, column) => cfg.current.canColor(row, column),
+      upsertRows: (rows) => upsertIncomingRef.current(rows),
+      onApplied: ({ applied, source }) => {
+        if (source === "paint") undoStack.recordColors(applied);
+      },
+    }),
+  );
+  colorPendingRef.current = colorController.isPending;
+  const upsertIncomingRef = useRef(upsertIncoming);
+  upsertIncomingRef.current = upsertIncoming;
+
+  /** The cells a paint targets by default: the range selection, else the focused cell (data rows only). */
+  const selectionTargets = useCallback((): { rowId: string; columnId: string }[] => {
+    const api = apiRef.current;
+    if (!api || api.isDestroyed()) return [];
+    const rowIdAt = (rowIndex: number): string | undefined => {
+      const data = api.getDisplayedRowAtIndex(rowIndex)?.data as DisplayRow<Row> | undefined;
+      return data && !isGroupRow(data) && !isLoadMoreRow(data) ? rowIdOf(data) : undefined;
+    };
+    const range = normalizedRangeFor(api, stores.range.get());
+    const out: { rowId: string; columnId: string }[] = [];
+    if (range) {
+      for (let i = range.rowStart; i <= range.rowEnd; i++) {
+        const rowId = rowIdAt(i);
+        if (rowId === undefined) continue;
+        for (const columnId of range.colIds) out.push({ rowId, columnId });
+      }
+      return out;
+    }
+    const focused = api.getFocusedCell();
+    if (!focused || focused.rowPinned || focused.rowIndex < 0) return [];
+    const rowId = rowIdAt(focused.rowIndex);
+    const columnId = focused.column.getColId();
+    return rowId === undefined || isSyntheticColumnId(columnId) ? [] : [{ rowId, columnId }];
+  }, [stores]);
+
+  const canPaint = useCallback((): boolean => {
+    const c = cfg.current;
+    if (!c.canWriteColors || typeof latest.current.dataSource.setCellColors !== "function") return false;
+    const byId = new Map(c.schema.columns.map((col) => [col.id, col]));
+    return selectionTargets().some((t) => {
+      const row = stores.rows.getRow(t.rowId);
+      const column = byId.get(t.columnId);
+      return !!row && !!column && c.canColor(row, column);
+    });
+  }, [stores, selectionTargets]);
+
+  const setCellColor = useCallback(
+    async (color: CellColor | null, target?: CellColorTarget): Promise<CellColorResult | null> => {
+      if (color !== null && !isCellColor(color)) return null;
+      if (!cfg.current.canWriteColors) return null;
+      const cells = target === undefined || target === "selection" ? selectionTargets() : target;
+      if (cells.length === 0) return null;
+      const outcome = await colorController.apply(
+        cells.map((cell) => ({ rowId: cell.rowId, columnId: cell.columnId, color })),
+        "paint",
+      );
+      if (!outcome) return null;
+      const { result, skipped } = outcome;
+      latest.current.onCellColorReport?.({
+        color,
+        requested: cells.length,
+        applied: result.applied.length,
+        skipped,
+        rejected: result.rejected.length - skipped,
+      });
+      const n = result.applied.length;
+      if (n > 0) {
+        const what = color === null ? "Color cleared" : "Colored";
+        latestSeams.current.announce?.(n === 1 ? what : `${what}: ${n} cells`, "polite");
+      }
+      return result;
+    },
+    [colorController, selectionTargets],
+  );
+
+  const setColorRules = useCallback(
+    (rules: ColorRule[]) => {
+      const known = new Set(cfg.current.schema.columns.map((c) => c.id));
+      stores.query.setColorRules(pruneColorRules(rules, (id) => known.has(id)));
+    },
+    [stores],
+  );
+
+  // A deleted column leaves no dangling rule targets (a rule left without one goes).
+  useEffect(() => {
+    const rules = stores.query.getState().colorRules;
+    if (!rules || rules.length === 0) return;
+    const known = new Set(schema.columns.map((c) => c.id));
+    const pruned = pruneColorRules(rules, (id) => known.has(id));
+    if (pruned !== rules) stores.query.setColorRules(pruned);
+  }, [schema, stores]);
+
+  // A new resolver (rules, capabilities, user…) re-applies the color classes of
+  // rendered cells; rows are redrawn when row rules are (or were) involved.
+  const lastResolver = useRef<CellColorResolver | null>(null);
+  useEffect(() => {
+    const prev = lastResolver.current;
+    lastResolver.current = cellColors;
+    if (!prev) return;
+    const redrawRows = prev.hasRowRules || cellColors.hasRowRules;
+    const timer = setTimeout(() => {
+      const api = apiRef.current;
+      if (!api || api.isDestroyed()) return;
+      if (redrawRows) api.redrawRows();
+      else api.refreshCells();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [cellColors]);
+
   const undo = useMemo<SchemaGridUndo>(
     () => ({
       undo: async () => {
         const step = undoStack.undo();
-        if (step) await controller.submit(step.changes, step.source);
+        if (step?.colors) await colorController.apply(step.colors, "undo").catch(() => null);
+        else if (step) await controller.submit(step.changes, step.source);
       },
       redo: async () => {
         const step = undoStack.redo();
-        if (step) await controller.submit(step.changes, step.source);
+        if (step?.colors) await colorController.apply(step.colors, "redo").catch(() => null);
+        else if (step) await controller.submit(step.changes, step.source);
       },
       canUndo: () => undoStack.canUndo(),
       canRedo: () => undoStack.canRedo(),
     }),
-    [undoStack, controller],
+    [undoStack, controller, colorController],
   );
 
   // ---- Undo/redo keybindings (T26): Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z / Ctrl+Y on the root keyboard registry.
@@ -1457,7 +1763,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       });
       changed = true;
     }
-    const target = astToFilterModel(state.filter).model;
+    const target = splitFilter(state.filter).model;
     const current = (api.getFilterModel() ?? {}) as ColumnFilterModel;
     if (!sameModel(current, target)) {
       lastPushedModel.current = target;
@@ -1465,7 +1771,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       changed = true;
     }
     return changed;
-  }, [stores]);
+  }, [stores, splitFilter]);
 
   pushQueryToGridRef.current = pushQueryToGrid;
 
@@ -1584,6 +1890,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
   // ---- Column defs ----------------------------------------------------------------------
   const cellClassRules = useMemo<CellClassRules<Row>>(
     () => ({
+      ...createCellColorClassRules<Row>(),
       ...createStatusCellClassRules<Row>(),
       ...createReadOnlyCellClassRules<Row>(),
       ...(seams.cellClassRules ?? {}),
@@ -1591,7 +1898,12 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     [seams.cellClassRules],
   );
   const rowClassRules = useMemo<RowClassRules<Row>>(
-    () => ({ ...createStatusRowClassRules<Row>(), ...createGroupingRowClassRules<Row>(), ...(seams.rowClassRules ?? {}) }),
+    () => ({
+      ...createRowColorClassRules<Row>(),
+      ...createStatusRowClassRules<Row>(),
+      ...createGroupingRowClassRules<Row>(),
+      ...(seams.rowClassRules ?? {}),
+    }),
     [seams.rowClassRules],
   );
   // The view only seeds initial* values for first paint; later view column
@@ -1625,6 +1937,11 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
       seams.wrapRenderer,
       keyboard,
     ],
+  );
+
+  filterColumnIdsRef.current = useMemo(
+    () => new Set(columnDefs.filter((d) => !!d.filter && d.colId !== undefined).map((d) => d.colId as string)),
+    [columnDefs],
   );
 
   // `maintainColumnOrder` makes AG Grid append the ghost column at the end:
@@ -1855,5 +2172,10 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     clipboard,
     effectiveCapabilities,
     capabilities,
+    colorRules,
+    setColorRules,
+    setCellColor,
+    canPaint,
+    cellColors,
   };
 }

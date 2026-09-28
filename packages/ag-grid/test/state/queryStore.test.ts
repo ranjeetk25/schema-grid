@@ -29,4 +29,16 @@ describe("queryStore", () => {
     s.setSearch("   ");
     expect(s.getState().search).toBeUndefined();
   });
+
+  it("v0.4: holds the view's color rules (absent = none; [] clears)", () => {
+    const rule = { id: "r", color: "red" as const, target: { kind: "row" as const }, when: null };
+    const s = createQueryStore({ colorRules: [rule] });
+    expect(s.getState().colorRules).toEqual([rule]);
+    const listener = vi.fn();
+    s.subscribe(listener);
+    s.setColorRules([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(s.getState().colorRules).toBeUndefined();
+    expect(createQueryStore({ colorRules: [] }).getState()).toEqual({ filter: null, sort: [], groupBy: [] });
+  });
 });

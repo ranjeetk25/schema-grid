@@ -116,3 +116,6 @@ export function createSchemaGridTheme(overrides: SchemaGridThemeOverrides = {}):
   const defined = Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined));
   return themeQuartz.withParams({ ...SCHEMA_GRID_THEME_PARAMS, ...defined }).withPart(schemaGridPart);
 }
+
+// v0.4 cell colors: palette tokens (light / dark / swatch) and the `--sg-color-*` variable map.
+export { CELL_COLOR_TOKENS, type CellColorToken, cellColorCssVariables, cellColorVar } from "./cellColorTokens";

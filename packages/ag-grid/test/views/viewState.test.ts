@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Access, ViewDef } from "../../src/internal/core";
+import type { Access, ColorRule, ViewDef } from "../../src/internal/core";
 import { createExpansionStore } from "../../src/state/expansionStore";
 import { createQueryStore } from "../../src/state/queryStore";
 import { applyViewState, captureViewState } from "../../src/views/viewState";
@@ -198,6 +198,48 @@ describe("applyViewState", () => {
     const view = baseView({ groupBy: [{ columnId: "name" }] });
     applyViewState(api, view, { query });
     expect(query.getState().groupBy).toEqual([{ columnId: "name" }]);
+  });
+});
+
+describe("colorRules (v0.4)", () => {
+  const rowRule: ColorRule = { id: "a", color: "green", target: { kind: "row" }, when: { columnId: "name", operator: "isNotEmpty" } };
+  const cellsRule: ColorRule = {
+    id: "b",
+    color: "red",
+    target: { kind: "cells", columnIds: ["score", "ghost"] },
+    when: { columnId: "score", operator: "gt", value: 1 },
+  };
+
+  it("captures the query store's rules, omitting the key when there are none", () => {
+    const { api } = createFakeGridApi({ columns: [{ colId: "name" }] });
+    expect("colorRules" in captureViewState(api, { query: createQueryStore() }, baseView())).toBe(false);
+    const query = createQueryStore({ colorRules: [rowRule] });
+    expect(captureViewState(api, { query }, baseView()).colorRules).toEqual([rowRule]);
+  });
+
+  it("applies rules, pruning unknown / hidden targets and conditions; a view without rules clears them", () => {
+    const { api } = createFakeGridApi({ columns: [{ colId: "name" }, { colId: "score" }, { colId: "salary" }] });
+    const query = createQueryStore({ colorRules: [rowRule] });
+    const access = new Map<string, Access>([
+      ["name", "edit"],
+      ["score", "read"],
+      ["salary", "hidden"],
+    ]);
+    const secret: ColorRule = { id: "c", color: "blue", target: { kind: "cells", columnIds: ["salary"] }, when: null };
+    applyViewState(api, baseView({ colorRules: [cellsRule, secret, rowRule] }), { query }, { access });
+    expect(query.getState().colorRules).toEqual([{ ...cellsRule, target: { kind: "cells", columnIds: ["score"] } }, rowRule]);
+
+    applyViewState(api, baseView(), { query }, { access });
+    expect(query.getState().colorRules).toBeUndefined();
+  });
+
+  it("round trips through capture → apply → capture", () => {
+    const { api } = createFakeGridApi({ columns: [{ colId: "name" }, { colId: "score" }] });
+    const query = createQueryStore({ colorRules: [rowRule] });
+    const captured = captureViewState(api, { query }, baseView());
+    const query2 = createQueryStore();
+    applyViewState(api, captured, { query: query2 });
+    expect(captureViewState(api, { query: query2 }, baseView())).toEqual(captured);
   });
 });
 

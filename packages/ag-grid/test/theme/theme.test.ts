@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createSchemaGridTheme } from "../../src/theme/theme";
+import { CELL_COLORS } from "../../src/internal/core";
+import { CELL_COLOR_TOKENS, cellColorCssVariables, createSchemaGridTheme } from "../../src/theme/theme";
 import { SG_CLASSES, SG_CSS } from "../../src/theme/classNames";
 
 describe("SG_CLASSES", () => {
@@ -72,5 +73,30 @@ describe("createSchemaGridTheme", () => {
 
   it("does not throw when composed with a part", () => {
     expect(() => createSchemaGridTheme()).not.toThrow();
+  });
+});
+
+describe("cell color tokens (v0.4)", () => {
+  it("has a light, dark and swatch token for every palette color", () => {
+    for (const color of CELL_COLORS) {
+      const token = CELL_COLOR_TOKENS[color];
+      expect(token.label.toLowerCase()).toBe(color);
+      expect(token.light).toMatch(/^#/);
+      expect(token.dark).toMatch(/^rgba\(/);
+      expect(token.swatch).toMatch(/^#/);
+    }
+  });
+
+  it("cellColorCssVariables maps --sg-color-<name> for either scheme", () => {
+    expect(cellColorCssVariables("light")["--sg-color-red"]).toBe(CELL_COLOR_TOKENS.red.light);
+    expect(cellColorCssVariables("dark")["--sg-color-blue"]).toBe(CELL_COLOR_TOKENS.blue.dark);
+    expect(Object.keys(cellColorCssVariables())).toHaveLength(CELL_COLORS.length);
+  });
+
+  it("SG_CSS reads the variables (light fallback) and keeps range edges above colored cells", () => {
+    expect(SG_CSS).toContain(`.sg-color-red {\n  --sg-cell-color: var(--sg-color-red, ${CELL_COLOR_TOKENS.red.light});`);
+    expect(SG_CSS).toContain(".sg-cell-colored.sg-cell-range");
+    expect(SG_CSS.indexOf(".sg-cell-colored {")).toBeLessThan(SG_CSS.indexOf(".sg-cell-range {"));
+    expect(SG_CSS.indexOf(".sg-cell-colored {")).toBeLessThan(SG_CSS.indexOf(".sg-cell-pending {"));
   });
 });

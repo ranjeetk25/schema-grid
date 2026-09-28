@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type { ColDef, Column } from "ag-grid-community";
 import { type CustomFilterProps, useGridFilter } from "ag-grid-react";
 import {
+  CELL_COLORS,
   type ColumnDef,
   createDefaultRegistry,
   effectiveFieldType,
@@ -11,11 +12,14 @@ import {
   type FilterPrimitive,
   type FilterValue,
   type GridRow,
+  isCellColor,
   type Option,
   operatorsFor,
   type RelativeDate,
   type RelativeDateKind,
 } from "../internal/core";
+import { CELL_COLOR_TOKENS } from "../theme/cellColorTokens";
+import { capabilitiesOf, withColorOperators } from "./colorOperators";
 
 /** Props our filter components accept: AG Grid's, plus the optional `filterParams` spread (`schemaColumn`/`fieldType`). */
 export type SchemaFilterProps<Row extends GridRow = GridRow> = CustomFilterProps<Row, unknown, FilterCondition> & {
@@ -205,6 +209,11 @@ type Built = { ok: true; condition: FilterCondition } | { ok: false; error: stri
 
 function buildCondition(resolved: ResolvedFilterColumn, draft: Draft, opDef: FilterOperatorDef, useCheckboxes: boolean): Built {
   const base = { columnId: resolved.columnId, operator: opDef.id };
+  if (opDef.id === "colorIs") {
+    // v0.4: palette colors, never parsed as the column's own type.
+    const colors = draft.multi.filter(isCellColor);
+    return colors.length > 0 ? { ok: true, condition: { ...base, value: colors } } : { ok: false, error: "Pick at least one color" };
+  }
   switch (opDef.valueKind) {
     case "none":
       return { ok: true, condition: base };
@@ -262,6 +271,9 @@ const FIELDSET_RESET = { border: 0, margin: 0, padding: 0, minWidth: 0 } as cons
  * Condition filter: operator `<select>` + a value input shaped by the
  * operator's `valueKind`. Apply/Enter emits a core `FilterCondition`; Clear
  * emits null. `doesFilterPass` always passes — rows arrive pre-filtered by core.
+ *
+ * v0.4: when `context.effectiveCapabilities.cellColors.filter` is true the
+ * list ends with "color is" (palette checkboxes) and "has no color".
  */
 export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
@@ -273,7 +285,7 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
     colDef: props.colDef as ColDef<GridRow> | undefined,
     column: props.column as Column | undefined,
   });
-  const operators = resolved?.operators ?? [];
+  const operators = withColorOperators(resolved?.operators ?? [], capabilitiesOf(props.context));
   const [draft, setDraft] = useState<Draft>(() => draftFrom(model, operators));
   const [error, setError] = useState<string | null>(null);
 
@@ -289,7 +301,8 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
   if (!resolved) return null;
 
   const opDef = operators.find((o) => o.id === draft.operator) ?? operators[0];
-  const useCheckboxes = options.length > 0;
+  const isColor = opDef?.id === "colorIs";
+  const useCheckboxes = options.length > 0 || isColor;
   const update = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setError(null);
@@ -351,7 +364,26 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
           />
         ))}
 
+      {kind === "multi" && isColor && (
+        <fieldset className="sg-filter-options sg-color-options" style={FIELDSET_RESET}>
+          <legend style={SR_ONLY}>Colors</legend>
+          {CELL_COLORS.map((c) => (
+            <label key={c} className="sg-filter-option">
+              <input
+                className="sg-checkbox"
+                type="checkbox"
+                checked={draft.multi.includes(c)}
+                onChange={(e) => update({ multi: e.target.checked ? [...draft.multi, c] : draft.multi.filter((v) => v !== c) })}
+              />
+              <span className="sg-color-swatch" aria-hidden="true" style={{ backgroundColor: CELL_COLOR_TOKENS[c].swatch }} />
+              {CELL_COLOR_TOKENS[c].label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
       {kind === "multi" &&
+        !isColor &&
         (useCheckboxes ? (
           <fieldset className="sg-filter-options" style={FIELDSET_RESET}>
             <legend style={SR_ONLY}>Values</legend>
