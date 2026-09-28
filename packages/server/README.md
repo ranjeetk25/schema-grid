@@ -112,6 +112,7 @@ Declare each grid once and serve all of them from one endpoint. `defineGrid` tak
 | `schemaStore` | `{ get(gridId), put(gridId, schema) }`. A stored schema wins over `schema`. Without one, `updateSchema` → `UNSUPPORTED_OPERATION` 501. `createMemorySchemaStore()` is the in-process default. |
 | `onSchemaChange(ctx, prev, next)` | runs after validation and **before** the new schema is persisted (DDL diff for generated / extension columns); throwing aborts the update. |
 | `registry`, `validation` | field types and `assertValidSchema` options (e.g. `isFormulaTranslatable: formulaTranslatability()` from `./drizzle`). |
+| `redactPermissionUsers`, `user(ctx)` | v0.4 per-person permissions: `getSchema` for a caller without schema-write permission reduces every `RoleRule.users` list to `[caller.id]` or `[]` (default on; `false` opts out). The caller is `user(ctx)`, default `ctx.user` when it is a `{ id, roles }` object. See `docs/consuming.md`. |
 
 ```ts
 import {

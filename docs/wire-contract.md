@@ -53,6 +53,11 @@ Notes:
 - `page` is exactly one of `{ offset, limit }` or `{ cursor, limit }` (`limit` a positive integer, `offset` a
   non-negative integer); objects carrying both are rejected.
 - Unknown object keys in inputs are stripped before the data source sees them.
+- `RoleRule` (column `permissions.read` / `permissions.edit`, `Option.settableBy`) is
+  `"all" | { roles?: string[]; users?: string[] }`: a user matches on any listed role **or** their
+  `PermissionUser.id` in `users` (v0.4; `users` entries are non-empty strings; `{}` = nobody). `getSchema` answered by
+  a grid registry reduces every `users` list to `[caller.id]` or `[]` for callers without schema-write permission
+  (unless `defineGrid({ redactPermissionUsers: false })`); `updateSchema` dedupes them.
 
 ## Errors
 
