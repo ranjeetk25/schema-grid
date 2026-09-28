@@ -48,6 +48,7 @@ export { type DrizzleSchemaStoreOptions, createDrizzleSchemaStore } from "../sch
 export {
   type ComputedColumn,
   SQL_VIEW_BASE_ALIAS,
+  SQL_VIEW_COLORS_ALIAS,
   SQL_VIEW_EXTENSION_ALIAS,
   type SqlViewCellError,
   type SqlViewColumn,
@@ -74,3 +75,11 @@ export {
   createExtensionCellStore,
 } from "../sqlview/extension-store";
 export { rebaseColumns } from "../sqlview/rebase";
+export {
+  type CellColorStore,
+  type CellColorStoreOptions,
+  type CellColorsTable,
+  createCellColorStore,
+} from "../colors/color-store";
+/** Also exported from `./ddl` (the canonical home of DDL helpers). */
+export { type CreateCellColorsTableDDLOptions, createCellColorsTableDDL } from "../ddl/cell-colors-ddl";

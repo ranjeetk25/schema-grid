@@ -78,7 +78,7 @@ export function buildRowUpdate(plan: RowWritePlan, ctx: ServerContext, deps: Wri
  * version under REPEATABLE READ and serializes concurrent batches on the same
  * rows in a deadlock-free order.
  */
-async function loadRowsForUpdate(
+export async function loadRowsForUpdate(
   tx: GridDb,
   deps: WriteDeps,
   ids: string[],

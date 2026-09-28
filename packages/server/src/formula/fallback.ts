@@ -107,7 +107,16 @@ export async function executeFallbackQuery(
 
   const hydrated = candidates.map((r) => source.hydrate(r));
   const evaluated = await mapSourceRows(source, evaluateFormulaCells(hydrated, access, ctx));
-  const matchCtx = { schema: ctx.schema, registry: ctx.registry, now: ctx.now(), tz: ctx.tz, userId: ctx.user.id };
+  // v0.4: in-memory color conditions see the query's rules and the rows' manual colors (hydrated).
+  const colorRules = scope.colors?.rules;
+  const matchCtx = {
+    schema: ctx.schema,
+    registry: ctx.registry,
+    now: ctx.now(),
+    tz: ctx.tz,
+    userId: ctx.user.id,
+    ...(colorRules ? { colorRules } : {}),
+  };
   const filtered = memoryPart ? evaluated.filter((r) => matchesFilter(memoryPart, r, matchCtx)) : evaluated;
   filtered.sort((a, b) => compareRows(a, b, query.sort ?? [], ctx.schema, ctx.registry));
 

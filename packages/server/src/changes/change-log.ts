@@ -2,7 +2,8 @@ import type { ChangeMeta } from "../internal/core";
 import type { GridDb } from "./db";
 import { type GridTables, legacyChangeLogTableFor } from "../storage/tables";
 
-export type ChangeLogKind = "cell" | "create" | "delete";
+/** v0.4: `color` = a manual cell color write (next = the color, null = cleared); rows keep their version. */
+export type ChangeLogKind = "cell" | "create" | "delete" | "color";
 
 export interface ChangeLogEntry {
   rowId: string;
