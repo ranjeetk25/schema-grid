@@ -89,8 +89,10 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally mount-only.
   useEffect(() => {
     if (isBoolean || !columnId) return;
-    const getOptions = getSchemaGridContext(props.context)?.dataSource.getOptions;
-    if (!getOptions) return;
+    const gridContext = getSchemaGridContext(props.context);
+    const getOptions = gridContext?.dataSource.getOptions;
+    // v0.4.1: by capability, not only by method presence; the static options stay.
+    if (!getOptions || gridContext?.effectiveCapabilities?.options === false) return;
     let cancelled = false;
     getOptions(columnId).then(
       (opts) => {
