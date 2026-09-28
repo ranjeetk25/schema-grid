@@ -149,6 +149,16 @@ describe("tapDataSource", () => {
     await expect(tapped.applyChanges({ changes: [] } as never)).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "permission-denied", op: "applyChanges" }));
   });
+
+  it("taps setCellColors (v0.4) so painting reaches the source", async () => {
+    const onError = vi.fn();
+    const setCellColors = vi.fn().mockRejectedValue({ status: 503, message: "down" });
+    const src = { fetch: vi.fn(), applyChanges: vi.fn(), createRows: vi.fn(), deleteRows: vi.fn(), setCellColors } as unknown as DataSource;
+    const tapped = tapDataSource(src, { onError, onReadOk: vi.fn() });
+    await expect(tapped.setCellColors?.({ id: "b", changes: [] })).rejects.toMatchObject({ status: 503 });
+    expect(setCellColors).toHaveBeenCalledWith({ id: "b", changes: [] });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "network", op: "setCellColors", message: "Couldn't reach the server to color cells." }));
+  });
 });
 
 describe("collectRows", () => {
