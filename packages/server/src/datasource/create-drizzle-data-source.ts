@@ -208,6 +208,8 @@ function buildDrizzleDataSource(options: DrizzleDataSourceOptions): DataSource<G
   const guarded = <T>(fn: () => Promise<T>): Promise<T> => guardMissingTable(known, fn);
   const caps: DataSourceCapabilities = {
     ...DEFAULT_CAPABILITIES,
+    // v0.4.1: `options` = people search or option creation is wired (select options are served from the schema either way).
+    options: Boolean(options.userDirectory || options.onCreateOption),
     lookup: Boolean(options.linkLookup),
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
   };

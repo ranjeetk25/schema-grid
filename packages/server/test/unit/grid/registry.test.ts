@@ -365,6 +365,74 @@ describe("createGridRegistry", () => {
   });
 });
 
+describe("updateSchema: capability-gated field types (v0.4.1)", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const column = (key: string, type: string, config: unknown, label = key) => ({
+    id: `col_${key}`,
+    key,
+    label,
+    type,
+    config,
+    order: 99,
+    createdAt: at,
+    updatedAt: at,
+  });
+  const LINK = { target: "students", multiple: false };
+  function registryWith(caps: { lookup: boolean; options: boolean }, base: GridSchema = createFixtureSchema()) {
+    const store = createMemorySchemaStore({ a: base });
+    const source = vi.fn(() =>
+      createInMemoryDataSource({ schema: base, rows: [], now: () => new Date(FIXTURE_NOW), capabilities: caps }),
+    );
+    return { registry: createGridRegistry([defineGrid({ id: "a", schema: base, schemaStore: store, source })]), store, source };
+  }
+  const add = (schema: GridSchema, ...columns: ReturnType<typeof column>[]): GridSchema => ({
+    ...schema,
+    columns: [...schema.columns, ...columns],
+  });
+
+  it("adding a link column without lookup → 400 SCHEMA_INVALID with core's message; nothing is stored", async () => {
+    const { registry, store } = registryWith({ lookup: false, options: true });
+    const res = await registry.handle("a", "updateSchema", add(createFixtureSchema(), column("student", "link", LINK, "Student")));
+    expect(res).toMatchObject({
+      ok: false,
+      status: 400,
+      error: { code: "SCHEMA_INVALID", message: `"Student" can't be a link column: this grid has no records to link to` },
+    });
+    expect(await store.get("a")).toEqual(createFixtureSchema());
+  });
+
+  it("retyping a column to user without options → 400 naming the column", async () => {
+    const { registry } = registryWith({ lookup: true, options: false });
+    const base = createFixtureSchema();
+    const next = { ...base, columns: base.columns.map((c) => (c.key === "notes" ? { ...c, type: "user", config: {} } : c)) };
+    const res = await registry.handle("a", "updateSchema", next);
+    const label = base.columns.find((c) => c.key === "notes")?.label;
+    expect(res).toMatchObject({
+      ok: false,
+      status: 400,
+      error: { code: "SCHEMA_INVALID", message: `"${label}" can't be a user column: this grid has no people to pick from` },
+    });
+  });
+
+  it("existing unchanged link / user columns stay allowed; with the capability new ones are accepted", async () => {
+    const withLinks = add(createFixtureSchema(), column("student", "link", LINK, "Student"), column("assignee", "user", {}, "Assignee"));
+    const off = registryWith({ lookup: false, options: false }, withLinks);
+    const renamed = { ...withLinks, columns: withLinks.columns.map((c) => (c.key === "student" ? { ...c, label: "Pupil" } : c)) };
+    expect(await off.registry.handle("a", "updateSchema", renamed)).toMatchObject({ ok: true });
+
+    const on = registryWith({ lookup: true, options: true });
+    expect(await on.registry.handle("a", "updateSchema", withLinks)).toMatchObject({ ok: true });
+  });
+
+  it("the source is only consulted when a column is added or retyped", async () => {
+    const { registry, source } = registryWith({ lookup: false, options: false });
+    const base = createFixtureSchema();
+    const relabelled = { ...base, columns: base.columns.map((c, i) => (i === 0 ? { ...c, label: "Renamed" } : c)) };
+    expect(await registry.handle("a", "updateSchema", relabelled)).toMatchObject({ ok: true });
+    expect(source).not.toHaveBeenCalled();
+  });
+});
+
 describe("createMemorySchemaStore", () => {
   it("stores deep copies per grid id", async () => {
     const store = createMemorySchemaStore();

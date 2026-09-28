@@ -85,7 +85,7 @@ export {
 
 // ---- data-source capabilities (spec v0.2 §C2) ------------------------------
 export type { DataSourceCapabilities } from "@ranjeetk25/schema-grid-core";
-export { DEFAULT_CAPABILITIES } from "@ranjeetk25/schema-grid-core";
+export { DEFAULT_CAPABILITIES, getDataSourceCapabilities } from "@ranjeetk25/schema-grid-core";
 
 // ---- field types / registry -------------------------------------------------
 export type { AnyFieldType, FieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core/field-types";

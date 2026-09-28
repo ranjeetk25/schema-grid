@@ -77,6 +77,12 @@ describe("createSqlViewDataSource", () => {
     expect(make().ds.getChanges).toBeUndefined();
   });
 
+  it("v0.4.1: capabilities.options is true only with a userDirectory (a view never creates options); defaultCapabilities wins", async () => {
+    expect(await make().ds.capabilities()).toMatchObject({ options: false, lookup: false });
+    expect(await make({ userDirectory: async () => [] }).ds.capabilities()).toMatchObject({ options: true });
+    expect(await make({ defaultCapabilities: { options: true } }).ds.capabilities()).toMatchObject({ options: true });
+  });
+
   it("capabilities: write hooks, updates-only feed, defaultCapabilities override", async () => {
     const { ds } = make({
       updatedAt: leads.updatedAt,

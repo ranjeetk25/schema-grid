@@ -96,6 +96,18 @@ describe("createDrizzleDataSource", () => {
     await expect(withHooks.lookup?.(notes, "x")).rejects.toBeInstanceOf(PermissionError);
   });
 
+  it("v0.4.1: capabilities.options / lookup say whether the hooks exist (people search, option creation, links)", async () => {
+    expect(await make().ds.capabilities?.()).toMatchObject({ options: false, lookup: false });
+    const users = make({ userDirectory: async () => [] }).ds;
+    expect(await users.capabilities?.()).toMatchObject({ options: true, lookup: false });
+    const creatable = make({ onCreateOption: async (_c, label) => ({ id: "x", label }) }).ds;
+    expect(await creatable.capabilities?.()).toMatchObject({ options: true });
+    const links = make({ linkLookup: async () => [] }).ds;
+    expect(await links.capabilities?.()).toMatchObject({ options: false, lookup: true });
+    // getOptions still serves a select column's static options either way.
+    await expect(make().ds.getOptions?.(status)).resolves.toHaveLength(3);
+  });
+
   it("getOptions filters by search case-insensitively; hidden columns are rejected", async () => {
     const { ds } = make();
     // "ai" matches only "Paid" among status's options (Paid/Pending/Partial)

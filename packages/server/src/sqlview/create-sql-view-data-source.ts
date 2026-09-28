@@ -675,6 +675,8 @@ function buildSqlViewDataSource(options: SqlViewDataSourceOptions): SqlViewDataS
     ...DEFAULT_CAPABILITIES,
     changeFeed: effectiveUpdatedAt && userUpdatedAt ? "updates-only" : false,
     write: { cells: Boolean(write?.update), createRows: Boolean(write?.create), deleteRows: Boolean(write?.delete) },
+    // v0.4.1: `options` = people search is wired (a view never creates options; select options come from the schema).
+    options: Boolean(options.userDirectory),
     lookup: Boolean(options.linkLookup),
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
     ...options.defaultCapabilities,

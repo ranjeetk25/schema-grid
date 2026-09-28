@@ -4,6 +4,9 @@ import {
   createDefaultRegistry,
   type DataSourceCapabilities,
   type DataSourceHandlerOptions,
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
+  getDataSourceCapabilities,
   type GridOperation,
   type GridSchema,
   httpStatusFor,
@@ -13,6 +16,7 @@ import {
   type WireResult,
   wireSchemas,
 } from "../internal/core";
+import { type SchemaIssue, SchemaValidationError } from "../errors";
 import { assertValidSchema } from "../schema/validate-schema";
 import type { GridDefinition } from "./define-grid";
 import { dedupePermissionUsers, hasPermissionUsers, redactPermissionUsers, userFromContext } from "./permission-users";
@@ -153,10 +157,41 @@ export function createGridRegistry<Ctx = undefined>(
       }
       const next: GridSchema = dedupePermissionUsers({ ...candidate, schemaVersion: prev.schemaVersion + 1 });
       assertValidSchema(next, def.registry ?? defaultRegistry, def.validation);
+      await assertFieldTypesAvailable(def, ctx, prev, next);
       await def.onSchemaChange?.(ctx, prev, next);
       await store.put(def.id, next);
       return next;
     });
+  }
+
+  /**
+   * v0.4.1: a column added or retyped by `updateSchema` must have a field type
+   * the grid's source can back (core `fieldTypeAvailability`: link needs
+   * `lookup`, user needs `options`, custom types their `requires`), judged by
+   * the source's capabilities for the current schema. Columns that keep their
+   * id and type are never re-checked. The source is only built when something
+   * was added or retyped. Refusal: `SchemaValidationError` (wire
+   * `SCHEMA_INVALID` 400) with `fieldTypeUnavailableMessage`.
+   */
+  async function assertFieldTypesAvailable(def: GridDefinition<Ctx>, ctx: Ctx, prev: GridSchema, next: GridSchema): Promise<void> {
+    const before = new Map(prev.columns.map((c) => [c.id, c.type]));
+    const changed = next.columns
+      .map((column, index) => ({ column, index }))
+      .filter(({ column }) => column.type !== "formula" && before.get(column.id) !== column.type);
+    if (changed.length === 0) return;
+    const registry = def.registry ?? defaultRegistry;
+    const caps = await getDataSourceCapabilities(await def.source(ctx, { gridId: def.id, schema: prev }));
+    const issues: SchemaIssue[] = [];
+    for (const { column, index } of changed) {
+      if (fieldTypeAvailability(column.type, caps, registry).available) continue;
+      issues.push({
+        code: "fieldTypeUnavailable",
+        columnId: column.id,
+        path: ["columns", index, "type"],
+        message: fieldTypeUnavailableMessage(column.label, column.type),
+      });
+    }
+    if (issues.length > 0) throw new SchemaValidationError(issues);
   }
 
   /** The per-request gates, each evaluated at most once per request. */
