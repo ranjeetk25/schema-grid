@@ -64,6 +64,7 @@ import { type StorageKind, type StorageOverrides, storageKindOf } from "../sql/s
 import { dateOnlyFromDriver, isoToNaiveDatetime, naiveDatetimeToIso, toIso } from "../storage/hydrate";
 import { jsonPath } from "../storage/keys";
 import type { CellColorStore } from "../colors/color-store";
+import { type ColorGatedDataSource, gateColorStore } from "../colors/gate";
 import { colorQueryScope } from "../colors/query-rules";
 import { withCellColors } from "../colors/rows";
 import {
@@ -258,7 +259,11 @@ export interface SqlViewDataSourceOptions {
    * like `extension`. Rows carry `colors` (unreadable columns dropped),
    * `setCellColors` is available when cells are writable (`write.update`),
    * color writes move the `updated_at` feed (never the row's own `updatedAt` /
-   * `version`) and deleted rows lose their colors.
+   * `version`) and deleted rows lose their colors. v0.4.1: while
+   * `colors.available()` is false (table not created yet) the source behaves as
+   * if no store were passed (probed once per data source, lazily), so with
+   * `colors` the source's `capabilities()` answers asynchronously
+   * (`SqlViewColorDataSource`).
    */
   colors?: CellColorStore;
   /**
@@ -302,6 +307,13 @@ export interface SqlViewDataSource extends DataSource<GridRow> {
   /** The current state of `ids` (order kept, unknown ids skipped), read like `fetch` — compute, `mapRows`, projection (v0.3.1). */
   getRows(ids: string[]): Promise<GridRow[]>;
 }
+
+/**
+ * v0.4.1: a SQL view built with a `colors` store. Same operations; only
+ * `capabilities()` is asynchronous, because it waits for the store's
+ * `available()` probe (`cellColors` read / write false while the table is missing).
+ */
+export type SqlViewColorDataSource = ColorGatedDataSource<SqlViewDataSource>;
 
 interface LoadedRow {
   row: CurrentRow;
@@ -392,8 +404,20 @@ function unsupported(op: string): SchemaGridServerError {
  * hooks with optimistic versions and per-cell outcomes, computed columns and a
  * post-read `mapRows` hook, a default sort, zone-aware DATE / DATETIME
  * handling, and an `updated_at` change feed (§C8).
+ *
+ * With `colors` (v0.4.1) the answer is a `SqlViewColorDataSource`: it behaves
+ * as if no store were passed while `colors.available()` is false, and its
+ * `capabilities()` is asynchronous.
  */
-export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlViewDataSource {
+export function createSqlViewDataSource(options: SqlViewDataSourceOptions & { colors?: undefined }): SqlViewDataSource;
+export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlViewDataSource | SqlViewColorDataSource;
+export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlViewDataSource | SqlViewColorDataSource {
+  const full = buildSqlViewDataSource(options);
+  const { colors, ...withoutColors } = options;
+  return colors ? gateColorStore(colors, full, () => buildSqlViewDataSource(withoutColors)) : full;
+}
+
+function buildSqlViewDataSource(options: SqlViewDataSourceOptions): SqlViewDataSource {
   const registry = options.registry ?? createDefaultRegistry();
   const gridId = options.gridId ?? options.schema.id;
   const extension = options.extension;

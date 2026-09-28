@@ -19,7 +19,6 @@ import {
 } from "../../src/internal/core";
 import { createExtensionCellStore } from "../../src/sqlview/extension-store";
 import {
-  type SqlViewDataSource,
   type SqlViewDataSourceOptions,
   type SqlViewWriteHooks,
   createSqlViewDataSource,
@@ -138,7 +137,7 @@ describeMysql("SQL view over a plain table (MySQL 8.4)", () => {
     },
   });
 
-  const make = (extra: Partial<SqlViewDataSourceOptions> = {}, now: Date = NOW): SqlViewDataSource =>
+  const make = (extra: Partial<SqlViewDataSourceOptions> = {}, now: Date = NOW) =>
     createSqlViewDataSource({
       db: mysql.db,
       schema: leadsSchema,
@@ -431,7 +430,7 @@ describeMysql("SQL view over a plain table (MySQL 8.4)", () => {
     });
     const first = (await source.fetch({ filter: null, sort: [{ columnId: col.name, dir: "asc" }], page: { offset: 0, limit: 1 } })).rows[0] as GridRow;
     expect(first.cells.contact).toBe(`${first.cells.name} <${first.cells.email ?? "?"}>`);
-    const caps = source.capabilities();
+    const caps = await source.capabilities();
     expect(caps.sort).toEqual({ columnIds: leadsSchema.columns.map((c) => c.id) });
     expect(caps.filter).toEqual({ columnIds: leadsSchema.columns.map((c) => c.id) });
     await expect(source.fetch({ filter: null, sort: [{ columnId: "col_contact", dir: "asc" }], page: { offset: 0, limit: 5 } })).rejects.toMatchObject({

@@ -189,7 +189,7 @@ describe("v0.4.1 refusal messages (core cellEditDenial)", () => {
 describe("#2 computed columns, mapRows and defaultSort", () => {
   it("compute fills the cell from hidden cells before projection; capabilities exclude it from sort/filter", async () => {
     const { ds, statements } = make();
-    const caps = ds.capabilities();
+    const caps = await ds.capabilities();
     expect(caps.sort).toEqual({ columnIds: ["name", "fee", "callDate", "calledAt", "fileKey"] });
     expect(caps.filter).toEqual(caps.sort);
     const res = await ds.fetch({ filter: null, sort: [], page });
@@ -249,7 +249,7 @@ describe("#2 computed columns, mapRows and defaultSort", () => {
 
   it("defaultSort applies to sort: [] (SQL + keyset), is reported in capabilities, and is validated", async () => {
     const { ds, statements } = make({ defaultSort: [{ columnId: "fee", dir: "desc" }] });
-    expect(ds.capabilities().defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
+    expect((await ds.capabilities()).defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
     await ds.fetch({ filter: null, sort: [], page: { cursor: "", limit: 10 } });
     const q = statements()[0]?.sql ?? "";
     expect(q).toMatch(/order by .*`sg_base`\.`fee`[^,]*\) DESC, `sg_base`\.`id` ASC/);
@@ -260,7 +260,7 @@ describe("#2 computed columns, mapRows and defaultSort", () => {
     expect(() => make({ defaultSort: [{ columnId: "nope", dir: "asc" }] })).toThrow(SchemaGridServerError);
     expect(() => make({ defaultSort: [{ columnId: "url", dir: "asc" }] })).toThrow(/not sortable/);
     const counsellor = make({ user: { id: "u2", roles: ["counsellor"] }, defaultSort: [{ columnId: "fileKey", dir: "asc" }] });
-    expect(counsellor.ds.capabilities().defaultSort).toBeUndefined();
+    expect((await counsellor.ds.capabilities()).defaultSort).toBeUndefined();
     await expect(counsellor.ds.fetch({ filter: null, sort: [], page })).resolves.toBeTruthy();
   });
 

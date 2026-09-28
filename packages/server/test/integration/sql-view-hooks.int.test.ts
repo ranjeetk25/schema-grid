@@ -175,8 +175,8 @@ describeMysql("SQL view v0.3 hooks and time zones (MySQL 8.4)", () => {
     const r1 = await row("1", counsellor);
     expect(r1.cells).not.toHaveProperty("fileKey");
     expect(r1.cells.url).toBe("https://signed/docs/1.pdf?u=c1");
-    expect(admin.capabilities().sort).toEqual({ columnIds: ["name", "fileKey", "callDate", "calledAt", "fee"] });
-    expect(admin.capabilities().defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
+    expect((await admin.capabilities()).sort).toEqual({ columnIds: ["name", "fileKey", "callDate", "calledAt", "fee"] });
+    expect((await admin.capabilities()).defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
 
     const boot = await admin.getChanges?.("");
     await admin.applyChanges({

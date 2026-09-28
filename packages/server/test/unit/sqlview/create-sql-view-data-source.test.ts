@@ -69,21 +69,21 @@ describe("createSqlViewDataSource", () => {
     expect(() => make({ schema: withNote, extension })).not.toThrow();
   });
 
-  it("capabilities: read-only without write hooks, no feed without updatedAt", () => {
-    const caps = make().ds.capabilities();
+  it("capabilities: read-only without write hooks, no feed without updatedAt", async () => {
+    const caps = await make().ds.capabilities();
     expect(caps.write).toEqual({ cells: false, createRows: false, deleteRows: false });
     expect(caps.changeFeed).toBe(false);
     expect(caps.maxPageSize).toBe(500);
     expect(make().ds.getChanges).toBeUndefined();
   });
 
-  it("capabilities: write hooks, updates-only feed, defaultCapabilities override", () => {
+  it("capabilities: write hooks, updates-only feed, defaultCapabilities override", async () => {
     const { ds } = make({
       updatedAt: leads.updatedAt,
       write: { update: async () => ({ applied: [], version: 1 }), delete: async () => {} },
       defaultCapabilities: { maxPageSize: 200, groupBy: false },
     });
-    const caps = ds.capabilities();
+    const caps = await ds.capabilities();
     expect(caps.write).toEqual({ cells: true, createRows: false, deleteRows: true });
     expect(caps.changeFeed).toBe("updates-only");
     expect(caps.maxPageSize).toBe(200);
@@ -299,7 +299,7 @@ describe("createSqlViewDataSource v0.3: rejected, meta, computed columns, missin
 
     it("is reported as neither sortable nor filterable and is read-only", async () => {
       const { ds } = makeComputed({ write: { update: async (_c, i) => ({ applied: i.changes, version: 0 }) } });
-      const caps = ds.capabilities();
+      const caps = await ds.capabilities();
       expect(caps.sort).toEqual({ columnIds: ["name", "fee", "paymentStatus", "callDate", "aiVerified"] });
       expect(caps.filter).toEqual({ columnIds: ["name", "fee", "paymentStatus", "callDate", "aiVerified"] });
       await expect(ds.fetch({ filter: null, sort: [{ columnId: "label", dir: "asc" }], page: { offset: 0, limit: 10 } })).rejects.toMatchObject({
@@ -314,7 +314,7 @@ describe("createSqlViewDataSource v0.3: rejected, meta, computed columns, missin
 
     it("respects an explicit sort/filter allow-list and is excluded from free-text search", async () => {
       const { ds, statements } = makeComputed({ defaultCapabilities: { sort: { columnIds: ["name", "label"] } } });
-      expect(ds.capabilities().sort).toEqual({ columnIds: ["name"] });
+      expect((await ds.capabilities()).sort).toEqual({ columnIds: ["name"] });
       await ds.fetch({ filter: null, sort: [], search: "ash", page: { offset: 0, limit: 10 } });
       expect(statements()[0]?.sql).toMatch(/ LIKE /);
       expect(statements()[0]?.sql).not.toContain("label");
