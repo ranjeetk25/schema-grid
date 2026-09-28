@@ -8,6 +8,7 @@ import {
   type GridRow,
   type GridSchema,
   type LinkRef,
+  normalizeCapabilities,
   type Option,
   type SchemaGridEvents,
 } from "../../src/internal/core";
@@ -272,6 +273,49 @@ describe("ComboboxEditor", () => {
     fireEvent.click(screen.getByRole("option"));
     expect(lastValue(props)).toEqual([{ id: "p-2", label: "Web Development" }]);
     expect(props.stopEditing).toHaveBeenCalled();
+  });
+
+  describe("capability gating (v0.4.1)", () => {
+    const withCaps = (props: Props, caps: Record<string, unknown>) => {
+      const ctx = props.context as SchemaGridContext;
+      return { ...ctx, effectiveCapabilities: normalizeCapabilities(caps) } as unknown as SchemaGridContext;
+    };
+
+    it("a link column without `lookup` shows the reason and never calls lookup", async () => {
+      const { props, ds } = setup(programCol, null);
+      render(<ComboboxEditor {...props} context={withCaps(props, { lookup: false })} />);
+      await flush();
+      await type("web");
+      expect(ds.calls.lookup).not.toHaveBeenCalled();
+      expect(screen.getByText("Linking isn't set up for this grid")).toBeInTheDocument();
+      expect(optionLabels()).toEqual([]);
+    });
+
+    it("a user column without `options` shows the reason and never calls getOptions", async () => {
+      const { props, ds } = setup(ownerCol, null);
+      render(<ComboboxEditor {...props} context={withCaps(props, { options: false })} />);
+      await flush();
+      expect(ds.calls.getOptions).not.toHaveBeenCalled();
+      expect(screen.getByText("People search isn't set up for this grid")).toBeInTheDocument();
+    });
+
+    it("other types without `options` use the static config.options", async () => {
+      const { props, ds } = setup(sourceCol, null);
+      render(<ComboboxEditor {...props} context={withCaps(props, { options: false })} />);
+      await flush();
+      await type("ref");
+      expect(ds.calls.getOptions).not.toHaveBeenCalled();
+      expect(optionLabels()[0]).toBe("Referral");
+    });
+
+    it("with the capabilities it calls the data source as before", async () => {
+      const { props, ds } = setup(programCol, null);
+      render(<ComboboxEditor {...props} context={withCaps(props, {})} />);
+      await flush();
+      await type("web");
+      expect(ds.calls.lookup).toHaveBeenLastCalledWith("program", "web");
+      expect(screen.queryByText("Linking isn't set up for this grid")).toBeNull();
+    });
   });
 
   it("cellEditorParams.loadOptions overrides the data source", async () => {

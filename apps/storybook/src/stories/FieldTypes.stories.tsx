@@ -63,6 +63,40 @@ function DefaultFieldTypes() {
 }
 
 export const Mantine: StoryObj = { render: () => <MantineFieldTypes /> };
+
+/**
+ * v0.4.1 capability-gated field types: the source reports `lookup: false`
+ * and `options: false`. "Add column" offers no Link / User type; the existing
+ * Programs (link) and Owner (user) columns keep their type, shown with the
+ * reason, and their pickers say "Linking isn't set up for this grid" /
+ * "People search isn't set up for this grid" instead of searching.
+ */
+function NoLookupFieldTypes() {
+  const schema = useMemo(() => createStorySchema(), []);
+  const ds = useMemo(() => {
+    const memory = createMemoryDataSource({ schema });
+    const gated = Object.assign(Object.create(memory) as typeof memory, {
+      capabilities: async () => ({ ...(await memory.capabilities?.()), lookup: false, options: false }),
+    });
+    const d = instrument(gated);
+    exposeToTests("noLookup", d);
+    return d;
+  }, [schema]);
+  return (
+    <Workbench
+      title="Field types"
+      description="A source without lookup / options: no Link or User columns"
+      dataSource={ds}
+      schema={schema}
+      user={USERS.admin}
+    />
+  );
+}
+
+export const NoLookup: StoryObj = {
+  name: "Without lookup or options",
+  render: () => <NoLookupFieldTypes />,
+};
 export const AgGridDefaults: StoryObj = {
   name: "AG Grid defaults",
   render: () => <DefaultFieldTypes />,

@@ -31,6 +31,9 @@ export function FilterConditionRow({ condition, api, schema, uiRegistry, dataSou
   const errors = api.errors.get(condition.id);
   const operators = api.operatorsForColumnId(condition.columnId);
   const operator = operators.find((o) => o.id === condition.operator);
+  // v0.4.1: a color rule blocks color filtering on this column; the operator picker says why.
+  const blocked = api.colorBlockedReasonFor?.(condition.columnId) ?? null;
+  const blockedHint = blocked ? `Can't filter by color: ${blocked}` : undefined;
   const column = condition.columnId ? schema.columns.find((c) => c.id === condition.columnId) : undefined;
   const typeById = new Map(api.columns.map((c) => [c.id, c.type]));
   const columnData: { value: string; label: string; disabled?: boolean }[] = api.columns.map((c) => ({
@@ -81,23 +84,27 @@ export function FilterConditionRow({ condition, api, schema, uiRegistry, dataSou
         error={errors?.column}
         comboboxProps={{ ...COMBOBOX, width: 220, position: "bottom-start" }}
       />
-      <Select
-        aria-label="Operator"
-        placeholder="Operator"
-        allowDeselect={false}
-        w={124}
-        style={{ flex: "none" }}
-        disabled={!column}
-        data={operators.map((o) => ({ value: o.id, label: o.label }))}
-        value={condition.operator}
-        onChange={(v) => {
-          if (v) api.updateCondition(condition.id, { operator: v });
-        }}
-        rightSection={CHEVRON}
-        rightSectionPointerEvents="none"
-        error={errors?.operator}
-        comboboxProps={{ ...COMBOBOX, width: 180, position: "bottom-start" }}
-      />
+      <Tooltip label={blockedHint} disabled={!blockedHint} withinPortal={false} multiline w={260}>
+        <Select
+          aria-label="Operator"
+          aria-description={blockedHint}
+          data-sg-color-blocked={blocked ? "" : undefined}
+          placeholder="Operator"
+          allowDeselect={false}
+          w={124}
+          style={{ flex: "none" }}
+          disabled={!column}
+          data={operators.map((o) => ({ value: o.id, label: o.label }))}
+          value={condition.operator}
+          onChange={(v) => {
+            if (v) api.updateCondition(condition.id, { operator: v });
+          }}
+          rightSection={CHEVRON}
+          rightSectionPointerEvents="none"
+          error={errors?.operator}
+          comboboxProps={{ ...COMBOBOX, width: 180, position: "bottom-start" }}
+        />
+      </Tooltip>
       <div className="sg-fb-value">
         {column && operator ? (
           <FilterValueInput
@@ -107,6 +114,7 @@ export function FilterConditionRow({ condition, api, schema, uiRegistry, dataSou
             schema={schema}
             registry={uiRegistry}
             dataSource={dataSource}
+            {...(api.capabilities ? { capabilities: api.capabilities } : {})}
             error={errors?.value}
             size="xs"
             onChange={(v) => api.updateCondition(condition.id, { value: v })}

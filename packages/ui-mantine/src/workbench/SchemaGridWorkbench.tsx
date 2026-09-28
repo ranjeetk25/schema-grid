@@ -420,6 +420,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                   onChange={wb.applyFilter}
                   dataSource={wb.dataSource}
                   {...(wb.effectiveCapabilities ? { capabilities: wb.effectiveCapabilities } : {})}
+                  colorRules={wb.cellColors.rules}
                 />
               ) : null}
               {features.group ? (
@@ -664,6 +665,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             onSave={(c) => void wb.panel.save(c)}
             onDelete={(id) => void wb.panel.remove(id)}
             dataSource={wb.dataSource}
+            capabilities={wb.effectiveCapabilities}
             size={PANEL_WIDTH}
             />
           </Suspense>
@@ -693,6 +695,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               rules={wb.cellColors.rules}
               onSave={wb.cellColors.setRules}
               dataSource={wb.dataSource}
+              capabilities={wb.effectiveCapabilities}
             />
           </Suspense>
         ) : null}

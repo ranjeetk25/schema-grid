@@ -5,6 +5,7 @@ import {
   type ChangeMeta,
   type ColumnDef,
   type GridRow,
+  cellEditDenial,
   getColumnValueFieldType,
   isEmptyValue,
   optionRuleViolation,
@@ -109,7 +110,8 @@ export function validateCellValue(
 /**
  * Validation phase of `applyChanges` (no DB access). Collapses repeated edits of
  * one cell to the last, rejects per-change (missing/deleted row, missing base
- * version, unknown column, not editable for this user+row or `settable: false`, invalid value) and
+ * version, unknown column, not editable for this user+row or `settable: false` (core `cellEditDenial`
+ * messages), invalid value) and
  * returns one write plan per row with at least one valid change. `meta` on a
  * change is carried on its `PlannedSet` and ignored by validation.
  */
@@ -160,13 +162,10 @@ export function planChanges(
         fail(columnId, "Unknown column");
         continue;
       }
-      if (column.type === "formula") {
-        fail(columnId, "Column is read-only (formula)");
-        continue;
-      }
-      // `settable: false`: visible, but the data source never writes it (v0.2 C1).
-      if (access !== "edit" || column.settable === false) {
-        fail(columnId, "Column is read-only");
+      // Formula / `settable: false` (visible, never written, v0.2 C1) / `permissions.edit`: core's one message per reason.
+      const denial = cellEditDenial(column, access);
+      if (denial) {
+        fail(columnId, denial.message);
         continue;
       }
       const prev = row.cells[column.key] ?? null;

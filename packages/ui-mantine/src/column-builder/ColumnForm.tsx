@@ -20,7 +20,16 @@ import { IconCheck, IconChevronDown, IconChevronRight, IconLock, IconPencil, Ico
 import { type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useEditorStyles } from "../editors/EditorCard";
 import type { AccessMap } from "../internal/access";
-import type { ColumnDef, DataSource, FieldTypeId, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
+import {
+  type ColumnDef,
+  type DataSource,
+  type FieldTypeCapabilitiesLike,
+  type FieldTypeId,
+  type FieldTypeRegistry,
+  type GridRow,
+  type GridSchema,
+  fieldTypeAvailability,
+} from "../internal/core-contracts";
 import { type UiFieldTypeRegistry, resolveEditorComponent } from "../internal/grid-contracts";
 import { type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 import { draftAsColumn } from "./CommonFields";
@@ -60,6 +69,13 @@ export interface ColumnFormProps {
   layout?: "panel" | "modal";
   /** v0.4: People pickers in "Who can access" and option "Who can set" (per-person permissions). */
   userDirectory?: UserDirectory;
+  /**
+   * v0.4.1: the source's capabilities (the workbench passes
+   * `effectiveCapabilities`). Types it can't back are hidden (core
+   * `fieldTypeAvailability`: link needs `lookup`, user needs `options`); an
+   * existing column keeps its type, shown with the reason. Omitted = every type.
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 const defaultId = () =>
@@ -137,6 +153,7 @@ export function ColumnForm({
   dataSource,
   layout = "panel",
   userDirectory,
+  capabilities,
 }: ColumnFormProps) {
   useEditorStyles();
   const editing = !!column;
@@ -316,6 +333,7 @@ export function ColumnForm({
           registry={registry}
           value={draft.type}
           locked={editing}
+          capabilities={capabilities}
           onChange={(fieldType) => dispatch({ type: "setType", fieldType, registry })}
         />
         {editing && (
@@ -383,6 +401,7 @@ export function ColumnForm({
                     autoFocus={false}
                     surface="form"
                     dataSource={dataSource}
+                    {...(capabilities ? { capabilities } : {})}
                   />
                 </Input.Wrapper>
               )}
@@ -558,11 +577,14 @@ export function TypePicker({
   value,
   locked,
   onChange,
+  capabilities,
 }: {
   registry: FieldTypeRegistry;
   value: FieldTypeId | null;
   locked?: boolean;
   onChange(type: FieldTypeId): void;
+  /** v0.4.1: hide the types these capabilities can't back (`fieldTypeAvailability`); the current one stays. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }) {
   const [search, setSearch] = useState("");
   const combobox = useCombobox({
@@ -572,7 +594,12 @@ export function TypePicker({
     },
     onDropdownOpen: () => combobox.focusSearchInput(),
   });
-  const types = useMemo(() => sortFieldTypes(registry.list()), [registry]);
+  const types = useMemo(
+    () => sortFieldTypes(registry.list()).filter((t) => t.id === value || fieldTypeAvailability(t.id, capabilities, registry).available),
+    [registry, capabilities, value],
+  );
+  // v0.4.1: the current type (an existing column's) can't be backed here; say why.
+  const unavailable = value ? fieldTypeAvailability(value, capabilities, registry).reason : undefined;
   const q = search.trim().toLowerCase();
   const shown = types.filter((t) => !q || `${t.label} ${fieldTypeMeta(t.id).description}`.toLowerCase().includes(q));
   const current = types.find((t) => t.id === value);
@@ -660,6 +687,11 @@ export function TypePicker({
           </Combobox.Options>
         </Combobox.Dropdown>
       </Combobox>
+      {unavailable && (
+        <Text size="xs" c="dimmed" data-testid="type-unavailable">
+          {unavailable}
+        </Text>
+      )}
     </Stack>
   );
 }

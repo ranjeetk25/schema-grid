@@ -79,7 +79,8 @@ Three additions, all optional on the wire (older clients and servers ignore them
 - **`setCellColors`** — paints (`color`) or clears (`null`) cells, last write wins. Allowed exactly where the
   caller's effective access to the cell is `edit` (not a formula, not `settable: false`). Per-change refusals are
   data, not errors: `rejected[].message` is `"Row not found"`, `"Column not found"` (unknown or unreadable),
-  `"Read-only"` or `"Invalid color"`. Painting does **not** bump `version` / `updatedAt` (no conflicts with data
+  the edit refusal message (v0.4.1: `"Column is read-only (formula)"`, `"Column is read-only"` or `"Only specific
+  people can edit this column"`; 0.4.0 said `"Read-only"`) or `"Invalid color"`. Painting does **not** bump `version` / `updatedAt` (no conflicts with data
   edits), but painted rows appear in the next `getChanges` with their new `colors`. `rows` (optional) are the
   painted rows as they now are. On the wire a non-palette `color` already fails the input schema
   (`INPUT_INVALID` 400); `"Invalid color"` is what direct (in-process) callers get. Sources without the op answer

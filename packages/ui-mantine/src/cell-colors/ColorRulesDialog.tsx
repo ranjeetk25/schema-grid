@@ -10,6 +10,11 @@
  * delete, the target (whole row, or a multi-select of readable columns) and
  * its condition, built with the regular `FilterBuilder` (live, no color
  * operators: a rule can't test colors).
+ *
+ * v0.4.1: a condition may test `filterable: false` columns (the builder runs
+ * with `allowUnfilterable`; rules render client-side from row values). Such a
+ * rule shows a subtle "Can't be used to filter by color" note: the server
+ * can't filter the columns it colors by color while it is enabled.
  */
 import {
   ActionIcon,
@@ -40,7 +45,10 @@ import {
   type DataSource,
   type FieldTypeRegistry,
   type FilterNode,
+  type FilterScopeCapabilitiesLike,
   type GridSchema,
+  colorRuleUnfilterableColumn,
+  sqlFilterablePredicate,
   validateColorRules,
 } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
@@ -67,6 +75,12 @@ export interface ColorRulesDialogProps {
   /** Receives the validated rules; the dialog closes afterwards. */
   onSave(rules: ColorRule[]): unknown;
   dataSource?: DataSource;
+  /**
+   * v0.4.1: the source's capabilities (e.g. `handle.effectiveCapabilities`).
+   * Columns outside its `filter` scope count as unfilterable for the "Can't
+   * be used to filter by color" note, like `filterable: false` ones.
+   */
+  capabilities?: FilterScopeCapabilitiesLike;
 }
 
 /** New rules start yellow, whole row, no condition (which never matches until one is added). */
@@ -124,6 +138,7 @@ export function ColorRulesDialog(props: ColorRulesDialogProps) {
     rules,
     onSave,
     dataSource,
+    capabilities,
   } = props;
   const [draft, setDraft] = useState<ColorRule[]>(() =>
     rules.map((r) => ({ ...r })),
@@ -150,6 +165,10 @@ export function ColorRulesDialog(props: ColorRulesDialogProps) {
         label: c.label,
       })),
     [schema, access],
+  );
+  const isSqlFilterable = useMemo(
+    () => sqlFilterablePredicate(schema, capabilities),
+    [schema, capabilities],
   );
   const validation = useMemo(
     () => validateColorRules(draft, schema, registry, readable),
@@ -218,6 +237,12 @@ export function ColorRulesDialog(props: ColorRulesDialogProps) {
         {draft.map((rule, index) => {
           const ruleIssues = issuesOf(index);
           const enabled = rule.enabled !== false;
+          // v0.4.1: the condition tests a column the server can't filter on.
+          const unfilterable = colorRuleUnfilterableColumn(
+            rule,
+            schema,
+            isSqlFilterable,
+          );
           return (
             <Box
               key={rule.id}
@@ -327,10 +352,22 @@ export function ColorRulesDialog(props: ColorRulesDialogProps) {
                         patch(index, { when })
                       }
                       debounceMs={0}
+                      allowUnfilterable
                       {...(dataSource ? { dataSource } : {})}
                     />
                   </Box>
                 </Group>
+                {unfilterable ? (
+                  <Text
+                    fz="xs"
+                    c="dimmed"
+                    pl={60}
+                    data-sg-rule-unfilterable=""
+                    title={`Uses "${unfilterable.label}", which can't be filtered on the server`}
+                  >
+                    Can't be used to filter by color
+                  </Text>
+                ) : null}
                 {ruleIssues.map((i) => (
                   <Text
                     key={`${i.path.join(".")}:${i.message}`}

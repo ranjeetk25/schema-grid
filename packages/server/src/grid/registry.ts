@@ -4,6 +4,9 @@ import {
   createDefaultRegistry,
   type DataSourceCapabilities,
   type DataSourceHandlerOptions,
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
+  getDataSourceCapabilities,
   type GridOperation,
   type GridSchema,
   httpStatusFor,
@@ -13,9 +16,12 @@ import {
   type WireResult,
   wireSchemas,
 } from "../internal/core";
+import { type SchemaIssue, SchemaValidationError } from "../errors";
 import { assertValidSchema } from "../schema/validate-schema";
 import type { GridDefinition } from "./define-grid";
 import { dedupePermissionUsers, hasPermissionUsers, redactPermissionUsers, userFromContext } from "./permission-users";
+
+const isProduction = (): boolean => typeof process !== "undefined" && process.env?.NODE_ENV === "production";
 
 /** One entry of `registry.list(ctx)`. */
 export interface GridListing {
@@ -151,10 +157,41 @@ export function createGridRegistry<Ctx = undefined>(
       }
       const next: GridSchema = dedupePermissionUsers({ ...candidate, schemaVersion: prev.schemaVersion + 1 });
       assertValidSchema(next, def.registry ?? defaultRegistry, def.validation);
+      await assertFieldTypesAvailable(def, ctx, prev, next);
       await def.onSchemaChange?.(ctx, prev, next);
       await store.put(def.id, next);
       return next;
     });
+  }
+
+  /**
+   * v0.4.1: a column added or retyped by `updateSchema` must have a field type
+   * the grid's source can back (core `fieldTypeAvailability`: link needs
+   * `lookup`, user needs `options`, custom types their `requires`), judged by
+   * the source's capabilities for the current schema. Columns that keep their
+   * id and type are never re-checked. The source is only built when something
+   * was added or retyped. Refusal: `SchemaValidationError` (wire
+   * `SCHEMA_INVALID` 400) with `fieldTypeUnavailableMessage`.
+   */
+  async function assertFieldTypesAvailable(def: GridDefinition<Ctx>, ctx: Ctx, prev: GridSchema, next: GridSchema): Promise<void> {
+    const before = new Map(prev.columns.map((c) => [c.id, c.type]));
+    const changed = next.columns
+      .map((column, index) => ({ column, index }))
+      .filter(({ column }) => column.type !== "formula" && before.get(column.id) !== column.type);
+    if (changed.length === 0) return;
+    const registry = def.registry ?? defaultRegistry;
+    const caps = await getDataSourceCapabilities(await def.source(ctx, { gridId: def.id, schema: prev }));
+    const issues: SchemaIssue[] = [];
+    for (const { column, index } of changed) {
+      if (fieldTypeAvailability(column.type, caps, registry).available) continue;
+      issues.push({
+        code: "fieldTypeUnavailable",
+        columnId: column.id,
+        path: ["columns", index, "type"],
+        message: fieldTypeUnavailableMessage(column.label, column.type),
+      });
+    }
+    if (issues.length > 0) throw new SchemaValidationError(issues);
   }
 
   /** The per-request gates, each evaluated at most once per request. */
@@ -225,7 +262,23 @@ export function createGridRegistry<Ctx = undefined>(
     if (def.redactPermissionUsers === false || !hasPermissionUsers(schema)) return schema;
     if ((await req.permit("updateSchema")) && (await req.schemaWritable())) return schema;
     const user = def.user ? await def.user(ctx) : userFromContext(ctx);
+    if (!user || !Array.isArray(user.roles)) warnMissingUser(def);
     return redactPermissionUsers(schema, user);
+  }
+
+  /**
+   * v0.4.1: redaction without a `{ id, roles }` user empties every per-person
+   * list, so listed users lose access they were given. Tell the developer
+   * once per grid id (this registry), never in production.
+   */
+  const warnedMissingUser = new Set<string>();
+  function warnMissingUser(def: GridDefinition<Ctx>): void {
+    if (warnedMissingUser.has(def.id) || isProduction()) return;
+    warnedMissingUser.add(def.id);
+    const from = def.user ? "the defineGrid `user` resolver" : "ctx.user";
+    console.warn(
+      `[schema-grid] Grid "${def.id}": redactPermissionUsers is on, but ${from} gave no user with a roles array, so per-person permission lists (column permissions, option settableBy) are being emptied for this caller. Pass defineGrid({ user: (ctx) => ({ id, roles }) }) (the same user your source uses) or put { id, roles } on ctx.user.`,
+    );
   }
 
   async function run(def: GridDefinition<Ctx>, op: GridOperation, input: unknown, ctx: Ctx, req: RequestGates): Promise<WireResult> {

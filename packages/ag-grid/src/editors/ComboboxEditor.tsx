@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { GridRow, LinkRef, Option, UserRef } from "../internal/core";
+import { fieldTypeAvailability, type GridRow, type LinkRef, type Option, type UserRef } from "../internal/core";
 import { getSchemaGridContext } from "../grid/gridContext";
 import { createPopupEditor, type PopupEditorInnerProps } from "./createPopupEditor";
 import { columnOptions } from "./SelectEditor";
@@ -64,6 +64,11 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
   const creatable = props.creatable ?? columnType === "creatableSelect";
   const debounceMs = props.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const gridContext = getSchemaGridContext(editorProps.context);
+  // v0.4.1: link needs `lookup`, user needs `options` — by capability, not by method presence.
+  const unavailable =
+    props.loadOptions || !columnType
+      ? undefined
+      : fieldTypeAvailability(columnType, gridContext?.effectiveCapabilities, gridContext?.registry).reason;
 
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -74,22 +79,24 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
   const [creating, setCreating] = useState(false);
 
   // Latest loader inputs, read inside the (debounced) effect without re-triggering it.
-  const loaderRef = useRef({ loadOptions: props.loadOptions, gridContext, columnId, columnType, config });
-  loaderRef.current = { loadOptions: props.loadOptions, gridContext, columnId, columnType, config };
+  const loaderRef = useRef({ loadOptions: props.loadOptions, gridContext, columnId, columnType, config, unavailable });
+  loaderRef.current = { loadOptions: props.loadOptions, gridContext, columnId, columnType, config, unavailable };
   const requestRef = useRef(0);
   const firstLoadRef = useRef(true);
 
   const load = useCallback(
     async (term: string): Promise<void> => {
       const request = ++requestRef.current;
-      const { loadOptions, gridContext: ctx, columnId: id, columnType: type, config: cfg } = loaderRef.current;
+      const { loadOptions, gridContext: ctx, columnId: id, columnType: type, config: cfg, unavailable: off } = loaderRef.current;
       const ds = ctx?.dataSource;
+      const canGetOptions = ctx?.effectiveCapabilities?.options !== false;
       setLoading(true);
       try {
         let raw: Array<Option | LinkRef>;
         if (loadOptions) raw = await loadOptions(term);
+        else if (off) raw = [];
         else if (type === "link") raw = ds?.lookup ? await ds.lookup(id, term) : [];
-        else if (ds?.getOptions) raw = await ds.getOptions(id, term);
+        else if (ds?.getOptions && canGetOptions) raw = await ds.getOptions(id, term);
         else {
           const s = term.toLowerCase();
           raw = columnOptions(cfg).filter((o) => o.label.toLowerCase().includes(s));
@@ -224,7 +231,11 @@ function ComboboxInner(props: ComboboxInnerProps): JSX.Element {
         onChange={(e) => setSearch(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      {loading ? <output className="sg-combobox-loading">Loading…</output> : null}
+      {unavailable ? (
+        <output className="sg-combobox-unavailable">{unavailable}</output>
+      ) : loading ? (
+        <output className="sg-combobox-loading">Loading…</output>
+      ) : null}
       {/*
        * This is the ARIA 1.2 "combobox with aria-activedescendant" pattern (APG), not a
        * native <select> — it needs a text input for live search, async-loaded/custom-
@@ -280,7 +291,11 @@ const comboboxPopup = createPopupEditor<unknown, GridRow, ComboboxEditorParams>(
  * Popup combobox editor for creatableSelect, user and link columns (our
  * Community replacement for a rich select). Options come from
  * `cellEditorParams.loadOptions`, else `dataSource.lookup` (link) /
- * `dataSource.getOptions`, else static `config.options`; the data source is
+ * `dataSource.getOptions`, else static `config.options`. v0.4.1: gated on
+ * `context.effectiveCapabilities` — without `lookup` a link column (without
+ * `options` a user column) shows `fieldTypeAvailability`'s reason ("Linking
+ * isn't set up for this grid") instead of calling; other types fall back to
+ * the static options without `options`. The data source is
  * read from AG Grid's `context` (`SchemaGridContext`). Values follow core's
  * shapes: link → `LinkRef[]` (always an array), user → `UserRef {id, name}`,
  * everything else → the option id (an array of ids when `multiple`).

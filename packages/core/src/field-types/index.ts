@@ -1,4 +1,10 @@
-export type { AnyFieldType, FieldType, ParseResult } from "./types";
+export type { AnyFieldType, FieldType, FieldTypeRequirement, ParseResult } from "./types";
+export {
+  type FieldTypeAvailability,
+  type FieldTypeCapabilitiesLike,
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
+} from "./availability";
 export { createFieldTypeRegistry, type FieldTypeRegistry } from "./registry";
 export { builtinFieldTypes, createDefaultRegistry } from "./default-registry";
 export { compareWithEmptyLast, isEmptyValue } from "./empty";

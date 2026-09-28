@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import { datetime, decimal, int, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import { describe, expect, it } from "vitest";
 import type { GridDb } from "../../../src/changes/db";
-import { createCellColorStore } from "../../../src/colors/color-store";
-import { MissingTableError } from "../../../src/errors";
+import { type CellColorStore, createCellColorStore } from "../../../src/colors/color-store";
+import { MissingTableError, SchemaGridServerError } from "../../../src/errors";
 import { type GridSchema, createRolePermissionResolver } from "../../../src/internal/core";
 import { type SqlViewDataSourceOptions, createSqlViewDataSource } from "../../../src/sqlview/create-sql-view-data-source";
 import { type FakeCall, createFakeMysql } from "../../helpers/fake-mysql";
@@ -42,10 +42,23 @@ const respond = (c: FakeCall): unknown[][] | undefined => {
   return [[7, 1, "Asha", "10.00", COLORS], [8, 1, "Bo", null, null]];
 };
 
-function make(extra: Partial<SqlViewDataSourceOptions> = {}, roles = ["counsellor"], withStore = true) {
+/** A store whose `available()` probe is stubbed (no SQL), counting its calls. */
+function stubStore(db: GridDb, available: () => Promise<boolean>) {
+  const probes = { count: 0 };
+  const store: CellColorStore = {
+    ...createCellColorStore({ db, table: "grid_cell_colors" }),
+    available: () => {
+      probes.count++;
+      return available();
+    },
+  };
+  return { store, probes };
+}
+
+function make(extra: Partial<SqlViewDataSourceOptions> = {}, roles = ["counsellor"], withStore = true, available = true) {
   const fake = createFakeMysql((c) => (c.rowsAsArray ? (respond(c) ?? []) : undefined));
   const db = fake.db as unknown as GridDb;
-  const colors = createCellColorStore({ db, table: "grid_cell_colors" });
+  const { store: colors, probes } = stubStore(db, async () => available);
   const ds = createSqlViewDataSource({
     db,
     schema,
@@ -59,17 +72,58 @@ function make(extra: Partial<SqlViewDataSourceOptions> = {}, roles = ["counsello
     ...(withStore ? { colors } : {}),
     ...extra,
   });
-  return { ds, ...fake };
+  return { ds, probes, ...fake };
 }
 
 describe("createSqlViewDataSource: cell colors (v0.4)", () => {
-  it("capabilities: read with a store, write with a store AND write hooks, filter always", () => {
-    expect(make({}, ["counsellor"], false).ds.capabilities().cellColors).toEqual({ read: false, write: false, filter: true });
+  it("capabilities: read with a store, write with a store AND write hooks, filter always", async () => {
+    expect((await make({}, ["counsellor"], false).ds.capabilities()).cellColors).toEqual({ read: false, write: false, filter: true });
     expect(make({}, ["counsellor"], false).ds.setCellColors).toBeUndefined();
-    expect(make().ds.capabilities().cellColors).toEqual({ read: true, write: true, filter: true });
+    expect((await make().ds.capabilities()).cellColors).toEqual({ read: true, write: true, filter: true });
     const readOnly = make({ write: undefined });
-    expect(readOnly.ds.capabilities().cellColors).toEqual({ read: true, write: false, filter: true });
+    expect((await readOnly.ds.capabilities()).cellColors).toEqual({ read: true, write: false, filter: true });
     expect(readOnly.ds.setCellColors).toBeUndefined();
+  });
+
+  it("v0.4.1: an unavailable store behaves like no store (no join, no colors, capabilities false, setCellColors unsupported)", async () => {
+    const { ds, statements, probes } = make({}, ["counsellor"], true, false);
+    expect(probes.count).toBe(0); // lazy
+    expect((await ds.capabilities()).cellColors).toEqual({ read: false, write: false, filter: true });
+    const res = await ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } });
+    expect(statements()[0]?.sql).not.toContain("grid_cell_colors");
+    expect(res.rows.every((r) => !("colors" in r))).toBe(true);
+    // Rule colors still filter.
+    await ds.fetch({ filter: { columnId: "name", operator: "colorIsNone" }, sort: [], page: { offset: 0, limit: 10 } });
+    expect(statements().some((s) => s.sql.includes("grid_cell_colors"))).toBe(false);
+    const err = await ds.setCellColors?.({ id: "b", changes: [{ rowId: "7", columnId: "name", color: "red" }] }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SchemaGridServerError);
+    expect(err).toMatchObject({ code: "UNSUPPORTED_OPERATION", message: 'This data source does not support "setCellColors"' });
+    await ds.deleteRows(["7"]);
+    expect(statements().some((s) => s.sql.startsWith("delete from `grid_cell_colors`"))).toBe(false);
+    expect(probes.count).toBe(1); // probed once per data source
+  });
+
+  it("v0.4.1: a probe that rejects fails the call and is retried on the next one", async () => {
+    const fake = createFakeMysql((c) => (c.rowsAsArray ? (respond(c) ?? []) : undefined));
+    const db = fake.db as unknown as GridDb;
+    let calls = 0;
+    const { store } = stubStore(db, async () => {
+      if (calls++ === 0) throw new Error("connection lost");
+      return true;
+    });
+    const ds = createSqlViewDataSource({
+      db,
+      schema,
+      resolver: createRolePermissionResolver(),
+      user: { id: "u1", roles: ["counsellor"] },
+      baseQuery: () => sql`SELECT * FROM leads`,
+      columns: COLUMNS,
+      rowId: leads.id,
+      colors: store,
+    });
+    await expect(ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } })).rejects.toThrow("connection lost");
+    const res = await ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } });
+    expect(res.rows[0]?.colors).toEqual({ name: "red", fee: "blue" });
   });
 
   it("fetch LEFT JOINs the store on the row id and hydrates readable colors only", async () => {
@@ -111,7 +165,7 @@ describe("createSqlViewDataSource: cell colors (v0.4)", () => {
     });
     expect(res?.applied).toEqual([{ rowId: "7", columnId: "name", color: "purple" }]);
     expect(res?.rejected).toEqual([
-      { rowId: "7", columnId: "fee", message: "Read-only" },
+      { rowId: "7", columnId: "fee", message: "Only specific people can edit this column" },
       { rowId: "7", columnId: "secret", message: "Column not found" },
       { rowId: "9", columnId: "name", message: "Row not found" },
     ]);
@@ -138,7 +192,31 @@ describe("createSqlViewDataSource: cell colors (v0.4)", () => {
     expect(fetchSql.split("GREATEST").length).toBe(1); // sg_ua is the base updated_at only
   });
 
-  it("a missing color table is reported as MISSING_TABLE naming createCellColorsTableDDL", async () => {
+  it("v0.4.1: a missing color table (real probe) → fetch succeeds without colors instead of MISSING_TABLE", async () => {
+    const fake = createFakeMysql((c) => {
+      if (c.sql.includes("grid_cell_colors")) {
+        throw Object.assign(new Error("Table 'db.grid_cell_colors' doesn't exist"), { errno: 1146, code: "ER_NO_SUCH_TABLE" });
+      }
+      return c.rowsAsArray ? [[7, 1, "Asha", "10.00", "s"]] : undefined;
+    });
+    const db = fake.db as unknown as GridDb;
+    const ds = createSqlViewDataSource({
+      db,
+      schema,
+      resolver: createRolePermissionResolver(),
+      user: { id: "u1", roles: ["admin"] },
+      baseQuery: () => sql`SELECT * FROM leads`,
+      columns: COLUMNS,
+      rowId: leads.id,
+      colors: createCellColorStore({ db, table: "grid_cell_colors" }),
+    });
+    const res = await ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } });
+    expect(res.rows.map((r) => r.id)).toEqual(["7"]);
+    expect(res.rows[0]).not.toHaveProperty("colors");
+    expect(fake.statements()[0]?.sql).toBe("select 1 from `grid_cell_colors` limit 0");
+  });
+
+  it("a color table dropped after the store confirmed it is still reported as MISSING_TABLE", async () => {
     const fake = createFakeMysql(() => {
       throw Object.assign(new Error("Table 'db.grid_cell_colors' doesn't exist"), { errno: 1146, code: "ER_NO_SUCH_TABLE" });
     });
@@ -151,7 +229,7 @@ describe("createSqlViewDataSource: cell colors (v0.4)", () => {
       baseQuery: () => sql`SELECT * FROM leads`,
       columns: COLUMNS,
       rowId: leads.id,
-      colors: createCellColorStore({ db, table: "grid_cell_colors" }),
+      colors: stubStore(db, async () => true).store,
     });
     const err = await ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(MissingTableError);

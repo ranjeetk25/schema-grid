@@ -17,7 +17,7 @@ import {
 import { type UiFieldTypeRegistry, filterInputFor } from "../internal/grid-contracts";
 import { getSelectOptions } from "../internal/options";
 import { ColorSwatchMultiSelect } from "../cell-colors/ColorSwatchMultiSelect";
-import { isCellColor, isColorOperatorId } from "../internal/core-contracts";
+import { type FieldTypeCapabilitiesLike, isCellColor, isColorOperatorId } from "../internal/core-contracts";
 
 export interface FilterValueInputProps {
   column: ColumnDef;
@@ -32,6 +32,8 @@ export interface FilterValueInputProps {
   error?: string;
   /** Control size. Default: the theme default (`sm`); the filter builder uses `xs` pills. */
   size?: MantineSize;
+  /** v0.4.1: the grid's capabilities; without `options` no people search is called. */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /** Picker labels per relative-date kind (core `RELATIVE_DATE_PRESETS`). */
@@ -124,10 +126,14 @@ function useUserOptions(enabled: boolean, column: ColumnDef, dataSource?: DataSo
  * usually lives inside a Popover.
  */
 export function FilterValueInput(props: FilterValueInputProps) {
-  const { column, operator, value, onChange, registry, dataSource, schema, error, size } = props;
+  const { column, operator, value, onChange, registry, dataSource, schema, error, size, capabilities } = props;
   const type = effectiveFilterType(column);
   const isOptionType = OPTION_TYPES.has(type);
-  const userOptions = useUserOptions(operator.valueKind === "multi" && type === "user", column, dataSource);
+  const userOptions = useUserOptions(
+    operator.valueKind === "multi" && type === "user" && capabilities?.options !== false,
+    column,
+    dataSource,
+  );
 
   const registryInput = (v: FilterValue | null | undefined, emit: (v: FilterValue | null) => void): ReactNode => {
     const Filter = filterInputFor(registry, type);

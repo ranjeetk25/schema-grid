@@ -79,6 +79,8 @@ export interface PruneContext {
   registry: FieldTypeRegistry;
   /** When given, conditions on other columns are dropped too (never emit hidden columns). */
   readable?: ReadonlySet<string>;
+  /** v0.4.1: conditions on `filterable: false` columns are valid (a color rule's condition). */
+  allowUnfilterable?: boolean;
 }
 
 /** A condition is complete when its column and operator exist and its value satisfies the operator. */
@@ -113,7 +115,10 @@ export function applicableFilter(node: FilterNode | null | undefined, ctx: Prune
   const pruned = pruneIncomplete(node, ctx);
   if (!pruned) return null;
   const readable = ctx.readable ?? new Set(ctx.schema.columns.map((c) => c.id));
-  return validateFilter(pruned, ctx.schema, ctx.registry, readable).length === 0 ? pruned : undefined;
+  const errors = validateFilter(pruned, ctx.schema, ctx.registry, readable).filter(
+    (e) => !(ctx.allowUnfilterable && e.code === "unfilterableColumn"),
+  );
+  return errors.length === 0 ? pruned : undefined;
 }
 
 // ---------------------------------------------------------------------------

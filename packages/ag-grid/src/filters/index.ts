@@ -24,7 +24,9 @@ export {
 } from "./filterModel";
 export {
   canFilterByColor,
+  colorFilterBlockedReason,
   columnOperatorsWithColors,
   withColorOperators,
   type CellColorCapabilitiesLike,
+  type ColorRulesInput,
 } from "./colorOperators";

@@ -3,6 +3,7 @@ import type { RowPartial } from "../datasource/types";
 import { isEmptyValue } from "../field-types/empty";
 import type { FieldTypeRegistry } from "../field-types/registry";
 import type { FormulaEnv } from "../formula/types";
+import { cellEditDenial } from "../permissions/edit-denial";
 import { optionRuleViolation } from "../permissions/option-rules";
 import type { Access, PermissionUser } from "../permissions/types";
 import type {
@@ -87,9 +88,7 @@ function pickLimits(v: NonNullable<ColumnDef["validation"]>): Record<string, num
 function editProblem(column: ColumnDef, access: Access | undefined): string | null {
   // Hidden first, so hidden columns (formula or not) are indistinguishable from missing ones.
   if (access !== "read" && access !== "edit") return "Column not found";
-  if (column.type === "formula") return "Formula columns are read-only";
-  if (access === "read") return "Column is read-only for you";
-  return null;
+  return cellEditDenial(column, access)?.message ?? null;
 }
 
 /**

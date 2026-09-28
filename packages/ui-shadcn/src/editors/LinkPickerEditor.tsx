@@ -1,6 +1,6 @@
 import { Link2Icon, XIcon } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { LinkRef } from "../internal/core-contracts";
+import { type LinkRef, fieldTypeAvailability } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { Badge } from "../ui/badge";
@@ -9,6 +9,9 @@ import { AsyncCombobox } from "./AsyncCombobox";
 /** Core link values are always `LinkRef[]`; a lone `LinkRef` is accepted on read. */
 export type LinkValue = LinkRef[] | LinkRef;
 export type LinkPickerEditorProps = UiEditorProps<LinkValue, unknown>;
+
+/** Shown instead of searching when the grid can't look records up (no `lookup` method or `capabilities.lookup: false`). */
+const LINK_UNAVAILABLE_MESSAGE = "Linking isn't set up for this grid";
 
 const isLinkRef = (v: unknown): v is LinkRef =>
   !!v && typeof v === "object" && typeof (v as LinkRef).id === "string" && typeof (v as LinkRef).label === "string";
@@ -44,10 +47,26 @@ function LinkPill({ link, onRemove }: { link: LinkRef; onRemove?: () => void }) 
  * Always emits core's `LinkRef[]`. With `config.multiple === false` a pick
  * emits and commits `[link]`; otherwise picks accumulate as removable pills
  * (wrapping at the top of the card) and Enter on an empty search commits the list.
+ * v0.4.1: gated on `capabilities.lookup`, not on the method's presence: without
+ * it the picker shows the current links and why ("Linking isn't set up for this
+ * grid") instead of calling.
  */
-export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, cellWidth }: LinkPickerEditorProps) {
+export function LinkPickerEditor({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  column,
+  config,
+  dataSource,
+  autoFocus,
+  error,
+  cellWidth,
+  capabilities,
+}: LinkPickerEditorProps) {
   const multiple = allowsMultiple(config);
-  const lookup = dataSource?.lookup;
+  const unavailable = fieldTypeAvailability("link", capabilities).reason;
+  const lookup = unavailable ? undefined : dataSource?.lookup;
   const [picked, setPicked] = useState<LinkRef[]>(() => toList(value));
 
   const load = useCallback(
@@ -60,7 +79,7 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
     return (
       <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-1 sg:px-2.5 sg:py-2")}>
         {current.length > 0 ? <span className="sg:text-sm">{current.map((l) => l.label).join(", ")}</span> : null}
-        <span className="sg:text-xs sg:text-muted-foreground">Lookup not configured</span>
+        <span className="sg:text-xs sg:text-muted-foreground">{unavailable ?? LINK_UNAVAILABLE_MESSAGE}</span>
       </div>
     );
   }

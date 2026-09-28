@@ -87,7 +87,8 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   /**
    * v0.4: paints (`null` clears) the manual color of `target` — default the
    * range selection, else the focused cell. Cells this user can't paint are
-   * skipped and listed in `rejected` ("Read-only"; counts in the
+   * skipped and listed in `rejected` (core's `cellEditDenial` message, e.g.
+   * "Only specific people can edit this column"; counts in the
    * `onCellColorReport` prop). Optimistic with rollback; the promise rejects
    * on a source error. One undo entry per paint. `null` when the source
    * can't read + write colors or nothing is targeted.

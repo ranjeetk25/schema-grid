@@ -96,6 +96,8 @@ interface WalkOptions {
   readable: ReadonlySet<string>;
   /** false inside a color rule's `when` (no recursion through colors). */
   allowColor: boolean;
+  /** false inside a color rule's `when` (v0.4.1): rules render client-side, so `filterable: false` columns are fine there. */
+  requireFilterable: boolean;
 }
 
 function colorValueProblem(operator: string, value: unknown): string | null {
@@ -146,7 +148,7 @@ function validateCondition(
     if (problem) errors.push({ code: "valueKindMismatch", path, columnId, operator, message: problem });
     return;
   }
-  if (column.filterable === false) {
+  if (column.filterable === false && opts.requireFilterable) {
     errors.push({
       code: "unfilterableColumn",
       path,
@@ -217,16 +219,21 @@ export function validateFilter(
   return collectFilterErrors(node, schema, registry, readableColumnIds, true);
 }
 
-/** `validateFilter` with color operators allowed or (in a color rule's `when`) rejected as `colorInRule`. */
+/**
+ * `validateFilter` with color operators allowed or (in a color rule's `when`)
+ * rejected as `colorInRule`. `requireFilterable: false` (color rules, v0.4.1)
+ * skips the `unfilterableColumn` check; operators and values are still checked.
+ */
 export function collectFilterErrors(
   node: FilterNode | null,
   schema: GridSchema,
   registry: FieldTypeRegistry,
   readableColumnIds: ReadonlySet<string>,
   allowColor: boolean,
+  requireFilterable = true,
 ): FilterValidationError[] {
   if (node === null || node === undefined) return [];
   const errors: FilterValidationError[] = [];
-  walk(node, [], 1, { schema, registry, readable: readableColumnIds, allowColor }, errors);
+  walk(node, [], 1, { schema, registry, readable: readableColumnIds, allowColor, requireFilterable }, errors);
   return errors;
 }

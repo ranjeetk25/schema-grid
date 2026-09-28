@@ -6,6 +6,7 @@ import {
   type GridSchema,
   type ViewDef,
   mergeCapabilities,
+  PERMISSION_EDIT_DENIED_MESSAGE,
   normalizeCapabilities,
 } from "@ranjeetk25/schema-grid-core";
 import { createFixtureSchema } from "@ranjeetk25/schema-grid-core/testing";
@@ -14,6 +15,7 @@ import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { classifyError, tapDataSource } from "./errors";
 import { collectRows } from "./exportRows";
 import { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
+import { saveFailureSummary } from "./useWorkbench";
 import { ALL_ROWS_VIEW, comparableView, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
 
 /** The grid's effective matrix for the fixture schema under `over` (real core capability objects). */
@@ -225,5 +227,20 @@ describe("comparableView (v0.4)", () => {
     const rule = { id: "r1", color: "red" as const, target: { kind: "row" as const }, when: null };
     expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [rule] })).not.toBe(comparableView(ALL_ROWS_VIEW));
     expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [] })).toBe(comparableView(ALL_ROWS_VIEW));
+  });
+});
+
+describe("saveFailureSummary (v0.4.1 refusal messages)", () => {
+  it("shows the per-person refusal verbatim, once, with its cell count", () => {
+    const errors = [
+      { rowId: "r1", columnId: "c", message: PERMISSION_EDIT_DENIED_MESSAGE },
+      { rowId: "r2", columnId: "c", message: PERMISSION_EDIT_DENIED_MESSAGE },
+    ];
+    expect(PERMISSION_EDIT_DENIED_MESSAGE).toBe("Only specific people can edit this column");
+    expect(saveFailureSummary(errors)).toEqual({
+      title: "2 changes failed",
+      lines: ["Only specific people can edit this column (2)"],
+      message: "2 changes failed: Only specific people can edit this column (2)",
+    });
   });
 });

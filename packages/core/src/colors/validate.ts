@@ -23,7 +23,8 @@ function isObject(v: unknown): v is Record<string, unknown> {
  * palette colors, non-empty unique ids, `cells` targets with known readable
  * columns, `enabled` boolean when present, and `when` validated like a filter
  * (`collectFilterErrors`) except that color operators are rejected
- * (`colorInRule`). `path` of an issue points inside the rule's `when`
+ * (`colorInRule`) and `filterable: false` columns are accepted (v0.4.1; see
+ * `colorFilterBlockers` for what that means for filtering by color). `path` of an issue points inside the rule's `when`
  * ([] for rule-level problems). Unreadable columns get a generic message, so
  * hidden labels never leak. `undefined` / `null` = no rules. On success the
  * rules are returned as clean copies (unknown keys dropped).
@@ -85,7 +86,8 @@ export function validateColorRules(
     }
     if (when !== null && when !== undefined && !isObject(when)) return bad("Malformed rule condition");
     const node = (when ?? null) as FilterNode | null;
-    const whenErrors = collectFilterErrors(node, schema, registry, readableColumnIds, false);
+    // `filterable: false` columns are allowed: the rule renders from row values (v0.4.1).
+    const whenErrors = collectFilterErrors(node, schema, registry, readableColumnIds, false, false);
     if (whenErrors.length > 0) {
       for (const e of whenErrors) issues.push({ ...e, ruleIndex, ruleId: id });
       return;

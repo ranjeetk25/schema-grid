@@ -8,6 +8,7 @@ export {
   type FilterBuilderHandle,
   type FilterBuilderProps,
   type FilterBuilderStatus,
+  type FilterCapabilitiesLike,
   type FilterDraftApi,
   type RowErrors,
   type UseFilterDraftOptions,

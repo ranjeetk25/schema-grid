@@ -256,7 +256,7 @@ describeMysql("cell colors on both data sources (MySQL 8.4)", () => {
         });
         expect(res?.applied).toEqual([{ rowId: rid("r2"), columnId: C.status, color: "teal" }]);
         expect(res?.rejected).toEqual([
-          { rowId: rid("r2"), columnId: C.fee, message: "Read-only" },
+          { rowId: rid("r2"), columnId: C.fee, message: "Only specific people can edit this column" },
           { rowId: rid("r99"), columnId: C.status, message: "Row not found" },
         ]);
       });
@@ -305,6 +305,39 @@ describeMysql("cell colors on both data sources (MySQL 8.4)", () => {
         expect(r6[0]?.colors).toEqual({ [C.name]: "orange", [C.status]: "yellow" });
         expect(feed?.cursor).not.toBe(start);
         expect((await admin.getChanges?.(feed?.cursor as string))?.rows.map((r) => r.id)).not.toContain(rid("r6"));
+      });
+
+      it("v0.4.1: without the colors table the source behaves as if no store were passed", async () => {
+        await mysql.db.execute(sql.raw(`DROP TABLE IF EXISTS \`${COLORS_TABLE}\``));
+        store.reset();
+        try {
+          const admin = subject.source(ADMIN);
+          expect((await admin.capabilities?.())?.cellColors).toEqual({ read: false, write: false, filter: true });
+          const rows = await all(admin);
+          expect(rows.length).toBeGreaterThan(0);
+          expect(rows.every((r) => !("colors" in r))).toBe(true);
+          // Rule colors still filter, with the core reference's answer.
+          const filter: FilterNode = { columnId: C.name, operator: "colorIs", value: ["green"] };
+          const got = (await all(admin, filter, RULES)).map((r) => r.id).sort();
+          const ref = createInMemoryDataSource<GridRow>({
+            schema: subject.schema,
+            rows: subject.referenceRows(),
+            resolver: createRolePermissionResolver(),
+            user: ADMIN,
+            now: () => NOW,
+            timeZone: TZ,
+          });
+          const expected = (await ref.fetch({ filter, sort: [], page: { offset: 0, limit: 1000 }, colorRules: RULES })).rows;
+          expect(expected.length).toBeGreaterThan(0);
+          expect(got).toEqual(expected.map((r) => r.id).sort());
+          await expect(paint(admin)).rejects.toMatchObject({ code: "UNSUPPORTED_OPERATION" });
+          await admin.deleteRows([rid("r1")]);
+        } finally {
+          await resetColors();
+          store.reset();
+        }
+        // Once the table exists again, a new data source reads colors.
+        expect((await subject.source(ADMIN).capabilities?.())?.cellColors).toMatchObject({ read: true });
       });
 
       it("deleting a row deletes its color entry", async () => {

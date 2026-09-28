@@ -90,3 +90,26 @@ describe("MantineHeaderMenu: Filter by color", () => {
     expect(value.filterByColor).toHaveBeenLastCalledWith("c1", null);
   });
 });
+
+describe("MantineHeaderMenu: Filter by color blocked by a color rule (v0.4.1)", () => {
+  const REASON = `a color rule on it uses "Verdict", which can't be filtered on the server`;
+
+  it("shows a disabled item with the reason instead of the submenu", async () => {
+    const { user, value } = setup({ blockedReason: (id) => (id === "c1" ? REASON : null) });
+    const item = screen.getByRole("menuitem", { name: /Filter by color/ });
+    expect(item).toHaveAttribute("data-disabled", "true");
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveAttribute("aria-description", `Can't filter by color: ${REASON}`);
+    await user.hover(item);
+    expect(await screen.findByText(`Can't filter by color: ${REASON}`)).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Red" })).toBeNull();
+    fireEvent.click(item);
+    expect(value.filterByColor).not.toHaveBeenCalled();
+  });
+
+  it("a column the rules don't block keeps the submenu", async () => {
+    const { user } = setup({ blockedReason: () => null });
+    await user.hover(screen.getByRole("menuitem", { name: /Filter by color/ }));
+    expect(await screen.findByRole("menuitem", { name: "Red" })).toBeInTheDocument();
+  });
+});

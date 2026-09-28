@@ -1,10 +1,19 @@
-import { ArrowDownIcon, ArrowUpIcon, CircleAlertIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, CircleAlertIcon, InfoIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { FilterBuilder } from "../filter-builder/FilterBuilder";
 import { FieldTypeIcon, MultiPicker, type PickerItem } from "../filter-builder/pickers";
 import { type AccessMap, readableColumnIds, readableColumns } from "../internal/access";
-import type { CellColor, ColorRule, DataSource, FieldTypeRegistry, FilterNode, GridSchema } from "../internal/core-contracts";
-import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
+import {
+  type CellColor,
+  type ColorRule,
+  type DataSource,
+  type FieldTypeRegistry,
+  type FilterNode,
+  type GridSchema,
+  colorRuleUnfilterableColumn,
+  sqlFilterablePredicate,
+} from "../internal/core-contracts";
+import type { UiCapabilitiesLike, UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { cn } from "../lib/cn";
 import { CellColorSwatch, cellColorLabel } from "../theme/cellColors";
 import { Button } from "../ui/button";
@@ -37,7 +46,17 @@ export interface ColorRulesDialogProps {
   /** Receives the validated rules (`validateColorRules` output); the host calls `handle.setColorRules`. */
   onSave(rules: ColorRule[]): void;
   dataSource?: DataSource;
+  /**
+   * v0.4.1: the grid's capabilities (`handle.effectiveCapabilities`). Their
+   * filter scope decides which rules get the "Can't be used to filter by color"
+   * note (with the schema's `filterable: false`); `lookup` / `options` gate the
+   * condition's value pickers.
+   */
+  capabilities?: UiCapabilitiesLike | null;
 }
+
+/** v0.4.1: the note on a rule whose condition tests a column the server can't filter on. */
+const UNFILTERABLE_RULE_NOTE = "Can't be used to filter by color";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -78,6 +97,9 @@ interface RuleCardProps {
   access: AccessMap;
   dataSource?: DataSource;
   columnItems: readonly PickerItem[];
+  /** v0.4.1: the column in the condition the server can't filter on (→ the note), if any. */
+  unfilterableLabel?: string;
+  pickerCapabilities?: UiCapabilitiesLike;
   onChange(patch: Partial<Omit<ColorRule, "id">>): void;
   onMove(delta: -1 | 1): void;
   onRemove(): void;
@@ -94,6 +116,8 @@ function RuleCard({
   access,
   dataSource,
   columnItems,
+  unfilterableLabel,
+  pickerCapabilities,
   onChange,
   onMove,
   onRemove,
@@ -176,8 +200,20 @@ function RuleCard({
           onChange={(when: FilterNode | null) => onChange({ when })}
           dataSource={dataSource}
           debounceMs={0}
+          allowUnfilterable
+          {...(pickerCapabilities ? { capabilities: pickerCapabilities } : {})}
         />
         {rule.when === null ? <p className="sg:text-xs sg:text-muted-foreground">Without a condition this rule never applies.</p> : null}
+        {unfilterableLabel ? (
+          <p
+            data-slot="rule-unfilterable-note"
+            title={`"${unfilterableLabel}" can't be filtered on the server; the rule still colors rows`}
+            className="sg:flex sg:items-center sg:gap-1.5 sg:text-xs sg:text-muted-foreground"
+          >
+            <InfoIcon aria-hidden className="sg:size-3.5 sg:shrink-0" />
+            <span>{UNFILTERABLE_RULE_NOTE}</span>
+          </p>
+        ) : null}
       </div>
       {issues ? (
         <div id={errorId} role="alert" className="sg:flex sg:items-start sg:gap-1.5 sg:text-xs sg:text-danger">
@@ -198,6 +234,9 @@ function RuleCard({
  * move up / down and delete. Edits stay local; "Save rules" validates with
  * core's `validateColorRules` (readable columns only) and hands the clean
  * rules to `onSave`, or shows the issues on the offending rules.
+ * v0.4.1: conditions may test `filterable: false` columns (rules render from
+ * row values); such a rule shows "Can't be used to filter by color", since
+ * the server can't filter the columns it colors by color.
  */
 export function ColorRulesDialog({
   opened,
@@ -209,6 +248,7 @@ export function ColorRulesDialog({
   rules,
   onSave,
   dataSource,
+  capabilities,
 }: ColorRulesDialogProps) {
   const [draft, setDraft] = useState<ColorRule[]>(() => [...rules]);
   const [attempted, setAttempted] = useState(false);
@@ -226,6 +266,14 @@ export function ColorRulesDialog({
   const columnItems = useMemo(
     () => readableColumns(schema, access).map((c) => ({ value: c.id, label: c.label, icon: <FieldTypeIcon type={c.type} /> })),
     [schema, access],
+  );
+  const isSqlFilterable = useMemo(() => sqlFilterablePredicate(schema, capabilities), [schema, capabilities]);
+  // Only the pickers' gates: color operators never belong in a rule's condition.
+  const lookup = capabilities?.lookup;
+  const options = capabilities?.options;
+  const pickerCapabilities = useMemo(
+    () => (lookup === undefined && options === undefined ? undefined : { lookup, options }),
+    [lookup, options],
   );
   const validation = useMemo(() => validateColorRulesDraft(draft, schema, registry, readable), [draft, schema, registry, readable]);
   const issues = attempted && !validation.ok ? ruleIssueMessages(validation.issues) : null;
@@ -271,6 +319,8 @@ export function ColorRulesDialog({
                 access={access}
                 dataSource={dataSource}
                 columnItems={columnItems}
+                unfilterableLabel={colorRuleUnfilterableColumn(rule, schema, isSqlFilterable)?.label}
+                {...(pickerCapabilities ? { pickerCapabilities } : {})}
                 onChange={(patch) => setDraft((d) => updateColorRule(d, index, patch))}
                 onMove={(delta) => setDraft((d) => moveColorRule(d, index, delta))}
                 onRemove={() => setDraft((d) => removeColorRule(d, index))}

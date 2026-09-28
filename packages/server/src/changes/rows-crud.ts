@@ -3,7 +3,14 @@ import { projectRow } from "../access/projection";
 import { resolveAccess } from "../access/query-access";
 import type { ServerContext } from "../context";
 import { PermissionError, RowValidationError } from "../errors";
-import { type GridRow, type PermissionUser, type RowPartial, getColumnValueFieldType } from "../internal/core";
+import {
+  type ColumnDef,
+  type GridRow,
+  type PermissionUser,
+  type RowPartial,
+  cellEditDenial,
+  getColumnValueFieldType,
+} from "../internal/core";
 import { ident } from "../sql/column-expr";
 import { hydrateRow } from "../storage/hydrate";
 import { type ChangeLogEntry, insertChangeLog } from "./change-log";
@@ -11,6 +18,21 @@ import type { GridDb, WriteDeps } from "./db";
 import { validateCellValue } from "./plan-changes";
 import { physicalWriteValue } from "./physical";
 import { uuidv7 } from "./uuid";
+
+/** The refusal for unknown AND hidden columns (indistinguishable on purpose). */
+export const UNKNOWN_COLUMN = "Unknown column";
+
+/**
+ * Why a `createRows` partial may not set `column` (v0.4.1): a column hidden
+ * from the user answers "Unknown column" like a missing one (hidden columns
+ * stay undetectable); else core's `cellEditDenial` message (formula /
+ * `settable: false` / `permissions.edit`); null when it may.
+ */
+export function createDenial(column: ColumnDef, ctx: ServerContext): string | null {
+  const access = ctx.resolver({ user: ctx.user, column });
+  if (access !== "read" && access !== "edit") return UNKNOWN_COLUMN;
+  return cellEditDenial(column, access)?.message ?? null;
+}
 
 export interface CreateRowsOptions {
   generateId?: () => string;
@@ -44,12 +66,10 @@ export async function createRows(
     const given = (partial.cells ?? {}) as Record<string, unknown>;
     for (const key of Object.keys(given)) {
       const column = byKey.get(key);
-      if (!column) throw new RowValidationError(rowIndex, key, "Unknown column");
-      if (column.type === "formula") throw new RowValidationError(rowIndex, column.id, "Column is read-only (formula)");
+      if (!column) throw new RowValidationError(rowIndex, key, UNKNOWN_COLUMN);
       // `settable: false` rejects explicit values only; its default below is still written (v0.2 C1).
-      if (ctx.resolver({ user: ctx.user, column }) !== "edit" || column.settable === false) {
-        throw new RowValidationError(rowIndex, column.id, "Column is read-only");
-      }
+      const denial = createDenial(column, ctx);
+      if (denial) throw new RowValidationError(rowIndex, denial === UNKNOWN_COLUMN ? key : column.id, denial);
     }
     const id = partial.id ?? (options.generateId ? options.generateId() : uuidv7(now.getTime()));
     const cells: Record<string, unknown> = {};

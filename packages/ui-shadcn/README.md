@@ -166,6 +166,14 @@ The workbench exposes the grid's cell colors (see the ag-grid README, "Cell colo
   a "Filter by color" submenu (palette, "No color", "Clear color filter"; the active color is checked) that sets
   one color condition on that column. ag-grid's header-menu actions can't set a filter, so the workbench puts a
   `CellColorFilterProvider` around the grid and `ShadcnHeaderMenu` reads it (`useCellColorFilter`).
+- **Rules the server can't evaluate (v0.4.1):** a rule's condition may test a `filterable: false` column (a
+  SQL-view computed column, say): the rule still renders, and the dialog notes it with "Can't be used to filter
+  by color". A column such a rule can color (its `cells` targets; every column for a `row` rule) can't be
+  filtered by color on the server, so the Filter builder leaves out "color is" / "has no color" for it (the
+  operator list says why) and its header menu shows "Filter by color" disabled with the reason
+  (`Can't filter by color: a color rule on it uses "Verdict", which can't be filtered on the server`); an active
+  color filter there can still be cleared. The check is ag-grid's `colorFilterBlockedReason`, against the
+  effective schema and capabilities.
 
 The pieces are exported for hosts that build their own page:
 
@@ -174,9 +182,11 @@ The pieces are exported for hosts that build their own page:
 | `CellColorButton` (`handle`, `onError`), `useCanPaint(handle)` | the paint popover and its live enabled state |
 | `CellColorPicker` (`value`, `onPick`, `allowNone`) | the swatch grid |
 | `ColorSwatchMultiSelect` (`value`, `onChange`) | the palette multi-select (the `colorIs` value editor) |
-| `ColorRulesDialog` (`opened`, `onClose`, `schema`, `registry`, `uiRegistry`, `access`, `rules`, `onSave`, `dataSource`) | the rules editor; `addColorRule`, `moveColorRule`, `updateColorRule`, `removeColorRule`, `validateColorRulesDraft`, `ruleIssueMessages` are its pure model |
-| `FilterBuilder` / `FilterButton` `capabilities` prop | pass `handle.effectiveCapabilities` to get the color operators |
-| `CellColorFilterProvider` (`value: { get(columnId), set(columnId, next) } \| null`), `useCellColorFilter()` | wrap `<SchemaGrid headerMenu={ShadcnHeaderMenu}>` to get the header submenu |
+| `ColorRulesDialog` (`opened`, `onClose`, `schema`, `registry`, `uiRegistry`, `access`, `rules`, `onSave`, `dataSource`, `capabilities`) | the rules editor; `addColorRule`, `moveColorRule`, `updateColorRule`, `removeColorRule`, `validateColorRulesDraft`, `ruleIssueMessages` are its pure model. v0.4.1: `capabilities` (`handle.effectiveCapabilities`) adds the source's filter scope to the "Can't be used to filter by color" check |
+| `FilterBuilder` / `FilterButton` `capabilities` prop | pass `handle.effectiveCapabilities` to get the color operators (and, v0.4.1, the `lookup` / `options` gates for the value pickers) |
+| `FilterBuilder` / `FilterButton` `colorRules` prop (v0.4.1) | the view's rules (`handle.colorRules`): no color operators on a column one of them blocks (the operator list says why; `FilterDraftApi.colorBlockedReasonFor(columnId)`). Pure model: `colorBlockedReason(column, capabilities, { rules, schema })`, and `filterableColumns` / `operatorsFor` take a last `ColumnPickOptions` (`{ allowUnfilterable?, colorRules? }`); `operatorsInContext(column, ctx)` |
+| `FilterBuilder` / `FilterButton` `allowUnfilterable` prop (v0.4.1) | offer and accept `filterable: false` columns with their own operators (client-side conditions, like rule conditions); leave it off for grid filters |
+| `CellColorFilterProvider` (`value: { activeColors(columnId), filterByColor(columnId, next), blockedReason?(columnId) } \| null`), `useCellColorFilter()` | wrap `<SchemaGrid headerMenu={ShadcnHeaderMenu}>` to get the header submenu; `blockedReason` (v0.4.1, e.g. ag-grid's `colorFilterBlockedReason`) disables it on a blocked column |
 | `setColumnColorFilter(filter, columnId, next)`, `columnColorFilter(filter, columnId)` | write / read one column's color condition: `CellColor[]` (`colorIs`), `"none"` (`colorIsNone`), `null` (none / clear) |
 | `formatCellColorReport`, `notifyCellColorReport`, `cellColorSummary` | paint report text and toast |
 | `CELL_COLOR_PALETTE`, `CellColorSwatch`, `cellColorLabel` | the palette (label, light / dark fill, swatch per `CellColor`) |
@@ -184,6 +194,24 @@ The pieces are exported for hosts that build their own page:
 Dark mode: `styles.css` declares the grid's `--sg-color-*` fills for `:root` and `.dark` (ag-grid's
 `cellColorCssVariables("light" | "dark")`), and `useGridThemeFromShadcn()` returns the current scheme's map as
 `cellColorVariables` for containers styled without the stylesheet.
+
+### Capability-gated field types (v0.4.1)
+
+A link column needs a source that can `lookup` records, a user column one that serves `options` (people search);
+custom field types declare theirs in `FieldType.requires` (core `fieldTypeAvailability`).
+
+- The column builder (`ColumnPanel`, `ColumnBuilderDialog`, `TypePicker`, `TypeStep`) takes `capabilities` (the
+  workbench passes `effectiveCapabilities`) and hides the types the grid can't back. An existing column keeps its
+  type, shown with the reason ("Linking isn't set up for this grid").
+- Pickers check capabilities, not whether the data source has the method: without `lookup` the link picker (cell
+  editor and the column builder's default value) shows the current links and "Linking isn't set up for this
+  grid" instead of calling `lookup`; without `options` the user picker says "People search isn't set up for this
+  grid", creatable selects offer no "Create" entry ("Creating options isn't set up for this grid"), and dynamic
+  selects, the set filter and the filter builder's people list keep their static options instead of calling
+  `getOptions`. In a grid cell the capabilities come from the grid context; widgets receive them as
+  `UiEditorProps.capabilities` (`UiFilterInputProps.capabilities` for filter inputs).
+- A per-person edit refusal ("Only specific people can edit this column") reaches the cell error and the save
+  banner unchanged.
 
 ### Lazy chunks
 

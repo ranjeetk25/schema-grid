@@ -1,6 +1,6 @@
 import { Group, Stack, Text } from "@mantine/core";
 import { useCallback, useState } from "react";
-import type { LinkRef } from "../internal/core-contracts";
+import { type LinkRef, fieldTypeAvailability } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
 import { AsyncCombobox } from "./AsyncCombobox";
 import { useEditorStyles } from "./EditorCard";
@@ -20,16 +20,33 @@ const allowsMultiple = (config: unknown): boolean =>
 const toList = (value: LinkValue | null): LinkRef[] =>
   Array.isArray(value) ? value.filter(isLinkRef) : isLinkRef(value) ? [value] : [];
 
+/** v0.4.1: shown instead of searching when the source can't look records up. */
+const LINKING_UNAVAILABLE = fieldTypeAvailability("link", { lookup: false }).reason ?? "Linking isn't set up for this grid";
+
 /**
  * Link-to-record picker over `dataSource.lookup(column.id, search)`.
+ * v0.4.1: without `capabilities.lookup` (or without `dataSource.lookup`) it
+ * shows the current value and "Linking isn't set up for this grid" instead
+ * of calling.
  * Always emits core's `LinkRef[]`. With `config.multiple === false` a pick
  * emits and commits `[link]`; otherwise picks accumulate as removable pills
  * and Enter on an empty search commits the list.
  */
-export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error }: LinkPickerEditorProps) {
+export function LinkPickerEditor({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  column,
+  config,
+  dataSource,
+  autoFocus,
+  error,
+  capabilities,
+}: LinkPickerEditorProps) {
   useEditorStyles();
   const multiple = allowsMultiple(config);
-  const lookup = dataSource?.lookup;
+  const lookup = capabilities?.lookup === false ? undefined : dataSource?.lookup;
   const [picked, setPicked] = useState<LinkRef[]>(() => toList(value));
 
   const load = useCallback(
@@ -43,7 +60,7 @@ export function LinkPickerEditor({ value, onChange, onCommit, onCancel, column, 
       <Stack gap={4}>
         {current.length > 0 && <Text size="sm">{current.map((l) => l.label).join(", ")}</Text>}
         <Text size="xs" c="dimmed" px={8} py={4}>
-          Lookup not configured
+          {LINKING_UNAVAILABLE}
         </Text>
       </Stack>
     );

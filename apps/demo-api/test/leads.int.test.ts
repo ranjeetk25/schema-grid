@@ -110,7 +110,7 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
       ],
     });
     expect(painted.data.applied).toEqual([{ rowId: "3", columnId: "name", color: "red" }]);
-    expect(painted.data.rejected).toEqual([{ rowId: "3", columnId: "aiVerified", message: "Read-only" }]);
+    expect(painted.data.rejected).toEqual([{ rowId: "3", columnId: "aiVerified", message: "Column is read-only" }]);
     const red = await fetchLeads({ filter: { columnId: "name", operator: "colorIs", value: ["red"] } });
     expect(red.data.rows.map((r) => [r.id, r.colors])).toEqual([["3", { name: "red" }]]);
     // A row rule (whole row yellow when paid) under the manual color.

@@ -13,11 +13,20 @@ export interface SelectEditorConfig {
   dynamic?: boolean;
 }
 
-/** Static options follow `config` live (e.g. a column builder adding options); dynamic ones are fetched once. */
-export function useSelectOptions(config: SelectEditorConfig | undefined, columnId: string, dataSource: UiEditorProps["dataSource"]): Option[] {
+/**
+ * Static options follow `config` live (e.g. a column builder adding options);
+ * dynamic ones are fetched once. v0.4.1: not when `capabilities.options` is
+ * false (the static options stay).
+ */
+export function useSelectOptions(
+  config: SelectEditorConfig | undefined,
+  columnId: string,
+  dataSource: UiEditorProps["dataSource"],
+  capabilities?: UiEditorProps["capabilities"],
+): Option[] {
   const configOptions = useMemo(() => getSelectOptions(config), [config]);
   const [fetched, setFetched] = useState<Option[] | null>(null);
-  const dynamic = config?.dynamic === true;
+  const dynamic = config?.dynamic === true && capabilities?.options !== false;
   useEffect(() => {
     if (!dynamic || !dataSource?.getOptions) return;
     let cancelled = false;
@@ -48,9 +57,9 @@ export function SelectEditor(props: UiEditorProps<string, SelectEditorConfig>) {
   return props.autoFocus === false ? <SelectField {...props} /> : <SelectPicker {...props} />;
 }
 
-function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user }: UiEditorProps<string, SelectEditorConfig>) {
+function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user, capabilities }: UiEditorProps<string, SelectEditorConfig>) {
   useEditorStyles();
-  const allOptions = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource, capabilities);
   // Options the user may set, plus the current one (locked) — `Option.settableBy` (v0.3).
   const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
   const options = pickable.map((p) => p.option);
@@ -124,9 +133,9 @@ function SelectPicker({ value, onChange, onCommit, onCancel, column, config, dat
 }
 
 /** Form / filter mode: a regular Mantine Select (dropdown kept inside the component). */
-function SelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user }: UiEditorProps<string, SelectEditorConfig>) {
+function SelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user, capabilities }: UiEditorProps<string, SelectEditorConfig>) {
   const theme = useMantineTheme();
-  const allOptions = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource, capabilities);
   const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
   const options = pickable.map((p) => p.option);
   return (

@@ -86,13 +86,27 @@ export {
   resolveColumnAccess,
 } from "./permissions/column-access";
 export {
+  type CellEditDenial,
+  type CellEditDenialReason,
+  cellEditDenial,
+  COLUMN_READ_ONLY_MESSAGE,
+  FORMULA_READ_ONLY_MESSAGE,
+  PERMISSION_EDIT_DENIED_MESSAGE,
+} from "./permissions/edit-denial";
+export {
   canSetOption,
   OPTION_COLUMN_TYPES,
   optionNotSettableMessage,
   optionRuleViolation,
   resolveSettableOptions,
 } from "./permissions/option-rules";
-export type { AnyFieldType, FieldType, ParseResult } from "./field-types/types";
+export type { AnyFieldType, FieldType, FieldTypeRequirement, ParseResult } from "./field-types/types";
+export {
+  type FieldTypeAvailability,
+  type FieldTypeCapabilitiesLike,
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
+} from "./field-types/availability";
 export type { FieldTypeRegistry } from "./field-types/registry";
 export {
   computeAggregate,

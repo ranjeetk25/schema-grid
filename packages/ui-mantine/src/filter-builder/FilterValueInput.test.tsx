@@ -222,4 +222,29 @@ describe("FilterValueInput", () => {
     await user.click(field("Value"));
     expect(container.contains(await screen.findByText("Paid"))).toBe(true);
   });
+
+  it("user isAnyOf searches people via getOptions only when capabilities allow options (v0.4.1)", async () => {
+    const renderWith = (capabilities?: { options: boolean }) => {
+      const ds = buildStubDataSource();
+      const view = renderWithMantine(
+        <FilterValueInput
+          column={fixtureColumn(FIXTURE_IDS.owner)}
+          operator={opOf(FIXTURE_IDS.owner, "isAnyOf")}
+          value={[]}
+          schema={schema}
+          registry={ui}
+          dataSource={ds}
+          {...(capabilities ? { capabilities } : {})}
+          onChange={vi.fn()}
+        />,
+      );
+      return { ds, view };
+    };
+    const off = renderWith({ options: false });
+    await Promise.resolve();
+    expect(off.ds.getOptions).not.toHaveBeenCalled();
+    off.view.unmount();
+    const on = renderWith();
+    await vi.waitFor(() => expect(on.ds.getOptions).toHaveBeenCalledWith(FIXTURE_IDS.owner));
+  });
 });

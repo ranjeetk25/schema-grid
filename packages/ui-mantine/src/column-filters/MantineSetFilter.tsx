@@ -133,8 +133,10 @@ export function MantineSetFilter<Row extends GridRow = GridRow>(props: SchemaFil
   useEffect(() => {
     if (isBoolean || !columnId) return;
     const fromRows = () => distinctRowOptions(props.api as never, props.getValue as never);
-    const dataSource = getSchemaGridContext(props.context)?.dataSource;
-    if (!dataSource?.getOptions) {
+    const gridContext = getSchemaGridContext(props.context);
+    const dataSource = gridContext?.dataSource;
+    // v0.4.1: by capability, not only by method presence; the static options stay.
+    if (!dataSource?.getOptions || gridContext?.effectiveCapabilities?.options === false) {
       if (staticOptions.length === 0) setLoaded(fromRows());
       return;
     }

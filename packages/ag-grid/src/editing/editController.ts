@@ -71,8 +71,11 @@
  * the row must be in the row store and `canEditCell(row, columnId)` must be
  * true (read at call time, so undo/redo re-check at execution). Rejected cells
  * never touch the row store or the data source and are NOT marked on the cell
- * status store; they are reported first in `result.errors` (message
- * `READ_ONLY_MESSAGE`) and in `outcome.readOnly`. When nothing is left,
+ * status store; they are reported first in `result.errors` and in
+ * `outcome.readOnly`. v0.4.1: the message is core's `cellEditDenial` for the
+ * column, the same the server sends ("Column is read-only (formula)",
+ * "Column is read-only", "Only specific people can edit this column");
+ * `READ_ONLY_MESSAGE` only for a row missing from the row store. When nothing is left,
  * `beforeCellsChange` / `applyChanges` are skipped and `onCellsChange` still
  * fires with the rejections.
  *
@@ -106,6 +109,7 @@ import type {
   GridSchema,
   SchemaGridEvents,
 } from "../internal/core";
+import { cellEditDenial } from "../internal/core";
 import { cellKey, type CellRef, type CellStatusStore } from "../state/cellStatusStore";
 import type { RowStore } from "../state/rowStore";
 import { conflictToChange, findChangeForConflict } from "./conflicts";
@@ -138,8 +142,8 @@ export interface EditControllerOptions<Row extends GridRow = GridRow> {
   /**
    * Per-cell write check (permission edit + settable + not formula, see
    * `createCellAccess`). Called at submit time for every change; a false
-   * result (or a row missing from the row store) rejects the cell as
-   * "Read-only". Absent → no client-side check.
+   * result (or a row missing from the row store) rejects the cell (message:
+   * see the file header). Absent → no client-side check.
    */
   canEditCell?(row: Row, columnId: string): boolean;
   idFactory?(): string;
@@ -152,7 +156,11 @@ export interface EditControllerOptions<Row extends GridRow = GridRow> {
   upsertRows?(rows: Row[]): void;
 }
 
-/** `ChangeResult.errors[i].message` for cells the controller rejected client-side. */
+/**
+ * `ChangeResult.errors[i].message` for a cell the controller rejected
+ * client-side because its row isn't in the row store. v0.4.1: other
+ * rejections carry core's `cellEditDenial` message.
+ */
 export const READ_ONLY_MESSAGE = "Read-only";
 
 export interface SubmitOutcome {
@@ -161,7 +169,7 @@ export interface SubmitOutcome {
   vetoed: boolean;
   /**
    * Cells rejected client-side by `canEditCell` (also listed in
-   * `result.errors` with `READ_ONLY_MESSAGE`). Always set by
+   * `result.errors`, see the file header for the message). Always set by
    * `createEditController`.
    */
   readOnly?: CellRef[];
@@ -224,6 +232,12 @@ function droppedChanges(before: readonly CellChange[], after: readonly CellChang
     out.push(c);
   }
   return out;
+}
+
+/** A cell the client write check refused, with the refusal message. */
+interface RefusedCell {
+  cell: CellRef;
+  message: string;
 }
 
 interface CellSpan {
@@ -419,34 +433,40 @@ export function createEditController<Row extends GridRow>(opts: EditControllerOp
     return dataSource.getRows(changedRowIds).then(apply, () => []);
   };
 
-  /** Splits `changes` by the client write check; `rejected` collects distinct refused cells. */
-  const enforce = (changes: CellChange[], rejected: Map<string, CellRef>): CellChange[] => {
+  /** Why the client refused a cell: core's `cellEditDenial` (v0.4.1), the same message the server sends. */
+  const refusalMessage = (rowFound: boolean, columnId: string): string => {
+    const column = rowFound ? opts.schema.columns.find((c) => c.id === columnId) : undefined;
+    return (column && cellEditDenial(column, "read")?.message) ?? READ_ONLY_MESSAGE;
+  };
+
+  /** Splits `changes` by the client write check; `rejected` collects distinct refused cells with their message. */
+  const enforce = (changes: CellChange[], rejected: Map<string, RefusedCell>): CellChange[] => {
     const check = opts.canEditCell;
     if (!check) return changes;
     const allowed: CellChange[] = [];
     for (const c of changes) {
       const row = rowStore.getRow(c.rowId);
       if (row && check(row, c.columnId)) allowed.push(c);
-      else if (!rejected.has(kOf(c))) rejected.set(kOf(c), ref(c));
+      else if (!rejected.has(kOf(c))) rejected.set(kOf(c), { cell: ref(c), message: refusalMessage(!!row, c.columnId) });
     }
     return allowed;
   };
 
   async function submit(changes: CellChange[], source: ChangeSource, options?: SubmitOptions): Promise<SubmitOutcome> {
-    const rejected = new Map<string, CellRef>();
+    const rejected = new Map<string, RefusedCell>();
     const built = buildBatch(enforce(withoutNoOps(changes), rejected), source, options);
     let batch = built;
     /** Changes `beforeCellsChange` dropped (v0.3): reported as rejected, never sent. */
     let hookDropped: CellChange[] = [];
     const readOnlyErrors = (): ChangeResult["errors"] =>
-      [...rejected.values()].map((c) => ({ ...c, message: READ_ONLY_MESSAGE }));
+      [...rejected.values()].map((r) => ({ ...r.cell, message: r.message }));
     const finalize = (r: ChangeResult): ChangeResult => {
       let out = rejected.size === 0 ? r : { ...r, errors: [...readOnlyErrors(), ...r.errors] };
       const allRejected = [...hookDropped, ...(r.rejected ?? [])];
       if (allRejected.length > 0 || r.rejected) out = { ...out, rejected: allRejected };
       return out;
     };
-    const readOnly = (): CellRef[] => [...rejected.values()];
+    const readOnly = (): CellRef[] => [...rejected.values()].map((r) => r.cell);
     const outcome = (result: ChangeResult, b: ChangeBatch, vetoed: boolean): SubmitOutcome => ({
       result,
       batch: b,

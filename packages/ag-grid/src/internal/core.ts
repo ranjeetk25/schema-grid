@@ -121,6 +121,14 @@ export {
 
 export type { AnyFieldType, FieldTypeRegistry, ParseResult } from "@ranjeetk25/schema-grid-core";
 export type { FieldType } from "@ranjeetk25/schema-grid-core";
+// v0.4.1 capability-gated field types.
+export {
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
+  type FieldTypeAvailability,
+  type FieldTypeCapabilitiesLike,
+  type FieldTypeRequirement,
+} from "@ranjeetk25/schema-grid-core";
 export {
   builtinFieldTypes,
   compareWithEmptyLast,
@@ -341,6 +349,15 @@ export function searchRows<Row extends GridRow>(
 // ============================================================================
 
 export type { Access, PermissionUser } from "@ranjeetk25/schema-grid-core";
+// v0.4.1: one refusal message per reason for every write path.
+export {
+  cellEditDenial,
+  COLUMN_READ_ONLY_MESSAGE,
+  FORMULA_READ_ONLY_MESSAGE,
+  PERMISSION_EDIT_DENIED_MESSAGE,
+  type CellEditDenial,
+  type CellEditDenialReason,
+} from "@ranjeetk25/schema-grid-core";
 export {
   createRolePermissionResolver,
   editableColumnIds,
@@ -465,4 +482,13 @@ export {
   resolveCellColor,
   resolveRowColor,
   validateColorRules,
+} from "@ranjeetk25/schema-grid-core";
+// v0.4.1: color rules the server can't evaluate.
+export {
+  colorFilterBlockedMessage,
+  colorFilterBlockers,
+  colorRuleUnfilterableColumn,
+  sqlFilterablePredicate,
+  unfilterableColorRuleReason,
+  type FilterScopeCapabilitiesLike,
 } from "@ranjeetk25/schema-grid-core";

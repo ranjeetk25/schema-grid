@@ -4,7 +4,7 @@ import { useGridFilter } from "ag-grid-react";
 import { CELL_COLORS, type CellColor, type FilterCondition, type GridRow, isCellColor } from "../internal/core";
 import { getSchemaGridContext } from "../grid/gridContext";
 import { CELL_COLOR_TOKENS } from "../theme/cellColorTokens";
-import { canFilterByColor, capabilitiesOf } from "./colorOperators";
+import { canFilterByColor, capabilitiesOf, colorFilterBlockedReasonOf } from "./colorOperators";
 import {
   configOptions,
   type FilterOption,
@@ -54,6 +54,7 @@ const PASS_ALL_FILTER_METHODS = { doesFilterPass: () => true };
  * v0.4: with `context.effectiveCapabilities.cellColors.filter`, a "Filter by"
  * select switches to a Color mode: palette checkboxes emit `colorIs`, the
  * exclusive "No color" emits `colorIsNone`. A color model opens in that mode.
+ * Not offered on a column a color rule blocks (v0.4.1, `colorFilterBlockedReason`).
  */
 export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
@@ -72,7 +73,10 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
   );
   const [loaded, setLoaded] = useState<FilterOption[] | null>(null);
   const [search, setSearch] = useState("");
-  const colorAllowed = canFilterByColor(capabilitiesOf(props.context));
+  // v0.4.1: no Color mode on a column a view color rule blocks (see `colorFilterBlockedReason`).
+  const colorAllowed =
+    canFilterByColor(capabilitiesOf(props.context)) &&
+    !(resolved && colorFilterBlockedReasonOf(props.context, resolved.column) !== null);
   const modelIsColor = model?.operator === "colorIs" || model?.operator === "colorIsNone";
   const [mode, setMode] = useState<"values" | "color">(modelIsColor ? "color" : "values");
   // A color model set from outside (builder / view / header menu) shows the Color mode.
@@ -85,8 +89,10 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally mount-only.
   useEffect(() => {
     if (isBoolean || !columnId) return;
-    const getOptions = getSchemaGridContext(props.context)?.dataSource.getOptions;
-    if (!getOptions) return;
+    const gridContext = getSchemaGridContext(props.context);
+    const getOptions = gridContext?.dataSource.getOptions;
+    // v0.4.1: by capability, not only by method presence; the static options stay.
+    if (!getOptions || gridContext?.effectiveCapabilities?.options === false) return;
     let cancelled = false;
     getOptions(columnId).then(
       (opts) => {

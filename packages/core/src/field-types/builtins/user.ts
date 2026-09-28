@@ -23,6 +23,7 @@ export const userValueSchema: ZodType<UserRef> = z.object({
 export const userFieldType: FieldType<UserRef, UserConfig> = {
   id: "user",
   label: "User",
+  requires: ["options"],
   configSchema: z.object({}),
   defaultConfig,
 

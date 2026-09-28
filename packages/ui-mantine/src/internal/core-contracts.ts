@@ -85,6 +85,13 @@ export {
 // v0.4 cell colors
 export type { CellColor, CellColorResult, ColorRule, ColorRuleIssue, ColorRuleTarget } from "@ranjeetk25/schema-grid-core";
 export { CELL_COLORS, isCellColor, validateColorRules } from "@ranjeetk25/schema-grid-core";
+// v0.4.1: color rules the server can't evaluate (the rules dialog's "Can't be used to filter by color" note).
+export type { FilterScopeCapabilitiesLike } from "@ranjeetk25/schema-grid-core";
+export { colorRuleUnfilterableColumn, sqlFilterablePredicate } from "@ranjeetk25/schema-grid-core";
+
+// v0.4.1 capability-gated field types (column builder, link / user pickers).
+export type { FieldTypeAvailability, FieldTypeCapabilitiesLike } from "@ranjeetk25/schema-grid-core";
+export { fieldTypeAvailability } from "@ranjeetk25/schema-grid-core";
 
 /** True for the v0.4 color operators (`colorIs` / `colorIsNone`). */
 export const isColorOperatorId = (id: unknown): boolean => typeof id === "string" && CORE_COLOR_OPERATORS.some((o) => o.id === id);

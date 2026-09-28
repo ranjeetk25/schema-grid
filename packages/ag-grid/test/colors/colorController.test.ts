@@ -70,7 +70,7 @@ describe("createColorController", () => {
       result: {
         applied: [],
         rejected: [
-          { rowId: "r2", columnId: "name", message: "Read-only" },
+          { rowId: "r2", columnId: "name", message: "Column is read-only" },
           { rowId: "nope", columnId: "name", message: "Row not found" },
           { rowId: "r1", columnId: "ghost", message: "Column not found" },
         ],

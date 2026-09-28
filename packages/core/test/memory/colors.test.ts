@@ -82,9 +82,9 @@ describe("in-memory cell colors", () => {
     });
     expect(res?.applied).toEqual([paint("r1", C.name, "red")]);
     expect(res?.rejected).toEqual([
-      { rowId: "r1", columnId: C.fee, message: "Read-only" },
+      { rowId: "r1", columnId: C.fee, message: "Only specific people can edit this column" },
       { rowId: "r1", columnId: C.notes, message: "Column not found" },
-      { rowId: "r1", columnId: C.balance, message: "Read-only" },
+      { rowId: "r1", columnId: C.balance, message: "Column is read-only (formula)" },
       { rowId: "nope", columnId: C.name, message: "Row not found" },
       { rowId: "r1", columnId: "col_nope", message: "Column not found" },
       { rowId: "r1", columnId: C.paid, message: "Invalid color" },

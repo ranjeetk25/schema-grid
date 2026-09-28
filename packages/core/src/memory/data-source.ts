@@ -1,4 +1,5 @@
 import { canColorCell } from "../colors/access";
+import { cellEditDenial, COLUMN_READ_ONLY_MESSAGE } from "../permissions/edit-denial";
 import { type CellColorBatch, type CellColorChange, type CellColorResult, isCellColor } from "../colors/types";
 import { normalizeCapabilities } from "../datasource/capabilities";
 import { createDefaultRegistry } from "../field-types/default-registry";
@@ -141,7 +142,9 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
       const a = column ? access.get(column.id) : undefined;
       if (!row) reject("Row not found");
       else if (!column || (a !== "read" && a !== "edit")) reject("Column not found");
-      else if (!canColorCell(row, column, options.user, resolver) || a !== "edit") reject("Read-only");
+      else if (!canColorCell(row, column, options.user, resolver) || a !== "edit") {
+        reject(cellEditDenial(column, "read")?.message ?? COLUMN_READ_ONLY_MESSAGE);
+      }
       else if (color !== null && !isCellColor(color)) reject("Invalid color");
       else {
         const colors = cleanColors(row.colors, (id) => id !== column.id) ?? {};

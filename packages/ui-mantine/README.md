@@ -91,6 +91,24 @@ the rest ("Option “Verified” can only be set by Admin"), which the grid show
 as a cell error. The column panel's Options editor has a per-option "Who can
 set" pill (Everyone | Only roles…) mirroring the column's access section.
 
+### Capability-gated field types (v0.4.1)
+
+A link column needs a source that can `lookup` records, a user column one
+that serves `options` (core `fieldTypeAvailability`). The column builder
+(`ColumnPanel`, `ColumnBuilderModal`, `ColumnForm`, `TypeStep`) takes
+`capabilities` (the workbench passes `effectiveCapabilities`) and hides the
+types it can't back; an existing column keeps its type, shown with the
+reason. Editors get `capabilities` too (`UiEditorProps.capabilities`, from
+the grid context) and gate on them instead of on method presence: the link
+picker shows "Linking isn't set up for this grid" and the user picker
+"People search isn't set up for this grid" instead of calling; without
+`options` a creatable select shows "Creating options isn't set up for this
+grid" instead of its "Create" entry, and dynamic selects and the set filter
+keep their static options.
+
+Per-cell refusals from the server (e.g. "Only specific people can edit this
+column") show verbatim in the save banner and on the cell.
+
 ### Saved vs. not saved
 
 The status bar's "N saved" counts applied **cells**. Changes a data source
@@ -123,7 +141,11 @@ Excel-style colors, all derived from the grid's `handle` and the source's
   like filter / sort (the view shows unsaved changes until saved). Rules are
   evaluated client-side, so the button shows for any source once
   capabilities load (`features.colorRules`), and hides when the user can read
-  no column.
+  no column. v0.4.1: a condition may test `filterable: false` columns (the
+  dialog's builder runs with `allowUnfilterable`); such a rule shows a subtle
+  "Can't be used to filter by color" note (hover: which column). Pass
+  `capabilities` to a standalone `ColorRulesDialog` so columns outside the
+  source's `filter` scope count too.
 - **Filter by color:** with `cellColors.filter`, the filter builder offers
   "color is" (a swatch multi-select) and "has no color" on every readable
   column, `filterable: false` ones included (color operators only there);
@@ -134,6 +156,15 @@ Excel-style colors, all derived from the grid's `handle` and the source's
   `<CellColorFilterProvider value={{ filterByColor, activeColors }}>` to get
   the submenu; without a provider it is hidden. Chips read "Status color is
   Red, Blue".
+- **Blocked by a rule (v0.4.1):** a server can't filter a column by color
+  when an enabled rule that can color it (a `cells` rule targeting it, or any
+  `row` rule) tests a column it can't filter on. For such a column the filter
+  builder drops "color is" / "has no color" (the operator pill's tooltip says
+  why) and the header menu shows "Filter by color" disabled with the reason
+  (`Can't filter by color: a color rule on it uses "Verdict", which can't be
+  filtered on the server`). The workbench wires it; standalone, pass
+  `colorRules` to `FilterBuilder` / `FilterButton` and `blockedReason` in the
+  `CellColorFilterProvider` value (ag-grid's `colorFilterBlockedReason`).
 - **Palette / dark mode:** `CELL_COLOR_PALETTE` (label, swatch, fill per
   `CellColor`) and `<CellColorSwatch color>` use ag-grid's
   `CELL_COLOR_TOKENS`; `mantineGridCssVariablesResolver` sets the

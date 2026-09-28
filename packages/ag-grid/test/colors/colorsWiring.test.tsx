@@ -103,6 +103,20 @@ describe("rendering", () => {
     expect(handle(g).effectiveCapabilities.cellColors).toEqual({ read: false, write: false, filter: false });
   });
 
+  it("renders a rule testing a filterable:false column and exposes the rules to the column filters (v0.4.1)", async () => {
+    const schema: GridSchema = {
+      ...fixtureSchema,
+      columns: fixtureSchema.columns.map((c) => (c.id === "status" ? { ...c, filterable: false } : c)),
+    };
+    const ds = createInMemoryDataSource(schema, fixtureRows, { capabilities: {} });
+    const g = renderGrid({ rows: fixtureRows, ds, props: { schema, view: view({ colorRules: [openRow] }) } });
+    await g.waitForRows();
+    await capsLoaded(g);
+    await waitFor(() => expect(cell(g, "r1", "name")).toHaveClass("sg-color-green"));
+    const context = handle(g).api()?.getGridOption("context") as { colorRules?: () => readonly ColorRule[] };
+    expect(context.colorRules?.()).toEqual([openRow]);
+  });
+
   it("setColorRules redraws, updates the view (onViewChange) and does not refetch in client mode", async () => {
     const onViewChange = vi.fn();
     const ds = colorSource();
@@ -223,8 +237,8 @@ describe("setCellColor / canPaint", () => {
     expect(result).toMatchObject({
       applied: [{ rowId: "r1", columnId: "name", color: "red" }],
       rejected: [
-        { rowId: "r1", columnId: "status", message: "Read-only" },
-        { rowId: "r1", columnId: "total", message: "Read-only" },
+        { rowId: "r1", columnId: "status", message: "Only specific people can edit this column" },
+        { rowId: "r1", columnId: "total", message: "Column is read-only (formula)" },
       ],
     });
     expect(onCellColorReport).toHaveBeenCalledWith({ color: "red", requested: 3, applied: 1, skipped: 2, rejected: 0 });

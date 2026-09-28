@@ -1,5 +1,5 @@
 import { SimpleGrid, Text, UnstyledButton } from "@mantine/core";
-import type { FieldTypeId, FieldTypeRegistry } from "../internal/core-contracts";
+import { type FieldTypeCapabilitiesLike, type FieldTypeId, type FieldTypeRegistry, fieldTypeAvailability } from "../internal/core-contracts";
 import { fieldTypeMeta, sortFieldTypes } from "./fieldTypeMeta";
 
 export interface TypeStepProps {
@@ -8,6 +8,13 @@ export interface TypeStepProps {
   onChange(type: FieldTypeId): void;
   /** Edit mode: the type cannot change. */
   locked?: boolean;
+  /**
+   * v0.4.1: the source's capabilities (the workbench passes
+   * `effectiveCapabilities`). Types it can't back are hidden (core
+   * `fieldTypeAvailability`: link needs `lookup`, user needs `options`); an
+   * existing column keeps its type, shown with the reason. Omitted = every type.
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /**
@@ -15,7 +22,7 @@ export interface TypeStepProps {
  * Each card is named by its label. `ColumnPanel` uses the searchable
  * `TypePicker` instead; this remains for hosts that want a card grid.
  */
-export function TypeStep({ registry, value, onChange, locked = false }: TypeStepProps) {
+export function TypeStep({ registry, value, onChange, locked = false, capabilities }: TypeStepProps) {
   return (
     <SimpleGrid
       component="fieldset"
@@ -26,6 +33,8 @@ export function TypeStep({ registry, value, onChange, locked = false }: TypeStep
     >
       {sortFieldTypes(registry.list()).map((t) => {
         const selected = t.id === value;
+        const { available, reason } = fieldTypeAvailability(t.id, capabilities, registry);
+        if (!available && !selected) return null;
         const meta = fieldTypeMeta(t.id);
         const Icon = meta.icon;
         return (
@@ -53,7 +62,7 @@ export function TypeStep({ registry, value, onChange, locked = false }: TypeStep
               {t.label}
             </Text>
             <Text size="xs" c="dimmed" lh={1.3} lineClamp={2}>
-              {meta.description}
+              {reason ?? meta.description}
             </Text>
           </UnstyledButton>
         );

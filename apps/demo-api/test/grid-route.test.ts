@@ -271,8 +271,15 @@ describe("legacy /grid/:op route (fake data source)", () => {
 describe("multi-grid endpoint /grid/:gridId/:op (no database)", () => {
   const contexts: GridRequestContext[] = [];
   const ds = fakeDs();
+  // No tables at all: the leads grid's cell color store probes (v0.4.1) and finds none,
+  // so the SQL view serves without manual colors instead of failing.
+  const noTables = {
+    execute: async () => {
+      throw Object.assign(new Error("Table doesn't exist"), { errno: 1146, code: "ER_NO_SUCH_TABLE" });
+    },
+  } as unknown as GridDb;
   const { app, grids } = createApp({
-    db: {} as GridDb,
+    db: noTables,
     tables: gridTables(),
     gridId: "admissions",
     store: new SchemaStore(null, createFixtureSchema),

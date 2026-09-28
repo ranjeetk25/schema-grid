@@ -39,6 +39,12 @@ export interface CellColorStore {
    * A connection error rejects and is not cached.
    */
   available(): Promise<boolean>;
+  /**
+   * v0.4.1: forgets the cached probe, so the next `available()` checks the
+   * table again (e.g. after dropping it in tests or a dev reset). Data sources
+   * already built keep the answer they got.
+   */
+  reset(): void;
 }
 
 export function createCellColorStore(options: CellColorStoreOptions): CellColorStore {
@@ -69,6 +75,9 @@ export function createCellColorStore(options: CellColorStoreOptions): CellColorS
         });
       }
       return probe;
+    },
+    reset() {
+      confirmed = false;
     },
   });
 }

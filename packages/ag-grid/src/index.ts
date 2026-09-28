@@ -121,7 +121,9 @@ export {
 } from "./colors/colorController";
 export {
   type CellColorCapabilitiesLike,
+  type ColorRulesInput,
   canFilterByColor,
+  colorFilterBlockedReason,
   columnOperatorsWithColors,
   withColorOperators,
 } from "./filters/colorOperators";

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
-import type { UserOption, UserRef } from "../internal/core-contracts";
+import { type UserOption, type UserRef, fieldTypeAvailability } from "../internal/core-contracts";
 import { type UiEditorProps, toPopupGridEditor } from "../internal/grid-contracts";
-import { cn } from "../lib/cn";
+import { SG_ROOT, cn } from "../lib/cn";
 import { Avatar } from "../ui/avatar";
 import { AsyncCombobox } from "./AsyncCombobox";
 
@@ -20,15 +20,28 @@ export function UserAvatarLabel({ name, avatarUrl, className }: { name: string; 
   );
 }
 
-/** Async user search over `dataSource.getOptions(column.id, search)`. Emits a `UserRef` `{id, name}`. */
-export function UserPickerEditor({ value, onChange, onCommit, onCancel, column, dataSource, autoFocus, error, cellWidth }: UserPickerEditorProps) {
-  const getOptions = dataSource?.getOptions;
+/**
+ * Async user search over `dataSource.getOptions(column.id, search)`. Emits a `UserRef` `{id, name}`.
+ * v0.4.1: gated on `capabilities.options`: without it the picker shows the
+ * current person and why ("People search isn't set up for this grid") instead of calling.
+ */
+export function UserPickerEditor({ value, onChange, onCommit, onCancel, column, dataSource, autoFocus, error, cellWidth, capabilities }: UserPickerEditorProps) {
+  const unavailable = fieldTypeAvailability("user", capabilities).reason;
+  const getOptions = unavailable ? undefined : dataSource?.getOptions;
   const load = useCallback(
     (search: string): Promise<UserOption[]> => (getOptions ? getOptions(column.id, search) : Promise.resolve([])),
     [getOptions, column.id],
   );
   const id = valueId(value);
   const name = value != null && typeof value === "object" ? (value.name ?? value.id) : (value ?? undefined);
+  if (unavailable) {
+    return (
+      <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-1 sg:px-2.5 sg:py-2")}>
+        {name ? <UserAvatarLabel name={name} /> : null}
+        <span className="sg:text-xs sg:text-muted-foreground">{unavailable}</span>
+      </div>
+    );
+  }
   return (
     <AsyncCombobox<UserOption>
       load={load}

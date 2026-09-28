@@ -426,7 +426,8 @@ export interface UseSchemaGridResult<Row extends GridRow = GridRow> {
   /**
    * v0.4: paints (or, with `null`, clears) the manual color of the target
    * cells — default the range selection, else the focused cell. Cells the
-   * user can't paint are skipped (listed in `rejected` as "Read-only", see
+   * user can't paint are skipped (listed in `rejected` with core's
+   * `cellEditDenial` message, e.g. "Only specific people can edit this column"; see
    * `onCellColorReport` for the counts). Optimistic; rolled back on
    * rejection, and on error (the promise then rejects). One undo entry per
    * paint. `null` when the source can't read + write colors or nothing is
@@ -926,6 +927,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     mode,
     effectiveCapabilities,
     cellColors,
+    colorRules: activeColorRules,
   };
   const [context] = useState<SchemaGridHookContext<Row>>(() => ({ ...contextFields }));
   useLayoutEffect(() => {
