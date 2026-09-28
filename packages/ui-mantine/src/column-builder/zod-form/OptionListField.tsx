@@ -17,6 +17,8 @@ import { IconChevronDown, IconChevronUp, IconLock, IconPlus, IconX } from "../..
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { RoleRule } from "../../internal/core-contracts";
 import { MANTINE_NAMED_COLORS } from "../../internal/options";
+import { type PeopleNames, type UserDirectory, peopleList, usePeopleNames, useUserDirectory } from "../../internal/people";
+import { PeoplePicker } from "../PeoplePicker";
 import { roleLabel } from "../PermissionsStep";
 
 export interface OptionListItem {
@@ -42,6 +44,11 @@ export interface OptionListFieldProps {
    * i.e. `valueKey: "id"`). Absent → the control is not shown.
    */
   roles?: string[];
+  /**
+   * v0.4: adds a People picker to "Who can set". Default: the column form's
+   * `userDirectory` (via context). Absent → existing `users` are kept untouched.
+   */
+  userDirectory?: UserDirectory;
   error?: string;
   /** Dot-path of the list (e.g. `options`); rows' inputs carry `data-sg-path` for blur tracking. */
   path?: string;
@@ -59,8 +66,14 @@ interface Row {
   valueEdited: boolean;
 }
 
+const isListOrAbsent = (v: unknown) => v === undefined || Array.isArray(v);
 const isRoleRule = (v: unknown): v is RoleRule =>
-  v === "all" || (!!v && typeof v === "object" && Array.isArray((v as { roles?: unknown }).roles));
+  v === "all" ||
+  (!!v && typeof v === "object" && isListOrAbsent((v as { roles?: unknown }).roles) && isListOrAbsent((v as { users?: unknown }).users));
+
+const rolesIn = (rule: RoleRule): string[] => (rule === "all" ? [] : (rule.roles ?? []));
+const usersIn = (rule: RoleRule): string[] => (rule === "all" ? [] : (rule.users ?? []));
+const settableUsers = (options: OptionListItem[]): string[] => options.flatMap((o) => (o.settableBy ? usersIn(o.settableBy) : []));
 
 /** "In Progress!" → "in_progress": lowercase, non-alphanumerics → "_", trimmed underscores. */
 export function slugifyOptionValue(label: string): string {
@@ -87,22 +100,44 @@ const list = (roles: string[]) => {
   return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 };
 
-/** "Everyone" / "Only Admin and Finance team" / "Nobody yet". */
-export function settableBySummary(rule: RoleRule | undefined): string {
+/**
+ * "Everyone" / "Only Admin and Finance team" / "Only Admin and Priya" (v0.4
+ * people, named via `names`; "N people" beyond 3) / "Nobody yet".
+ */
+export function settableBySummary(rule: RoleRule | undefined, names?: PeopleNames): string {
   if (rule === undefined || rule === "all") return "Everyone";
-  return rule.roles.length === 0 ? "Nobody yet" : `Only ${list(rule.roles)}`;
+  const roles = rolesIn(rule);
+  const people = peopleList(usersIn(rule), names);
+  if (roles.length === 0 && !people) return "Nobody yet";
+  if (!people) return `Only ${list(roles)}`;
+  return roles.length === 0 ? `Only ${people}` : `Only ${roles.map(roleLabel).join(", ")} and ${people}`;
 }
 
 /**
  * Per-option "Who can set" (v0.3): a subtle pill that opens a small popover
  * with the same "Everyone | Only roles…" control as the column's access
- * section. Absent `settableBy` = everyone (never written as `"all"` unless it
- * already was).
+ * section (plus a People picker with a `userDirectory`, v0.4). Absent
+ * `settableBy` = everyone (never written as `"all"` unless it already was).
  */
-function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: RoleRule | undefined; roles: string[]; onChange(rule: RoleRule | undefined): void }) {
+function WhoCanSet({
+  label,
+  rule,
+  roles,
+  directory,
+  names,
+  onChange,
+}: {
+  label: string;
+  rule: RoleRule | undefined;
+  roles: string[];
+  directory: UserDirectory | undefined;
+  names: PeopleNames;
+  onChange(rule: RoleRule | undefined): void;
+}) {
   const [opened, setOpened] = useState(false);
   const restricted = rule !== undefined && rule !== "all";
-  const summary = settableBySummary(rule);
+  const summary = settableBySummary(rule, names);
+  const empty = restricted && rolesIn(rule).length === 0 && usersIn(rule).length === 0;
   return (
     <Popover opened={opened} onChange={setOpened} withinPortal={false} position="bottom-end" shadow="md" radius="lg" width={320}>
       <Popover.Target>
@@ -130,25 +165,40 @@ function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: Role
               aria-label={`Who can set ${label || "this option"}`}
               size="xs"
               value={restricted ? "roles" : "all"}
-              onChange={(v) => onChange(v === "all" ? (rule === "all" ? "all" : undefined) : { roles: restricted ? rule.roles : [] })}
+              onChange={(v) => onChange(v === "all" ? (rule === "all" ? "all" : undefined) : restricted ? rule : { roles: [] })}
               data={[
                 { value: "all", label: "Everyone" },
-                { value: "roles", label: "Only roles…" },
+                { value: "roles", label: directory ? "Only some…" : "Only roles…" },
               ]}
             />
           </Group>
           {restricted ? (
-            <MultiSelect
-              aria-label={`Roles that can set ${label || "this option"}`}
-              placeholder="Pick roles"
-              size="xs"
-              data={roles.map((r) => ({ value: r, label: roleLabel(r) }))}
-              value={rule.roles}
-              onChange={(next) => onChange({ roles: next })}
-              error={rule.roles.length === 0 ? "Pick at least one role" : undefined}
-              searchable
-              comboboxProps={{ withinPortal: false }}
-            />
+            <>
+              <MultiSelect
+                aria-label={`Roles that can set ${label || "this option"}`}
+                placeholder="Pick roles"
+                size="xs"
+                data={roles.map((r) => ({ value: r, label: roleLabel(r) }))}
+                value={rolesIn(rule)}
+                onChange={(next) => onChange({ ...rule, roles: next })}
+                error={empty ? (directory ? "Pick at least one role or person" : "Pick at least one role") : undefined}
+                searchable
+                comboboxProps={{ withinPortal: false }}
+              />
+              {directory ? (
+                <PeoplePicker
+                  label={`People that can set ${label || "this option"}`}
+                  value={usersIn(rule)}
+                  onChange={(users) => onChange({ ...rule, users })}
+                  directory={directory}
+                  names={names}
+                />
+              ) : usersIn(rule).length > 0 ? (
+                <Text size="xs" c="dimmed">
+                  {`Plus ${usersIn(rule).length} specific ${usersIn(rule).length === 1 ? "person" : "people"}`}
+                </Text>
+              ) : null}
+            </>
           ) : (
             <Text size="xs" c="dimmed">
               Anyone who can edit the column can pick this option.
@@ -237,8 +287,12 @@ export function OptionListField({
   path,
   rowError,
   roles,
+  userDirectory: directoryProp,
 }: OptionListFieldProps) {
+  const contextDirectory = useUserDirectory();
+  const userDirectory = directoryProp ?? contextDirectory;
   const showSettableBy = valueKey === "id" && roles !== undefined;
+  const names = usePeopleNames(showSettableBy ? userDirectory : undefined, settableUsers(readOptions(value, valueKey)));
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
     options.map((o) => ({ id: nextId.current++, ...o, valueEdited: o.value !== slugifyOptionValue(o.label) }));
@@ -321,7 +375,14 @@ export function OptionListField({
             />
             {showSettableBy ? (
               <Group h={32} align="center" style={{ flex: "none" }}>
-                <WhoCanSet label={row.label} rule={row.settableBy} roles={roles ?? []} onChange={(settableBy) => update(index, { settableBy })} />
+                <WhoCanSet
+                  label={row.label}
+                  rule={row.settableBy}
+                  roles={roles ?? []}
+                  directory={userDirectory}
+                  names={names}
+                  onChange={(settableBy) => update(index, { settableBy })}
+                />
               </Group>
             ) : null}
             <Group gap={0} wrap="nowrap" h={32} align="center">

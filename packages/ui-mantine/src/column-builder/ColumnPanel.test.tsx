@@ -219,6 +219,30 @@ describe("ColumnPanel", () => {
     expect(onSave.mock.calls[0]?.[0]).toMatchObject({ id: FIXTURE_IDS.payment, key: "payment_status", label: "Payment", type: "select" });
   });
 
+  it("v0.4 userDirectory: People pickers in Who can access; stored people are named in the summary", async () => {
+    const userDirectory = {
+      search: vi.fn(async () => [{ id: "u-priya", name: "Priya" }]),
+      resolve: vi.fn(async (ids: string[]) => ids.filter((id) => id === "u-rahul").map((id) => ({ id, name: "Rahul" }))),
+    };
+    const column = { ...fixtureColumn(FIXTURE_IDS.payment), permissions: { read: "all" as const, edit: { users: ["u-rahul"] } } };
+    const { user, onSave } = setup({ column, userDirectory });
+    expect(await screen.findAllByText("Everyone can view · only Rahul can edit")).not.toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: /Who can access/ }));
+    await user.click(await screen.findByRole("textbox", { name: "People that can edit" }));
+    await user.click(await screen.findByRole("option", { name: /Priya/ }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave.mock.calls[0]?.[0].permissions).toEqual({ read: "all", edit: { users: ["u-rahul", "u-priya"] } });
+  });
+
+  it("without a userDirectory there are no People pickers and stored people are saved untouched", async () => {
+    const column = { ...fixtureColumn(FIXTURE_IDS.payment), permissions: { read: "all" as const, edit: { roles: ["admin"], users: ["u-rahul"] } } };
+    const { user, onSave } = setup({ column });
+    await user.click(screen.getByRole("button", { name: /Who can access/ }));
+    expect(screen.queryByRole("textbox", { name: "People that can edit" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSave.mock.calls[0]?.[0].permissions).toEqual({ read: "all", edit: { roles: ["admin"], users: ["u-rahul"] } });
+  });
+
   it("delete asks for confirmation", async () => {
     const { user, onDelete } = setup({ column: fixtureColumn(FIXTURE_IDS.payment) });
     await user.click(screen.getByRole("button", { name: "Delete column" }));

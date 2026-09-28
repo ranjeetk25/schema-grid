@@ -612,6 +612,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             uiRegistry={uiRegistry}
             access={wb.access}
             roles={wb.roles}
+            {...(props.userDirectory ? { userDirectory: props.userDirectory } : {})}
             column={wb.panel.column}
             {...(wb.panel.insertAt !== null ? { position: wb.panel.insertAt } : {})}
             sampleRows={wb.panel.sampleRows}
