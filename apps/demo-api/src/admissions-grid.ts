@@ -10,6 +10,7 @@ import type {
 import { FIXTURE_USERS, createFixtureLinkTargets, createFixtureRows } from "@ranjeetk25/schema-grid-core/testing";
 import { assertValidSchema } from "@ranjeetk25/schema-grid-server";
 import {
+  type CellColorStore,
   type GridDb,
   type GridTables,
   createDrizzleDataSource,
@@ -32,6 +33,8 @@ export interface AdmissionsGridDeps {
   resolver: PermissionResolver;
   /** Override the per-request data source (tests). Default: Drizzle over the JSON-cells rows table. */
   dataSource?: (ctx: GridRequestContext) => DataSource<GridRow>;
+  /** Manual cell colors (v0.4); without it only color rules apply. */
+  colors?: CellColorStore;
 }
 
 /** Display names for the fixture users (FIXTURE_USERS carries ids/roles only). */
@@ -153,6 +156,7 @@ export function admissionsGrid(deps: AdmissionsGridDeps): GridDefinition<GridReq
             onCreateOption: createOption,
             linkLookup,
             userDirectory,
+            ...(deps.colors ? { colors: deps.colors } : {}),
           }),
   });
 }

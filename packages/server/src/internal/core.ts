@@ -52,6 +52,22 @@ export {
   resolveColumnAccess,
 } from "@ranjeetk25/schema-grid-core";
 
+// ---- cell colors (v0.4) ------------------------------------------------------
+export type {
+  CellColor,
+  CellColorBatch,
+  CellColorChange,
+  CellColorResult,
+  ColorRule,
+  ColorRuleTarget,
+} from "@ranjeetk25/schema-grid-core";
+export {
+  CELL_COLORS,
+  canColorCell,
+  isCellColor,
+  validateColorRules,
+} from "@ranjeetk25/schema-grid-core";
+
 // ---- data-source capabilities (spec v0.2 §C2) ------------------------------
 export type { DataSourceCapabilities } from "@ranjeetk25/schema-grid-core";
 export { DEFAULT_CAPABILITIES } from "@ranjeetk25/schema-grid-core";
@@ -81,6 +97,8 @@ export type {
   FilterValidationError as CoreFilterValidationError,
 } from "@ranjeetk25/schema-grid-core/filter";
 export {
+  COLOR_OPERATORS,
+  hasColorCondition,
   MAX_FILTER_DEPTH,
   NEGATIVE_OPERATOR_IDS,
   isNegativeOperator,

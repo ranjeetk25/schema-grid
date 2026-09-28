@@ -19,3 +19,4 @@ export {
 export { diffIndexedColumns } from "./diff-indexes";
 export { type CreateGridSchemasTableDDLOptions, createGridSchemasTableDDL } from "./schema-store-ddl";
 export { type CreateExtensionCellsTableDDLOptions, createExtensionCellsTableDDL } from "./extension-ddl";
+export { type CreateCellColorsTableDDLOptions, createCellColorsTableDDL } from "./cell-colors-ddl";

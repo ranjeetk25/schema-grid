@@ -1,5 +1,5 @@
 import { type ColumnDef, createRolePermissionResolver, type GridSchema } from "@ranjeetk25/schema-grid-core";
-import { createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
+import { type CellColorStore, createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { defineGrid, type SchemaStore } from "@ranjeetk25/schema-grid-server/http";
 import { eq, sql } from "drizzle-orm";
 import type { GridRequestContext } from "../context";
@@ -19,14 +19,14 @@ export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns:
   col(5, "contact", "Contact", "text", { settable: false, sortable: false }), // computed below: read-only, unfilterable
 ] };
 
-type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore };
+type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore; colors: CellColorStore };
 
-/** The existing `leads` table as a grid; "+" columns live in `extension`. Only admins may change the schema. */
-export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) => defineGrid<GridRequestContext>({
+/** The existing `leads` table as a grid; "+" columns live in `extension`, painted cells in `colors`. Only admins may change the schema. */
+export const leadsGrid = ({ db, table: t, tz, schemaStore, extension, colors }: Deps) => defineGrid<GridRequestContext>({
   id: "leads", schema: leadsSchema, schemaStore,
   permission: (ctx, op) => op !== "updateSchema" || ctx.user.roles.includes("admin"),
   source: (ctx, { schema }) => createSqlViewDataSource({
-    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension,
+    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension, colors,
     baseQuery: () => sql`select * from ${t}`, rowId: t.id, updatedAt: t.updatedAt,
     columns: { name: { expr: t.name, searchable: true }, email: { expr: t.email, searchable: true },
       paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified },

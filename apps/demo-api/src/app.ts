@@ -15,6 +15,7 @@ import { createServerContext, resolveAccess } from "@ranjeetk25/schema-grid-serv
 import {
   type GridDb,
   type GridTables,
+  createCellColorStore,
   createDrizzleSchemaStore,
   createExtensionCellStore,
 } from "@ranjeetk25/schema-grid-server/drizzle";
@@ -26,6 +27,7 @@ import {
   toFetchHandler,
   toHttpResponse,
 } from "@ranjeetk25/schema-grid-server/http";
+import { sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -58,8 +60,9 @@ export interface AppDeps {
   dataSource?: (ctx: GridRequestContext) => DataSource<GridRow>;
   /**
    * The SQL-view grid over a plain table. Default: table `leads`, schema store
-   * `grid_schemas` and extension cells `grid_extension_cells` in MySQL (created
-   * by `ensureLeadsStorage` on boot / `__reset`). `schemaStore` overrides the store (tests).
+   * `grid_schemas`, extension cells `grid_extension_cells` and cell colors
+   * `grid_cell_colors` (shared with the fixture grid) in MySQL (created by
+   * `ensureLeadsStorage` on boot / `__reset`). `schemaStore` overrides the store (tests).
    */
   leads?: { tableName?: string; schemaStore?: GridSchemaStore } & Partial<LeadsStorageNames>;
 }
@@ -98,17 +101,20 @@ export function createApp(deps: AppDeps): CreatedApp {
   const leadsStorage: LeadsStorageNames = {
     schemasTable: deps.leads?.schemasTable ?? DEFAULT_LEADS_STORAGE.schemasTable,
     extensionTable: deps.leads?.extensionTable ?? DEFAULT_LEADS_STORAGE.extensionTable,
+    colorsTable: deps.leads?.colorsTable ?? DEFAULT_LEADS_STORAGE.colorsTable,
   };
   // MySQL-backed: columns added from "+" (schema + values) survive a restart.
   const leadsSchemaStore =
     deps.leads?.schemaStore ?? createDrizzleSchemaStore({ db: deps.db, table: leadsStorage.schemasTable });
   const leadsExtension = createExtensionCellStore({ db: deps.db, table: leadsStorage.extensionTable });
+  // One manual-colors table for both grids (rows are keyed by grid id).
+  const colors = createCellColorStore({ db: deps.db, table: leadsStorage.colorsTable });
 
   /** Both grids behind one endpoint: `POST /grid/:gridId/:op` (incl. `getSchema` / `updateSchema`), `GET /grid`. */
   const grids = createGridRegistry<GridRequestContext>(
     [
-      admissionsGrid({ ...deps, registry, resolver }),
-      leadsGrid({ db: deps.db, table: leads, tz: deps.tz, schemaStore: leadsSchemaStore, extension: leadsExtension }),
+      admissionsGrid({ ...deps, registry, resolver, colors }),
+      leadsGrid({ db: deps.db, table: leads, tz: deps.tz, schemaStore: leadsSchemaStore, extension: leadsExtension, colors }),
     ],
     {
       onError: (err, info) => {
@@ -289,6 +295,8 @@ export function createApp(deps: AppDeps): CreatedApp {
     const now = context(c).now;
     await deps.store.exclusive(() => resetGrid(env, deps.store, now()));
     await resetLeads(deps.db, leads, leadsTableName, now(), deps.tz, leadsStorage);
+    // resetLeads (re)created the shared colors table; forget the fixture grid's painted cells too.
+    await deps.db.execute(sql`DELETE FROM ${sql.identifier(leadsStorage.colorsTable)} WHERE grid_id = ${deps.gridId}`);
     if ("clear" in leadsSchemaStore && typeof leadsSchemaStore.clear === "function") leadsSchemaStore.clear();
     return c.json({ ok: true });
   });

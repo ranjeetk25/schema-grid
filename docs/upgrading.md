@@ -57,3 +57,49 @@ Additive; no wire or type breaks. In short:
 - Option copy: the read-only hint now reads "can't be set manually".
 - `capabilities.schema.reason` — optional string explaining why the schema
   is not editable.
+
+## 0.3.1 → 0.4
+
+Additive: cell colors (conditional color rules per view, shared manual colors,
+filter by color). Nothing changes until you opt in on the server; upgrade every
+package together as usual.
+
+- **New table (opt-in).** Manual colors need one table per database, shared by
+  all grids. Run once (idempotent), then pass the store as `colors` to
+  `createDrizzleDataSource` / `createSqlViewDataSource`:
+
+  ```ts
+  import { createCellColorsTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
+  import { createCellColorStore } from "@ranjeetk25/schema-grid-server/drizzle";
+
+  await db.execute(sql.raw(createCellColorsTableDDL({ table: "grid_cell_colors" }).sql));
+  const colors = createCellColorStore({ db, table: "grid_cell_colors" });
+  ```
+
+  ```sql
+  CREATE TABLE IF NOT EXISTS `grid_cell_colors` (
+    `grid_id` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    `row_id` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+    `colors` JSON NOT NULL,
+    `updated_at` DATETIME(3) NOT NULL,
+    `updated_by` VARCHAR(64) NULL,
+    PRIMARY KEY (`grid_id`, `row_id`),
+    KEY `idx_grid_cell_colors_grid_updated` (`grid_id`, `updated_at`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci
+  ```
+
+  Without a store, `capabilities.cellColors` is `{ read: false, write: false,
+  filter: true }`: rule colors render and filter, painting is hidden.
+- **Wire.** New optional op `setCellColors`; `GridQuery.colorRules`,
+  `GridRow.colors` and `capabilities.cellColors` are optional fields. A 0.3.x
+  server answers `setCellColors` with 501 and never reports `cellColors`, so a
+  0.4 grid simply hides painting. See
+  [`wire-contract.md`](./wire-contract.md#cell-colors-v04).
+- **`change_log` kind `color`.** On the JSON-cells grid a paint writes one
+  `change_log` row per cell with `kind = "color"` (next to `cell` / `create` /
+  `delete`); code that reads `change_log` directly should expect it. No DDL
+  change: `kind` is `VARCHAR(16)`.
+- **`projectRow`** (root export) now also drops manual colors of unreadable
+  columns; rows without colors carry no `colors` key.
+- **Cursors** of queries with a `colorIs` / `colorIsNone` condition include the
+  color rules in their fingerprint; other cursors are unchanged.

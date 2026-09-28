@@ -99,6 +99,8 @@ export async function createRows(
 export interface DeleteRowsOptions {
   /** Row-deletion permission hook. Default: allow. */
   canDeleteRows?: (user: PermissionUser) => boolean;
+  /** Runs in the deletion's transaction with the ids actually deleted (v0.4: drops their cell colors). */
+  onDeleted?: (tx: GridDb, ids: string[]) => Promise<void>;
 }
 
 /**
@@ -129,6 +131,7 @@ export async function deleteRows(ids: string[], ctx: ServerContext, deps: WriteD
       { gridId: deps.gridId, actor: ctx.user.id, at: now, batchId: null },
       liveIds.map((rowId) => ({ rowId, columnId: null, kind: "delete" as const, prev: null, next: null })),
     );
+    if (options.onDeleted) await options.onDeleted(tx as unknown as GridDb, liveIds);
     return liveIds;
   });
 }

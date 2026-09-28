@@ -20,6 +20,8 @@ import { formulaTranslatability, planFormulaColumns } from "../formula/formula-p
 import { buildGroupQuery, executeGroupQuery } from "../grouping/translate-grouping";
 import {
   type CellChange,
+  type CellColorBatch,
+  type CellColorResult,
   type ChangeConflict,
   type ChangeError,
   type ChangeFeedEntry,
@@ -60,6 +62,16 @@ import type { SqlScope } from "../sql/scope";
 import { type StorageKind, type StorageOverrides, storageKindOf } from "../sql/storage-kind";
 import { dateOnlyFromDriver, isoToNaiveDatetime, naiveDatetimeToIso, toIso } from "../storage/hydrate";
 import { jsonPath } from "../storage/keys";
+import type { CellColorStore } from "../colors/color-store";
+import { colorQueryScope } from "../colors/query-rules";
+import { withCellColors } from "../colors/rows";
+import {
+  assertCellColorBatch,
+  cellColorRowIds,
+  deleteCellColors,
+  planCellColors,
+  writeCellColors,
+} from "../colors/set-cell-colors";
 import type { ExtensionCellStore } from "./extension-store";
 import { rebaseColumns } from "./rebase";
 
@@ -67,6 +79,8 @@ import { rebaseColumns } from "./rebase";
 export const SQL_VIEW_BASE_ALIAS = "sg_base";
 /** Alias of the LEFT JOINed extension cells table. */
 export const SQL_VIEW_EXTENSION_ALIAS = "sg_ext";
+/** Alias of the LEFT JOINed cell colors table (v0.4). */
+export const SQL_VIEW_COLORS_ALIAS = "sg_colors";
 
 const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
 const DEFAULT_FEED_MAX_ROWS = 1000;
@@ -239,6 +253,14 @@ export interface SqlViewDataSourceOptions {
   /** Stores cells of schema columns that are not in `columns` (spec §C7). */
   extension?: ExtensionCellStore;
   /**
+   * v0.4: manual cell colors (`createCellColorStore`), LEFT JOINed on the row id
+   * like `extension`. Rows carry `colors` (unreadable columns dropped),
+   * `setCellColors` is available when cells are writable (`write.update`),
+   * color writes move the `updated_at` feed (never the row's own `updatedAt` /
+   * `version`) and deleted rows lose their colors.
+   */
+  colors?: CellColorStore;
+  /**
    * Post-read hook, batched: runs after hydration, `compute` and formula
    * evaluation and BEFORE projection (hidden cells are still there) on every
    * row-returning path — fetch, the change feed, `createRows`, `getRows` and the
@@ -374,6 +396,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
   const registry = options.registry ?? createDefaultRegistry();
   const gridId = options.gridId ?? options.schema.id;
   const extension = options.extension;
+  const colorStore = options.colors;
   const write = options.write;
   const mappedEntries = Object.entries(options.columns).filter((e): e is [string, MappedColumn] => !isComputedColumn(e[1]));
   const mappedKeys = new Set(mappedEntries.map(([k]) => k));
@@ -470,6 +493,13 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     userUpdatedAt && extension
       ? sql`GREATEST(${userUpdatedAt}, COALESCE(${extUpdatedAt}, ${userUpdatedAt}))`
       : (userUpdatedAt ?? (extension ? extUpdatedAt : undefined));
+  // v0.4: manual colors never touch the row's `updatedAt`, but a color write must move the change feed.
+  const CO = SQL_VIEW_COLORS_ALIAS;
+  const colorsDoc = colorStore ? sql`${ident(CO)}.${ident("colors")}` : undefined;
+  const feedUpdatedAt: SQL | undefined =
+    effectiveUpdatedAt && colorStore
+      ? sql`GREATEST(${effectiveUpdatedAt}, COALESCE(${ident(CO)}.${ident("updated_at")}, ${effectiveUpdatedAt}))`
+      : effectiveUpdatedAt;
 
   // Filter / sort / keyset compare datetimes in UTC; the projection reads the raw wall time.
   const comparable = (key: string, expr: SQL): SQL => (mappedKind(key) === "datetime" ? toUtcExpr(expr, naiveZone) : expr);
@@ -502,9 +532,10 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
 
   const base = options.baseQuery(viewCtx(options.db));
   const baseSql = is(base, SQL) ? sql`(${base})` : sql`${base}`;
-  const from = extension
-    ? sql`${baseSql} AS ${ident(B)} LEFT JOIN ${ident(extension.tableName)} AS ${ident(E)} ON ${ident(E)}.${ident("grid_id")} = ${gridId} AND ${ident(E)}.${ident("row_id")} = CONVERT(${rowIdSql} USING utf8mb4) COLLATE utf8mb4_bin`
-    : sql`${baseSql} AS ${ident(B)}`;
+  /** `LEFT JOIN <table> AS <alias>` on `(grid_id, row_id)` = this grid + the row id as a binary string. */
+  const joinOnRow = (table: string, alias: string) =>
+    sql` LEFT JOIN ${ident(table)} AS ${ident(alias)} ON ${ident(alias)}.${ident("grid_id")} = ${gridId} AND ${ident(alias)}.${ident("row_id")} = CONVERT(${rowIdSql} USING utf8mb4) COLLATE utf8mb4_bin`;
+  const from = sql`${baseSql} AS ${ident(B)}${extension ? joinOnRow(extension.tableName, E) : sql``}${colorStore ? joinOnRow(colorStore.tableName, CO) : sql``}`;
 
   const mappedField = (key: string) => `m_${key}`;
   const projection = (acc: AccessMap): Record<string, SQL> => {
@@ -529,6 +560,8 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       }
     }
     if (extPairs.length > 0) fields.sg_cells = sql`JSON_OBJECT(${sql.join(extPairs, sql`, `)})`;
+    // The whole document: `projectRow` drops colors of unreadable columns.
+    if (colorsDoc) fields.sg_colors = colorsDoc;
     return fields;
   };
 
@@ -551,12 +584,13 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       cells[column.key] = ft ? ft.deserialize(raw) : raw;
     }
     const updatedAt = dbRow.sg_ua;
-    return {
+    const row: GridRow = {
       id: String(dbRow.id),
       version: toNumber(dbRow.sg_bv) + toNumber(dbRow.sg_ev),
       updatedAt: updatedAt === null || updatedAt === undefined ? EPOCH_ISO : toIso(updatedAt as Date | string),
       cells,
     };
+    return colorsDoc ? withCellColors(row, dbRow.sg_colors) : row;
   };
 
   // ---- post-read: compute → mapRows → mapRow ---------------------------------------
@@ -607,6 +641,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     columnExprs,
     rowSource,
     ...(options.storageOverrides ? { storageOverrides: options.storageOverrides } : {}),
+    ...(colorsDoc ? { colors: { manual: colorsDoc } } : {}),
   };
   const scope: GridSqlScope = { ...baseScope, formulaPlans: planFormulaColumns(baseScope), gridId };
 
@@ -627,9 +662,15 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     caps.sort = without(caps.sort);
     caps.filter = without(caps.filter);
   }
+  // v0.4: rule colors filter without a store; manual colors need one, painting also writable cells.
+  caps.cellColors = { read: Boolean(colorStore), write: Boolean(colorStore) && caps.write.cells, filter: true };
   /** Tables this source reads that the app must have created (for `MISSING_TABLE` errors). */
-  const knownTables: Record<string, TableDdlHelper> = extension ? { [extension.tableName]: "createExtensionCellsTableDDL" } : {};
-  const guarded = <T>(fn: () => Promise<T>): Promise<T> => (extension ? guardMissingTable(knownTables, fn) : fn());
+  const knownTables: Record<string, TableDdlHelper> = {
+    ...(extension ? { [extension.tableName]: "createExtensionCellsTableDDL" as const } : {}),
+    ...(colorStore ? { [colorStore.tableName]: "createCellColorsTableDDL" as const } : {}),
+  };
+  const guarded = <T>(fn: () => Promise<T>): Promise<T> =>
+    Object.keys(knownTables).length > 0 ? guardMissingTable(knownTables, fn) : fn();
 
   // ---- reads -------------------------------------------------------------------
   const idsIn = (ids: string[]) => sql`${rowIdSql} IN (${sql.join(
@@ -893,8 +934,39 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
         const t = extension.table;
         await db.delete(t).where(and(eq(t.gridId, gridId), inArray(t.rowId, unique)));
       }
+      if (colorStore) await deleteCellColors(db, colorStore, gridId, unique);
     }));
     await afterCommit({ kind: "deleteRows", deletedIds: unique });
+  }
+
+  /**
+   * v0.4 manual colors: in ONE transaction, load the batch's rows through the write
+   * path (`loadRows`: every column, row-aware permissions), upsert each row's colors
+   * document and re-read the written rows. The base-table write hooks never run;
+   * `version` / `updatedAt` are untouched (the feed follows the color's `updated_at`).
+   */
+  async function setCellColors(batch: CellColorBatch): Promise<CellColorResult> {
+    assertCellColorBatch(batch);
+    const store = colorStore as CellColorStore;
+    return guarded(() =>
+      options.db.transaction(async (tx) => {
+        const db = tx as unknown as GridDb;
+        const loaded = await loadRows(db, cellColorRowIds(batch));
+        const plan = planCellColors(batch, new Map([...loaded].map(([id, l]) => [id, l.row])), ctx, access);
+        if (plan.writes.size === 0) return { applied: plan.applied, rejected: plan.rejected, rows: [] };
+        await writeCellColors(db, store, gridId, plan.writes, ctx.user.id, ctx.now());
+        const ids = [...plan.writes.keys()];
+        const fresh = await loadRows(db, ids);
+        const rows = await finish(
+          ids.flatMap((id) => {
+            const f = fresh.get(id);
+            return f ? [f.row] : [];
+          }),
+          db,
+        );
+        return { applied: plan.applied, rejected: plan.rejected, rows };
+      }),
+    );
   }
 
   // ---- updated_at change feed (§C8) -------------------------------------------
@@ -912,7 +984,8 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
   };
 
   async function getChanges(since: string): Promise<ChangeFeedEntry<GridRow>> {
-    const eff = effectiveUpdatedAt as SQL;
+    // Rows whose data OR manual colors changed after the cursor (one row once, cursor format unchanged).
+    const eff = feedUpdatedAt as SQL;
     const tSql = sql`DATE_FORMAT(${eff}, '%Y-%m-%d %H:%i:%s.%f')`;
     const schemaVersion = ctx.schema.schemaVersion;
     if (!since) {
@@ -955,10 +1028,11 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     fetch: (input) =>
       guarded(async () => {
         const query = withDefaultSort(clampPage(input));
+        const qScope = colorQueryScope(query, scope, access);
         if (query.groupBy && query.groupBy.length > 0) {
-          return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
+          return executeGroupQuery(buildGroupQuery(query, qScope, options.db, access), qScope);
         }
-        return runRowQuery(query, scope, options.db, access);
+        return runRowQuery(query, qScope, options.db, access);
       }),
     applyChanges,
     createRows,
@@ -973,6 +1047,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     },
   };
   if (caps.changeFeed !== false && effectiveUpdatedAt) ds.getChanges = (since) => guarded(() => getChanges(since));
+  if (colorStore && caps.cellColors?.write) ds.setCellColors = setCellColors;
   if (options.linkLookup) {
     const lookup = options.linkLookup;
     ds.lookup = async (columnId, search) => {

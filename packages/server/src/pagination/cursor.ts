@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { CursorError } from "../errors";
-import type { GridQuery } from "../internal/core";
+import { type GridQuery, hasColorCondition } from "../internal/core";
 
 export interface CursorPayload {
   v: 1;
@@ -54,11 +54,13 @@ function isCursorPayload(value: unknown): value is CursorPayload {
   return true;
 }
 
-type FingerprintInput = Pick<GridQuery, "filter" | "sort" | "search" | "groupBy">;
+type FingerprintInput = Pick<GridQuery, "filter" | "sort" | "search" | "groupBy" | "colorRules">;
 
 /**
  * Stable short hash of filter + sort + search + groupBy (+ schemaVersion when given),
- * used to invalidate stale cursors — including after a schema change.
+ * used to invalidate stale cursors — including after a schema change. v0.4:
+ * `colorRules` count only when the filter has a color condition (the only
+ * case in which they change the result), so other cursors are unchanged.
  */
 export function queryFingerprint(query: FingerprintInput, schemaVersion?: number): string {
   const canonical = canonicalize({
@@ -67,6 +69,7 @@ export function queryFingerprint(query: FingerprintInput, schemaVersion?: number
     sort: query.sort ?? [],
     search: query.search ?? "",
     groupBy: query.groupBy ?? [],
+    ...(hasColorCondition(query.filter) && query.colorRules ? { colorRules: query.colorRules } : {}),
   });
   return createHash("sha1").update(JSON.stringify(canonical)).digest("hex").slice(0, 16);
 }

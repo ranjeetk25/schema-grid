@@ -36,6 +36,7 @@ Every operation takes one JSON value and returns one JSON value. Schemas are Zod
 | `createOption` | yes | `{ columnId: string, label: string }` | `Option` |
 | `lookup` | yes | `{ columnId: string, search: string }` | `LinkRef[]` |
 | `getRows` | yes | `{ ids: string[] }` | `GridRow[]` (v0.3.1: the current rows, projected for the caller, formulas / computed columns evaluated; unknown or invisible ids skipped; order follows `ids`) |
+| `setCellColors` | yes | `CellColorBatch` (`{ id, changes: { rowId, columnId, color: CellColor \| null }[] }`) | `CellColorResult` (`{ applied, rejected: { rowId, columnId, message }[], rows? }`; v0.4, see "Cell colors") |
 | `getSchema` | grid | `null` | `GridSchema` |
 | `updateSchema` | grid | `GridSchema` (with the current `schemaVersion`) | `GridSchema` (stored, `schemaVersion` + 1) |
 
@@ -59,6 +60,33 @@ Notes:
   a grid registry reduces every `users` list to `[caller.id]` or `[]` for callers without schema-write permission
   (unless `defineGrid({ redactPermissionUsers: false })`); `updateSchema` dedupes them.
 
+### Cell colors (v0.4)
+
+Three additions, all optional on the wire (older clients and servers ignore them):
+
+- **`GridRow.colors`** — `Record<columnId, CellColor>`: the row's **manual** (painted) colors, shared by every
+  user. Rule colors are never on rows. Absent (never `{}`) when the row has none; colors of columns the caller
+  cannot read are dropped. `CellColor` is the fixed palette `red | orange | yellow | green | teal | blue | purple |
+  pink | gray`.
+- **`fetch` → `GridQuery.colorRules`** — the active view's `ColorRule[]` (`{ id, color, target: { kind: "cells",
+  columnIds } | { kind: "row" }, when: FilterNode | null, enabled? }`), sent with every fetch so the source can
+  evaluate the color operators `colorIs` (`value: CellColor[]`) and `colorIsNone` against the color a cell
+  **shows**: manual color > first matching enabled `cells` rule for the column > first matching enabled `row`
+  rule. Sources ignore (and do not validate) the rules unless the filter has a color condition; when it does,
+  invalid rules (unknown / unreadable column, bad color, a color condition inside a rule's `when`, …) answer
+  `FILTER_INVALID` 400, like a malformed filter. The color operators work on every readable column, including
+  `filterable: false` ones. Cursors of such queries are bound to the rules too (a rules change → `INVALID_CURSOR`).
+- **`setCellColors`** — paints (`color`) or clears (`null`) cells, last write wins. Allowed exactly where the
+  caller's effective access to the cell is `edit` (not a formula, not `settable: false`). Per-change refusals are
+  data, not errors: `rejected[].message` is `"Row not found"`, `"Column not found"` (unknown or unreadable),
+  `"Read-only"` or `"Invalid color"`. Painting does **not** bump `version` / `updatedAt` (no conflicts with data
+  edits), but painted rows appear in the next `getChanges` with their new `colors`. `rows` (optional) are the
+  painted rows as they now are. On the wire a non-palette `color` already fails the input schema
+  (`INPUT_INVALID` 400); `"Invalid color"` is what direct (in-process) callers get. Sources without the op answer
+  `UNSUPPORTED_OPERATION` 501.
+- **`capabilities.cellColors`** — `{ read, write, filter }` (all false when absent): `read` = rows carry manual
+  `colors`, `write` = `setCellColors` works, `filter` = the source evaluates `colorIs` / `colorIsNone`.
+
 ## Errors
 
 A failed operation yields `WireError { code: string; message: string; details?: unknown }` plus an HTTP status.
@@ -67,7 +95,7 @@ A failed operation yields `WireError { code: string; message: string; details?: 
 | code | status | raised when |
 |---|---|---|
 | `INPUT_INVALID` | 400 | input fails the op schema; unknown column / bad page / bad option label / wrong column type |
-| `FILTER_INVALID` | 400 | malformed filter AST, or the data source rejects the filter (unknown/unreadable column, operator, value kind, depth) |
+| `FILTER_INVALID` | 400 | malformed filter AST, or the data source rejects the filter (unknown/unreadable column, operator, value kind, depth) or, with a color condition, the `colorRules` (v0.4) |
 | `INVALID_CURSOR` | 400 | stale or malformed page / change-feed cursor |
 | `SCHEMA_INVALID` | 400 | server `SchemaValidationError` |
 | `ROW_INVALID` | 400 | `createRows` partial rejected (server `RowValidationError`, `InMemoryMutationError`) |

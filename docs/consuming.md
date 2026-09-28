@@ -150,11 +150,12 @@ A grid over a table you already have is one `defineGrid()` call. This is the dem
 verbatim ([`apps/demo-api/src/leads/grid.ts`](../apps/demo-api/src/leads/grid.ts) — a test keeps the two in
 sync): a plain `leads(id, name, email, payment_status ENUM, call_date DATE, ai_verified BOOL, updated_at)`
 table, no `cells` JSON, no version column. Columns added from the grid's "+" header are saved in a schema store and
-their values in an extension cells table beside `leads` (both created once, see below).
+their values in an extension cells table beside `leads`; painted (manual) cell colors live in a cell colors table
+(all three created once, see below).
 
 ```ts
 import { type ColumnDef, createRolePermissionResolver, type GridSchema } from "@ranjeetk25/schema-grid-core";
-import { createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
+import { type CellColorStore, createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { defineGrid, type SchemaStore } from "@ranjeetk25/schema-grid-server/http";
 import { eq, sql } from "drizzle-orm";
 import type { GridRequestContext } from "../context";
@@ -174,14 +175,14 @@ export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns:
   col(5, "contact", "Contact", "text", { settable: false, sortable: false }), // computed below: read-only, unfilterable
 ] };
 
-type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore };
+type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore; colors: CellColorStore };
 
-/** The existing `leads` table as a grid; "+" columns live in `extension`. Only admins may change the schema. */
-export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) => defineGrid<GridRequestContext>({
+/** The existing `leads` table as a grid; "+" columns live in `extension`, painted cells in `colors`. Only admins may change the schema. */
+export const leadsGrid = ({ db, table: t, tz, schemaStore, extension, colors }: Deps) => defineGrid<GridRequestContext>({
   id: "leads", schema: leadsSchema, schemaStore,
   permission: (ctx, op) => op !== "updateSchema" || ctx.user.roles.includes("admin"),
   source: (ctx, { schema }) => createSqlViewDataSource({
-    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension,
+    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension, colors,
     baseQuery: () => sql`select * from ${t}`, rowId: t.id, updatedAt: t.updatedAt,
     columns: { name: { expr: t.name, searchable: true }, email: { expr: t.email, searchable: true },
       paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified },
@@ -198,23 +199,41 @@ export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) =>
 Serve every grid from one endpoint (`POST /grid/:gridId/:op` — the schema is the `getSchema` op — and `GET /grid` to list grids):
 
 ```ts
-import { createExtensionCellsTableDDL, createGridSchemasTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
-import { createDrizzleSchemaStore, createExtensionCellStore } from "@ranjeetk25/schema-grid-server/drizzle";
+import {
+  createCellColorsTableDDL,
+  createExtensionCellsTableDDL,
+  createGridSchemasTableDDL,
+} from "@ranjeetk25/schema-grid-server/ddl";
+import {
+  createCellColorStore,
+  createDrizzleSchemaStore,
+  createExtensionCellStore,
+} from "@ranjeetk25/schema-grid-server/drizzle";
 import { createGridRegistry, toFetchHandler } from "@ranjeetk25/schema-grid-server/http";
 
 // On boot (idempotent `CREATE TABLE IF NOT EXISTS`):
 await db.execute(sql.raw(createGridSchemasTableDDL({ table: "grid_schemas" }).sql));
 await db.execute(sql.raw(createExtensionCellsTableDDL({ table: "grid_extension_cells" }).sql));
+await db.execute(sql.raw(createCellColorsTableDDL({ table: "grid_cell_colors" }).sql));
 
 const schemaStore = createDrizzleSchemaStore({ db, table: "grid_schemas" });
 const extension = createExtensionCellStore({ db, table: "grid_extension_cells" });
+const colors = createCellColorStore({ db, table: "grid_cell_colors" }); // one table for every grid (keyed by grid id)
 const grids = createGridRegistry([
-  admissionsGrid(deps),
-  leadsGrid({ db, table: leads, tz: "Asia/Kolkata", schemaStore, extension }),
+  admissionsGrid({ ...deps, colors }), // createDrizzleDataSource({ …, colors })
+  leadsGrid({ db, table: leads, tz: "Asia/Kolkata", schemaStore, extension, colors }),
 ]);
 const endpoint = toFetchHandler(grids, { basePath: "/grid", context: (request) => contextFrom(request.headers) });
 app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js route handlers take `endpoint` as is
 ```
+
+**Cell colors (v0.4).** The `colors` store is optional: color rules saved on a view render and filter
+(`colorIs` / `colorIsNone`) without it, while painting cells ("Cell color", shared by every user) needs it — pass
+the same store to every data source (`createDrizzleDataSource({ …, colors })`, `createSqlViewDataSource({ …,
+colors })`); it is keyed by grid id, so one table serves every grid. Anyone who can edit a cell can paint it.
+Painting never bumps a row's version, and painted rows reach other users through the change feed. Details:
+[server README, "Cell colors"](../packages/server/README.md#cell-colors), wire format in
+[`wire-contract.md`](./wire-contract.md#cell-colors-v04).
 
 `toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json({ strict: false }), …)` — before
 the global `express.json()`, see "Server (Express)") and

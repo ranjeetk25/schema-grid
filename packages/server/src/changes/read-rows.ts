@@ -1,5 +1,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { projectRow } from "../access/projection";
+import type { CellColorStore } from "../colors/color-store";
+import { withCellColors } from "../colors/rows";
+import { loadCellColors } from "../colors/set-cell-colors";
 import { resolveAccess } from "../access/query-access";
 import type { ServerContext } from "../context";
 import { evaluateFormulaCells } from "../formula/evaluate-rows";
@@ -13,12 +16,14 @@ export interface ReadRowsOptions {
   mapRows?: (rows: GridRow[]) => Promise<GridRow[]> | GridRow[];
   /** Zone of naive DATETIME wall times in physical `datetime` columns. Default UTC. */
   naiveDatetimeZone?: string;
+  /** v0.4: manual cell colors, read with one extra keyed lookup (`GridRow.colors`). */
+  colors?: CellColorStore;
 }
 
 /**
  * The current state of `ids` as the caller sees it: one `SELECT … WHERE id IN (…)`
  * on `db` (a transaction during writes), soft-deleted and unknown ids skipped,
- * then hydrate → formula evaluation → `mapRows` → `projectRow`. Order follows
+ * then hydrate (+ manual colors with `options.colors`) → formula evaluation → `mapRows` → `projectRow`. Order follows
  * `ids` (a repeated id yields the row again). Backs `ChangeResult.rows`,
  * `DataSource.getRows` and the change feed.
  */
@@ -47,8 +52,13 @@ export async function readRowsById(
     return row ? [row] : [];
   });
   if (ordered.length === 0) return [];
+  let colored = ordered;
+  if (options.colors) {
+    const docs = await loadCellColors(db, options.colors, deps.gridId, [...live.keys()]);
+    colored = ordered.map((row) => withCellColors(row, docs.get(row.id)));
+  }
   const access = resolveAccess(ctx);
-  const evaluated = evaluateFormulaCells(ordered, access, ctx);
+  const evaluated = evaluateFormulaCells(colored, access, ctx);
   const mapped = options.mapRows ? await options.mapRows(evaluated) : evaluated;
   return mapped.map((row) => projectRow(row, ctx.schema, access));
 }

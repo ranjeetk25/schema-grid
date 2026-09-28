@@ -104,6 +104,35 @@ describe("toFetchHandler (Web Request → Response)", () => {
     expect(await slash.json()).toEqual({ data: [{ id: "admissions" }, { id: "secret" }] });
   });
 
+  it("routes setCellColors (v0.4) like every other op; capabilities report cellColors; 501 when the source lacks it", async () => {
+    const res = await post("/admissions/setCellColors", { id: "p1", changes: [{ rowId: "r1", columnId: C.name, color: "red" }] }, "counsellor");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { applied: unknown[]; rows: GridRow[] } };
+    expect(body.data.applied).toEqual([{ rowId: "r1", columnId: C.name, color: "red" }]);
+    expect(body.data.rows[0]?.colors).toEqual({ [C.name]: "red" });
+    const caps = await post("/admissions/capabilities", null);
+    expect(((await caps.json()) as { data: { cellColors: unknown } }).data.cellColors).toEqual({ read: true, write: true, filter: true });
+    const bad = await post("/admissions/setCellColors", { id: "p2", changes: [{ rowId: "r1", columnId: C.name, color: "hex" }] });
+    expect(bad.status).toBe(400);
+
+    const bare = toFetchHandler(
+      createGridRegistry([
+        defineGrid({
+          id: "plain",
+          schema: createFixtureSchema(),
+          source: () => {
+            const { setCellColors: _omit, ...rest } = memory("admin", createFixtureSchema());
+            return rest;
+          },
+        }),
+      ]),
+    );
+    const none = await bare(
+      new Request("http://test.local/plain/setCellColors", { method: "POST", body: JSON.stringify({ id: "p", changes: [] }) }),
+    );
+    expect(none.status).toBe(501);
+  });
+
   it("updateSchema round-trips and is permission-checked", async () => {
     const base = createFixtureSchema();
     const next = { ...base, columns: base.columns.map((c, i) => (i === 0 ? { ...c, label: "Renamed" } : c)) };
