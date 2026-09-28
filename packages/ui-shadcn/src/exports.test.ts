@@ -47,6 +47,15 @@ describe("subpath exports", () => {
       "useGridThemeFromShadcn",
       "notifyClipboardReport",
       "useShadcnConflictPrompt",
+      // v0.4 cell colors
+      "CellColorButton",
+      "CellColorPicker",
+      "ColorRulesDialog",
+      "createShadcnHeaderMenu",
+      "CELL_COLOR_PALETTE",
+      "ColorSwatch",
+      "notifyCellColorReport",
+      "withColorFilter",
     ]) {
       expect(m, name).toHaveProperty(name);
     }

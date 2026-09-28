@@ -43,12 +43,34 @@ export {
   type ColorSwatchProps,
 } from "./theme/cellColors";
 export {
+  cellColorSummary,
+  formatCellColorReport,
+  notifyCellColorReport,
+  type NotifyCellColorReportOptions,
+} from "./notifications/notifyCellColorReport";
+export {
   formatClipboardReport,
   notifyClipboardReport,
   type ClipboardReportMessage,
   type NotifyClipboardReportOptions,
 } from "./notifications/notifyClipboardReport";
 export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./internal/grid-contracts";
+
+// v0.4 cell colors: paint popover, swatch picker, color rules editor
+export { CellColorButton, useCanPaint, type CellColorButtonProps, type CellColorPaintHandle } from "./colors/CellColorButton";
+export { CellColorPicker, type CellColorPickerProps } from "./colors/CellColorPicker";
+export { ColorRulesDialog, type ColorRulesDialogProps } from "./colors/ColorRulesDialog";
+export {
+  addColorRule,
+  moveColorRule,
+  newColorRuleId,
+  removeColorRule,
+  ruleIssueMessages,
+  updateColorRule,
+  validateColorRulesDraft,
+} from "./colors/colorRulesModel";
+export type { CellColor, ColorRule, ColorRuleTarget } from "./internal/core-contracts";
+export type { CellColorReport } from "./internal/grid-contracts";
 
 // Host toolbar primitives (the kit's own shadcn components, so a host's chrome
 // around the grid matches it: 32px controls, Linear tooltips, segmented control).
