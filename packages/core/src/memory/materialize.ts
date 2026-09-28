@@ -1,6 +1,7 @@
 import { evaluate } from "../formula/evaluate";
 import { parseFormula } from "../formula/parser";
 import { type FormulaEnv, type FormulaNode, isFormulaError } from "../formula/types";
+import { type CellColor, isCellColor } from "../colors/types";
 import type { GridRow } from "../rows/types";
 import type { GridSchema } from "../schema/types";
 
@@ -45,11 +46,44 @@ export function materialized<Row extends GridRow>(row: Row, schema: GridSchema, 
   return copy;
 }
 
-/** Returns a copy of `row` whose cells only contain the given column keys. */
-export function projectRow<Row extends GridRow>(row: Row, readableKeys: ReadonlySet<string>): Row {
+/**
+ * Valid palette colors of `colors` whose column id passes `keep`, or undefined
+ * when none remain (rows carry no `colors` rather than `{}`).
+ */
+export function cleanColors(
+  colors: unknown,
+  keep: (columnId: string) => boolean = () => true,
+): Record<string, CellColor> | undefined {
+  if (typeof colors !== "object" || colors === null || Array.isArray(colors)) return undefined;
+  const out: Record<string, CellColor> = {};
+  for (const [columnId, color] of Object.entries(colors)) {
+    if (isCellColor(color) && keep(columnId)) out[columnId] = color;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** `row` (shallow copy) with `colors` set, or without the key when `colors` is undefined. */
+export function withColors<Row extends GridRow>(row: Row, colors: Record<string, CellColor> | undefined): Row {
+  const { colors: _previous, ...rest } = row;
+  return (colors ? { ...rest, colors } : rest) as Row;
+}
+
+/**
+ * Returns a copy of `row` whose cells only contain the given column keys and
+ * whose manual `colors` only contain the given column ids (v0.4).
+ */
+export function projectRow<Row extends GridRow>(
+  row: Row,
+  readableKeys: ReadonlySet<string>,
+  readableIds: ReadonlySet<string>,
+): Row {
   const cells: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(row.cells)) {
     if (readableKeys.has(key)) cells[key] = structuredClone(value);
   }
-  return { ...structuredClone({ ...row, cells: {} }), cells };
+  const { colors: rawColors, ...rest } = row;
+  const out = { ...structuredClone({ ...rest, cells: {} }), cells } as Row;
+  const colors = cleanColors(rawColors, (id) => readableIds.has(id));
+  if (colors) out.colors = colors;
+  return out;
 }

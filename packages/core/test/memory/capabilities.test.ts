@@ -16,9 +16,12 @@ function rows(n: number): GridRow[] {
 }
 
 describe("in-memory capabilities", () => {
-  it("reports the defaults when none are configured", async () => {
+  it("reports the defaults (plus full cell color support) when none are configured", async () => {
     const ds = createInMemoryDataSource({ schema: createFixtureSchema(), rows: createFixtureRows() });
-    expect(await ds.capabilities?.()).toEqual(DEFAULT_CAPABILITIES);
+    expect(await ds.capabilities?.()).toEqual({
+      ...DEFAULT_CAPABILITIES,
+      cellColors: { read: true, write: true, filter: true },
+    });
   });
 
   it("reports configured capabilities and clamps page.limit to maxPageSize", async () => {
