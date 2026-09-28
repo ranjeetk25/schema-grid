@@ -47,7 +47,7 @@ test("paint → filter by color → undo", async ({ page }) => {
   await page.locator('.ag-header-cell[col-id="col_status"]').hover();
   await page.getByRole("button", { name: "Column menu: Payment status" }).click();
   await page.getByRole("menuitem", { name: "Filter by color" }).hover();
-  await page.getByRole("menu", { name: "Filter by color" }).getByRole("menuitem", { name: "Red", exact: true }).click();
+  await page.getByRole("menu", { name: "Filter by color" }).getByRole("menuitemcheckbox", { name: "Red", exact: true }).click();
   await expect.poll(() => filterAst(page)).toEqual({ op: "and", children: [{ columnId: "col_status", operator: "colorIs", value: ["red"] }] });
   await expect.poll(() => renderedRowIds(page)).toEqual(["r2"]);
   await expect(page.getByRole("button", { name: /^Remove filter: Payment status color is Red/ })).toBeVisible();

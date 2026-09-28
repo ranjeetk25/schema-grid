@@ -24,16 +24,16 @@
  * v0.3.1: the "save" banner (red, role alert, auto-dismiss paused on hover)
  * and the neutral "schema-unavailable" banner.
  *
- * v0.4 cell colors (kit-only; `useWorkbench` is untouched): a "Cell color"
- * paint popover (shown when the source reads + writes colors, enabled while
- * `handle.canPaint()`), a "Color rules" dialog (lazy) editing the view's
+ * v0.4 cell colors: a "Cell color" paint popover (`features.paint`: the
+ * source reads + writes colors; enabled while `handle.canPaint()`), a
+ * "Color rules" dialog (`features.colorRules`, lazy) editing the view's
  * rules through `handle.setColorRules`, "color is" operators in the filter
- * builder and a "Filter by color" header submenu when
- * `cellColors.filter`, and paint reports in the status bar (a toast when
- * cells were skipped or rejected).
+ * builder and a "Filter by color" header submenu (`CellColorFilterProvider`
+ * around the grid) when `cellColors.filter`, and paint reports in the
+ * status bar (a toast when cells were skipped or rejected).
  */
 import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
-import type { CellColor, FilterNode } from "@ranjeetk25/schema-grid-core";
+import type { FilterNode } from "@ranjeetk25/schema-grid-core";
 import {
   CircleAlertIcon,
   DownloadIcon,
@@ -58,8 +58,9 @@ import { useShadcnConflictPrompt } from "../conflict/useShadcnConflictPrompt";
 import { createShadcnUiRegistry } from "../editors";
 import { FilterButton } from "../filter-builder/FilterButton";
 import { FilterChips } from "../filter-builder/FilterChips";
-import { withColorFilter } from "../filter-builder/model";
-import { createShadcnHeaderMenu } from "../header-menu/ShadcnHeaderMenu";
+import { columnColorFilter, setColumnColorFilter } from "../filter-builder/model";
+import { CellColorFilterProvider, type CellColorFilterContextValue } from "../header-menu/cellColorFilter";
+import { ShadcnHeaderMenu } from "../header-menu/ShadcnHeaderMenu";
 import { type CellColorReport, canFilterByColor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { cellColorSummary, notifyCellColorReport } from "../notifications/notifyCellColorReport";
@@ -240,24 +241,24 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   const gridBoxRef = useRef<HTMLDivElement>(null);
 
   // ---- v0.4 cell colors ------------------------------------------------------
-  const cellColorCaps = wb.effectiveCapabilities?.cellColors;
-  const canWriteColors = cellColorCaps?.read === true && cellColorCaps.write === true;
-  const colorFilter = features.filter && canFilterByColor(wb.effectiveCapabilities);
   const [colorReport, setColorReport] = useState<CellColorReport | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
   const rulesEver = useEverOpened(rulesOpen);
   const colorRules = wb.handle?.colorRules ?? [];
-  // The header menu is created once (a new component would remount open menus); it reads the latest state through refs.
-  const colorMenuRef = useRef({ enabled: colorFilter, filter: wb.filter, apply: wb.applyFilter });
-  colorMenuRef.current = { enabled: colorFilter, filter: wb.filter, apply: wb.applyFilter };
-  const [headerMenu] = useState(() =>
-    createShadcnHeaderMenu({
-      canFilterByColor: () => colorMenuRef.current.enabled,
-      filterByColor: (columnId: string, color: CellColor | null) => {
-        const { filter, apply } = colorMenuRef.current;
-        apply(withColorFilter(filter, columnId, color === null ? null : [color]));
-      },
-    }),
+  // Header "Filter by color": provided (context) only when the source filters by color and Filter is on.
+  const colorFilterOn = features.filter && canFilterByColor(wb.effectiveCapabilities);
+  const filterRef = useRef(wb.filter);
+  filterRef.current = wb.filter;
+  const applyFilter = wb.applyFilter;
+  const colorFilter = useMemo<CellColorFilterContextValue | null>(
+    () =>
+      colorFilterOn
+        ? {
+            get: (columnId) => columnColorFilter(filterRef.current, columnId),
+            set: (columnId, next) => applyFilter(setColumnColorFilter(filterRef.current, columnId, next)),
+          }
+        : null,
+    [colorFilterOn, applyFilter],
   );
   const hostColorReport = props.gridProps?.onCellColorReport;
   const onCellColorReport = (report: CellColorReport) => {
@@ -386,7 +387,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               {features.group ? (
                 <GroupByBar schema={wb.effectiveSchema ?? schema} registry={wb.registry} access={wb.access} value={wb.groupBy} onChange={wb.applyGroupBy} />
               ) : null}
-              {wb.effectiveCapabilities ? (
+              {features.colorRules ? (
                 <Button variant="secondary" aria-haspopup="dialog" onClick={() => setRulesOpen(true)}>
                   <PaletteIcon aria-hidden className="sg:size-4 sg:text-muted-foreground" />
                   Color rules
@@ -432,7 +433,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             <div className="sg:flex sg:flex-none sg:items-center sg:gap-0.5">
               {renderSlot(props.toolbarEnd, slotContext)}
               {/* A failed paint is rolled back by the grid and reported by the data-source tap (banner + onError). */}
-              {canWriteColors ? <CellColorButton handle={wb.handle} onError={ignorePaintError} /> : null}
+              {features.paint ? <CellColorButton handle={wb.handle} onError={ignorePaintError} /> : null}
               <ColumnsButton items={wb.columns.items} onChange={wb.columns.apply} />
               {features.undo ? (
                 <>
@@ -495,41 +496,43 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           style={typeof height === "number" ? { height } : undefined}
         >
           {schema ? (
-            <SchemaGrid
-              {...(props.gridProps ?? {})}
-              ref={wb.setHandle}
-              schema={schema}
-              dataSource={wb.dataSource}
-              user={props.user}
-              resolver={wb.resolver}
-              registry={wb.registry}
-              uiRegistry={uiRegistry}
-              mode={wb.mode}
-              view={wb.activeView}
-              onViewChange={wb.onViewChange}
-              events={wb.events}
-              height="100%"
-              poll={wb.poll}
-              {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
-              theme={props.gridProps?.theme ?? theme}
-              gridOptions={gridOptions}
-              headerMenu={props.gridProps?.headerMenu ?? headerMenu}
-              onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
-              {...(features.addColumn
-                ? {
-                    onEditColumn: wb.onEditColumn,
-                    onAddColumn: wb.onAddColumn,
-                    onInsertColumn: wb.onInsertColumn,
-                    draftColumn: wb.panel.draftColumn,
-                  }
-                : {})}
-              {...(props.pageSize ? { pageSize: props.pageSize } : {})}
-              onClipboardReport={(report) => {
-                wb.onClipboardReport(report);
-                void notifyClipboardReport(report);
-              }}
-              onCellColorReport={onCellColorReport}
-            />
+            <CellColorFilterProvider value={colorFilter}>
+              <SchemaGrid
+                {...(props.gridProps ?? {})}
+                ref={wb.setHandle}
+                schema={schema}
+                dataSource={wb.dataSource}
+                user={props.user}
+                resolver={wb.resolver}
+                registry={wb.registry}
+                uiRegistry={uiRegistry}
+                mode={wb.mode}
+                view={wb.activeView}
+                onViewChange={wb.onViewChange}
+                events={wb.events}
+                height="100%"
+                poll={wb.poll}
+                {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
+                theme={props.gridProps?.theme ?? theme}
+                gridOptions={gridOptions}
+                headerMenu={props.gridProps?.headerMenu ?? ShadcnHeaderMenu}
+                onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
+                {...(features.addColumn
+                  ? {
+                      onEditColumn: wb.onEditColumn,
+                      onAddColumn: wb.onAddColumn,
+                      onInsertColumn: wb.onInsertColumn,
+                      draftColumn: wb.panel.draftColumn,
+                    }
+                  : {})}
+                {...(props.pageSize ? { pageSize: props.pageSize } : {})}
+                onClipboardReport={(report) => {
+                  wb.onClipboardReport(report);
+                  void notifyClipboardReport(report);
+                }}
+                onCellColorReport={onCellColorReport}
+              />
+            </CellColorFilterProvider>
           ) : (
             <div data-testid="workbench-loading" className="sg:flex sg:h-full sg:min-h-40 sg:items-center sg:justify-center">
               {wb.schemaLoading ? <LoaderCircleIcon aria-label="Loading" className="sg:size-4 sg:animate-spin sg:text-muted-foreground" /> : null}

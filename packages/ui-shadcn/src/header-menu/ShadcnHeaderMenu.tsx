@@ -18,11 +18,11 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { CellColor } from "../internal/core-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
-import { CELL_COLOR_PALETTE, ColorSwatch } from "../theme/cellColors";
+import { CELL_COLOR_PALETTE, CellColorSwatch } from "../theme/cellColors";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -31,20 +31,9 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useCellColorFilter } from "./cellColorFilter";
 import type { HeaderMenuComponent, HeaderMenuProps } from "./contract";
 
-export interface ShadcnHeaderMenuOptions {
-  /**
-   * v0.4: adds a "Filter by color" submenu (palette swatches + "No color").
-   * Called with the column id and the picked color, `null` for "No color"
-   * (`colorIsNone`); the host sets the condition (the workbench uses
-   * `withColorFilter`). Offer it only when the source can filter by color
-   * (`canFilterByColor(handle.effectiveCapabilities)`).
-   */
-  filterByColor?(columnId: string, color: CellColor | null): void;
-  /** Read on every render: `false` hides the submenu (e.g. capabilities not loaded). Default: shown. */
-  canFilterByColor?(): boolean;
-}
 
 interface Rect {
   left: number;
@@ -90,18 +79,6 @@ function Item({
 }
 
 /**
- * `ShadcnHeaderMenu` with options (v0.4 "Filter by color"). Create it once
- * (module scope or a `useMemo`/`useState` initialiser): a new component
- * identity remounts every open menu. The callbacks may read refs.
- */
-export function createShadcnHeaderMenu(options: ShadcnHeaderMenuOptions = {}): HeaderMenuComponent {
-  function ShadcnHeaderMenuWithOptions(props: HeaderMenuProps) {
-    return <HeaderMenuView {...props} options={options} />;
-  }
-  return ShadcnHeaderMenuWithOptions;
-}
-
-/**
  * Column header menu (Radix DropdownMenu), controlled by `opened` / `onClose`
  * and anchored to `anchor` through a zero-chrome virtual trigger laid over
  * the anchor's rect (portalled to <body>, so transformed / clipped header
@@ -109,13 +86,7 @@ export function createShadcnHeaderMenu(options: ShadcnHeaderMenuOptions = {}): H
  * reports the close through `onClose`). Optional items render only when their
  * callback exists (Group by also needs `canGroup`).
  */
-export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu(props: HeaderMenuProps) {
-  return <HeaderMenuView {...props} options={NO_OPTIONS} />;
-};
-
-const NO_OPTIONS: ShadcnHeaderMenuOptions = {};
-
-function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: HeaderMenuProps & { options: ShadcnHeaderMenuOptions }) {
+export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({ column, anchor, opened, onClose, actions }: HeaderMenuProps) {
   const [rect, setRect] = useState<Rect>(() => rectOf(anchor));
   // One close report per opening: Radix can signal "close" more than once
   // (item select, then focus / pointer outside) before the host re-renders.
@@ -152,8 +123,9 @@ function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: H
   const canSort = actions.canSort !== false;
   const showEdit = typeof actions.editColumn === "function";
   const showInsert = typeof actions.insertColumn === "function";
-  const { filterByColor } = options;
-  const showColor = typeof filterByColor === "function" && options.canFilterByColor?.() !== false;
+  // v0.4: "Filter by color" only inside a CellColorFilterProvider (the workbench provides one when the source filters by color).
+  const colorFilter = useCellColorFilter();
+  const activeColors = colorFilter?.get(column.colId) ?? null;
 
   const trigger =
     typeof document === "undefined"
@@ -216,7 +188,7 @@ function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: H
         <Item icon={<ChevronsLeftRightIcon />} label="Autosize all columns" onSelect={run(() => actions.autosizeAll())} />
         <DropdownMenuSeparator />
         <Item icon={<ListFilterIcon />} label="Filter…" hint="⌘↵" disabled={!canFilter} onSelect={run(() => actions.openFilter())} />
-        {showColor ? (
+        {colorFilter ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <PaletteIcon />
@@ -224,18 +196,28 @@ function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: H
                 Filter by color
               </span>
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent aria-label="Filter by color" className="sg:w-44">
+            <DropdownMenuSubContent aria-label="Filter by color" className="sg:w-48">
               {CELL_COLOR_PALETTE.map((p) => (
-                <DropdownMenuItem key={p.color} onSelect={run(() => filterByColor?.(column.colId, p.color))}>
-                  <ColorSwatch color={p.color} />
+                <DropdownMenuCheckboxItem
+                  key={p.color}
+                  checked={Array.isArray(activeColors) && activeColors.includes(p.color)}
+                  onSelect={run(() => colorFilter.set(column.colId, [p.color]))}
+                >
+                  <CellColorSwatch color={p.color} />
                   {p.label}
-                </DropdownMenuItem>
+                </DropdownMenuCheckboxItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={run(() => filterByColor?.(column.colId, null))}>
-                <ColorSwatch color={null} />
+              <DropdownMenuCheckboxItem checked={activeColors === "none"} onSelect={run(() => colorFilter.set(column.colId, "none"))}>
+                <CellColorSwatch color={null} />
                 No color
-              </DropdownMenuItem>
+              </DropdownMenuCheckboxItem>
+              {activeColors !== null ? (
+                <DropdownMenuItem onSelect={run(() => colorFilter.set(column.colId, null))}>
+                  <XIcon />
+                  Clear color filter
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
@@ -253,4 +235,4 @@ function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: H
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
+};

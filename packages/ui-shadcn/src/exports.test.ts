@@ -51,11 +51,16 @@ describe("subpath exports", () => {
       "CellColorButton",
       "CellColorPicker",
       "ColorRulesDialog",
-      "createShadcnHeaderMenu",
+      "CellColorFilterProvider",
+      "useCellColorFilter",
+      "ColorSwatchMultiSelect",
       "CELL_COLOR_PALETTE",
-      "ColorSwatch",
+      "CellColorSwatch",
+      "cellColorLabel",
       "notifyCellColorReport",
-      "withColorFilter",
+      "formatCellColorReport",
+      "setColumnColorFilter",
+      "columnColorFilter",
     ]) {
       expect(m, name).toHaveProperty(name);
     }

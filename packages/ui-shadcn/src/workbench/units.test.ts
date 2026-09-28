@@ -26,7 +26,8 @@ const derive = (
 
 describe("deriveWorkbenchFeatures", () => {
   it("turns everything on for a fully capable source", () => {
-    expect(deriveWorkbenchFeatures({ capabilities: effective(DEFAULT_CAPABILITIES), canChangeSchema: true })).toEqual({
+    const colors = { ...DEFAULT_CAPABILITIES, cellColors: { read: true, write: true, filter: true } };
+    expect(deriveWorkbenchFeatures({ capabilities: effective(colors), canChangeSchema: true })).toEqual({
       filter: true,
       group: true,
       search: true,
@@ -36,7 +37,17 @@ describe("deriveWorkbenchFeatures", () => {
       addColumn: true,
       undo: true,
       polling: true,
+      paint: true,
+      colorRules: true,
     });
+  });
+
+  it("v0.4: paint needs cellColors read + write; color rules need nothing (client-rendered)", () => {
+    expect(derive({ cellColors: { read: true, write: false, filter: true } }).paint).toBe(false);
+    expect(derive({ cellColors: { read: false, write: true, filter: false } }).paint).toBe(false);
+    expect(derive({}).colorRules).toBe(true);
+    const off = derive({ cellColors: { read: true, write: true, filter: true } }, { features: { paint: false, colorRules: false } });
+    expect(off).toMatchObject({ paint: false, colorRules: false });
   });
 
   it("derives each feature from the effective matrix", () => {
@@ -62,7 +73,7 @@ describe("deriveWorkbenchFeatures", () => {
 
   it("keeps capability-gated features off until the capabilities load", () => {
     const f = deriveWorkbenchFeatures({ capabilities: null, canChangeSchema: true });
-    expect(f).toMatchObject({ group: false, search: false, filter: false, import: false, undo: false, polling: false, export: false });
+    expect(f).toMatchObject({ group: false, search: false, filter: false, import: false, undo: false, polling: false, export: false, paint: false });
     expect(f.views).toBe(true);
     expect(f.addColumn).toBe(true);
   });

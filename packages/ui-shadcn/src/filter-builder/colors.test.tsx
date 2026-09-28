@@ -6,7 +6,7 @@ import { FIXTURE_IDS, buildFixtureAccess, buildFixtureRegistry, buildFixtureSche
 import { renderUi } from "../test/render";
 import { describeCondition } from "./describeFilter";
 import { FilterBuilder } from "./FilterBuilder";
-import { filterableColumns, fromDraft, operatorsFor, toDraft, updateCondition, withColorFilter } from "./model";
+import { columnColorFilter, filterableColumns, fromDraft, operatorsFor, setColumnColorFilter, toDraft, updateCondition } from "./model";
 
 const COLORS_ON = { cellColors: { read: true, write: true, filter: true } };
 const COLORS_OFF = { cellColors: { read: true, write: true, filter: false } };
@@ -59,10 +59,12 @@ describe("color operators (model)", () => {
   });
 });
 
-describe("withColorFilter", () => {
+describe("setColumnColorFilter / columnColorFilter", () => {
   const P = FIXTURE_IDS.payment;
   it("starts an AND root from no filter", () => {
-    expect(withColorFilter(null, P, ["red"])).toEqual({ op: "and", children: [{ columnId: P, operator: "colorIs", value: ["red"] }] });
+    expect(setColumnColorFilter(null, P, ["red"])).toEqual({ op: "and", children: [{ columnId: P, operator: "colorIs", value: ["red"] }] });
+    expect(setColumnColorFilter(null, P, "none")).toEqual({ op: "and", children: [{ columnId: P, operator: "colorIsNone" }] });
+    expect(setColumnColorFilter(null, P, null)).toBeNull();
   });
 
   it("replaces the column's own top-level color condition and keeps the rest", () => {
@@ -74,7 +76,10 @@ describe("withColorFilter", () => {
         { columnId: FIXTURE_IDS.amount, operator: "colorIsNone" },
       ],
     };
-    expect(withColorFilter(current, P, null)).toEqual({
+    expect(columnColorFilter(current, P)).toEqual(["blue"]);
+    expect(columnColorFilter(current, FIXTURE_IDS.amount)).toBe("none");
+    expect(columnColorFilter(current, FIXTURE_IDS.notes)).toBeNull();
+    expect(setColumnColorFilter(current, P, "none")).toEqual({
       op: "and",
       children: [
         { columnId: FIXTURE_IDS.amount, operator: "gt", value: 5 },
@@ -84,7 +89,20 @@ describe("withColorFilter", () => {
     });
   });
 
-  it("wraps an OR root (or a bare condition) in a new AND", () => {
+  it("null clears the column's color condition (an emptied root becomes null)", () => {
+    const current: FilterNode = {
+      op: "and",
+      children: [
+        { columnId: P, operator: "colorIs", value: ["blue"] },
+        { columnId: FIXTURE_IDS.amount, operator: "gt", value: 5 },
+      ],
+    };
+    expect(setColumnColorFilter(current, P, null)).toEqual({ op: "and", children: [{ columnId: FIXTURE_IDS.amount, operator: "gt", value: 5 }] });
+    expect(setColumnColorFilter({ op: "and", children: [{ columnId: P, operator: "colorIsNone" }] }, P, null)).toBeNull();
+    expect(setColumnColorFilter({ columnId: P, operator: "colorIsNone" }, P, null)).toBeNull();
+  });
+
+  it("wraps an OR root (or another bare condition) in a new AND", () => {
     const or: FilterNode = {
       op: "or",
       children: [
@@ -92,9 +110,12 @@ describe("withColorFilter", () => {
         { columnId: P, operator: "isEmpty" },
       ],
     };
-    expect(withColorFilter(or, P, ["green"])).toEqual({ op: "and", children: [or, { columnId: P, operator: "colorIs", value: ["green"] }] });
+    expect(columnColorFilter(or, P)).toBeNull();
+    expect(setColumnColorFilter(or, P, ["green"])).toEqual({ op: "and", children: [or, { columnId: P, operator: "colorIs", value: ["green"] }] });
+    expect(setColumnColorFilter(or, P, null)).toBe(or);
     const bare: FilterNode = { columnId: P, operator: "colorIs", value: ["red"] };
-    expect(withColorFilter(bare, P, ["green"])).toEqual({ op: "and", children: [{ columnId: P, operator: "colorIs", value: ["green"] }] });
+    expect(columnColorFilter(bare, P)).toEqual(["red"]);
+    expect(setColumnColorFilter(bare, P, ["green"])).toEqual({ op: "and", children: [{ columnId: P, operator: "colorIs", value: ["green"] }] });
   });
 });
 

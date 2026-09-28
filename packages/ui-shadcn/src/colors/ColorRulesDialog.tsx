@@ -6,7 +6,7 @@ import { type AccessMap, readableColumnIds, readableColumns } from "../internal/
 import type { CellColor, ColorRule, DataSource, FieldTypeRegistry, FilterNode, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import { cn } from "../lib/cn";
-import { ColorSwatch, cellColorLabel } from "../theme/cellColors";
+import { CellColorSwatch, cellColorLabel } from "../theme/cellColors";
 import { Button } from "../ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -49,7 +49,7 @@ function RuleColor({ color, onChange }: { color: CellColor; onChange(color: Cell
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="secondary" aria-label={`Color: ${label}`} aria-haspopup="dialog" className="sg:w-28 sg:justify-start sg:px-2.5 sg:font-normal">
-          <ColorSwatch color={color} />
+          <CellColorSwatch color={color} />
           {label}
         </Button>
       </PopoverTrigger>

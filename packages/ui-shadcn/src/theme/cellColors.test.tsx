@@ -4,7 +4,7 @@ import { render, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CELL_COLORS } from "../internal/core-contracts";
 import { CELL_COLOR_TOKENS, cellColorCssVariables } from "../internal/grid-contracts";
-import { CELL_COLOR_PALETTE, ColorSwatch, cellColorLabel } from "./cellColors";
+import { CELL_COLOR_PALETTE, CellColorSwatch, cellColorLabel } from "./cellColors";
 import { useGridThemeFromShadcn } from "./useGridThemeFromShadcn";
 
 afterEach(() => document.documentElement.classList.remove("dark"));
@@ -24,8 +24,8 @@ describe("cell color palette (theme)", () => {
     expect(cellColorLabel("teal")).toBe("Teal");
   });
 
-  it("ColorSwatch paints the swatch token and is decorative", () => {
-    const { container } = render(<ColorSwatch color="red" />);
+  it("CellColorSwatch paints the swatch token and is decorative", () => {
+    const { container } = render(<CellColorSwatch color="red" />);
     const el = container.firstElementChild as HTMLElement;
     expect(el).toHaveAttribute("aria-hidden", "true");
     expect(el).toHaveAttribute("data-color", "red");

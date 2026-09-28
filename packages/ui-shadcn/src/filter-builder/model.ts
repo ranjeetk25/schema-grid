@@ -328,18 +328,45 @@ export function updateCondition(draft: FilterDraft, id: string, patch: Condition
 
 const isColorOperatorId = (operator: string) => operator === "colorIs" || operator === "colorIsNone";
 
+/** A column's color filter: the palette colors of `colorIs`, `"none"` for `colorIsNone`, `null` for none. */
+export type ColumnColorFilter = CellColor[] | "none" | null;
+
+const isColumnColorCondition = (n: FilterNode, columnId: string): n is FilterCondition =>
+  !isFilterGroup(n) && n.columnId === columnId && isColorOperatorId(n.operator);
+
+const toColumnColorFilter = (c: FilterCondition): ColumnColorFilter =>
+  c.operator === "colorIsNone" ? "none" : Array.isArray(c.value) ? (c.value.filter((v) => typeof v === "string") as CellColor[]) : [];
+
 /**
- * `filter` with ONE color condition on `columnId`: `colorIs [colors]`, or
- * `colorIsNone` for `null`. The column's own top-level color conditions are
- * replaced; everything else is kept. An AND root is extended; an OR root (or
- * a bare condition) is AND-ed with the new condition.
+ * The color condition on `columnId` at the top of `filter` (a bare
+ * condition, or a child of an AND root), as `setColumnColorFilter` writes it.
+ * Conditions nested in groups or under an OR root don't count.
  */
-export function withColorFilter(filter: FilterNode | null, columnId: string, colors: readonly CellColor[] | null): FilterNode {
-  const condition: FilterCondition =
-    colors === null ? { columnId, operator: "colorIsNone" } : { columnId, operator: "colorIs", value: [...colors] };
-  const same = (n: FilterNode) => !isFilterGroup(n) && n.columnId === columnId && isColorOperatorId(n.operator);
-  if (!filter) return { op: "and", children: [condition] };
-  if (!isFilterGroup(filter)) return { op: "and", children: same(filter) ? [condition] : [filter, condition] };
-  if (filter.op === "or") return { op: "and", children: [filter, condition] };
-  return { op: "and", children: [...filter.children.filter((c) => !same(c)), condition] };
+export function columnColorFilter(filter: FilterNode | null, columnId: string): ColumnColorFilter {
+  if (!filter) return null;
+  if (!isFilterGroup(filter)) return isColumnColorCondition(filter, columnId) ? toColumnColorFilter(filter) : null;
+  if (filter.op !== "and") return null;
+  const found = filter.children.find((c) => isColumnColorCondition(c, columnId));
+  return found && !isFilterGroup(found) ? toColumnColorFilter(found) : null;
+}
+
+/**
+ * `filter` with ONE color condition on `columnId`: `colorIs [colors]` for
+ * an array, `colorIsNone` for `"none"`, none at all for `null` (clears; an
+ * emptied filter is `null`). The column's own top-level color conditions
+ * are replaced; everything else is kept. An AND root is extended; an OR
+ * root (or another bare condition) is AND-ed with the new condition.
+ */
+export function setColumnColorFilter(filter: FilterNode | null, columnId: string, next: ColumnColorFilter): FilterNode | null {
+  const condition: FilterCondition | null =
+    next === null ? null : next === "none" ? { columnId, operator: "colorIsNone" } : { columnId, operator: "colorIs", value: [...next] };
+  const add = condition ? [condition] : [];
+  let children: FilterNode[];
+  if (!filter) children = add;
+  else if (!isFilterGroup(filter)) children = isColumnColorCondition(filter, columnId) ? add : [filter, ...add];
+  else if (filter.op === "or") {
+    if (!condition) return filter;
+    children = [filter, condition];
+  } else children = [...filter.children.filter((c) => !isColumnColorCondition(c, columnId)), ...add];
+  return children.length === 0 ? null : { op: "and", children };
 }

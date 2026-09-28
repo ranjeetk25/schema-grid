@@ -11,7 +11,8 @@ export * from "./column-builder";
 export * from "./import-export";
 
 // Root-only areas
-export { ShadcnHeaderMenu, createShadcnHeaderMenu, type ShadcnHeaderMenuOptions } from "./header-menu/ShadcnHeaderMenu";
+export { ShadcnHeaderMenu } from "./header-menu/ShadcnHeaderMenu";
+export { CellColorFilterProvider, useCellColorFilter, type CellColorFilterContextValue } from "./header-menu/cellColorFilter";
 export type {
   HeaderMenuActions,
   HeaderMenuColumn,
@@ -37,10 +38,10 @@ export {
 } from "./theme/useGridThemeFromShadcn";
 export {
   CELL_COLOR_PALETTE,
-  ColorSwatch,
+  CellColorSwatch,
   cellColorLabel,
   type CellColorPaletteEntry,
-  type ColorSwatchProps,
+  type CellColorSwatchProps,
 } from "./theme/cellColors";
 export {
   cellColorSummary,
@@ -59,6 +60,7 @@ export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./in
 // v0.4 cell colors: paint popover, swatch picker, color rules editor
 export { CellColorButton, useCanPaint, type CellColorButtonProps, type CellColorPaintHandle } from "./colors/CellColorButton";
 export { CellColorPicker, type CellColorPickerProps } from "./colors/CellColorPicker";
+export { ColorSwatchMultiSelect, type ColorSwatchMultiSelectProps } from "./colors/ColorSwatchMultiSelect";
 export { ColorRulesDialog, type ColorRulesDialogProps } from "./colors/ColorRulesDialog";
 export {
   addColorRule,

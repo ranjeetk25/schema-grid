@@ -111,6 +111,14 @@ describe("<SchemaGridWorkbench> cell colors", () => {
     expect(screen.queryByRole("button", { name: "Cell color" })).toBeNull();
   });
 
+  it("features.paint / features.colorRules switch the controls off", async () => {
+    const { container } = renderWorkbench({ features: { paint: false, colorRules: false } });
+    await waitFor(() => expect(cellEl(container, "r1", C.name)).not.toBeNull());
+    await screen.findByRole("button", { name: "Filter" });
+    expect(screen.queryByRole("button", { name: "Cell color" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Color rules/ })).toBeNull();
+  });
+
   it("saves color rules to the view through the dialog", async () => {
     const { container, getHandle, user } = renderWorkbench();
     await ready(container);
@@ -143,7 +151,7 @@ describe("<SchemaGridWorkbench> cell colors", () => {
     await user.click(screen.getByRole("button", { name: "Column menu: Payment status" }));
     await user.click(await screen.findByRole("menuitem", { name: /Filter by color/ }));
     // fireEvent: jsdom has no layout, so a pointer move into the submenu leaves the trigger and closes it.
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Green" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Green" }));
     await waitFor(() =>
       expect(JSON.parse(screen.getByTestId("filter-ast").textContent ?? "null")).toEqual({
         op: "and",

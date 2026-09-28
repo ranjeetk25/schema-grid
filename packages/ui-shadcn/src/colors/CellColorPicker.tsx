@@ -1,7 +1,7 @@
 import { CheckIcon } from "lucide-react";
 import type { CellColor } from "../internal/core-contracts";
 import { cn } from "../lib/cn";
-import { CELL_COLOR_PALETTE, ColorSwatch } from "../theme/cellColors";
+import { CELL_COLOR_PALETTE, CellColorSwatch } from "../theme/cellColors";
 
 export interface CellColorPickerProps {
   /** Picked color (`null` = "No color"); `undefined` marks nothing. */
@@ -40,7 +40,7 @@ export function CellColorPicker({ value, onPick, allowNone = true, className, ..
             className={SWATCH_BUTTON}
             onClick={() => onPick(p.color)}
           >
-            <ColorSwatch color={p.color} className="sg:size-5" />
+            <CellColorSwatch color={p.color} className="sg:size-5" />
           </button>
         ))}
       </div>
@@ -55,7 +55,7 @@ export function CellColorPicker({ value, onPick, allowNone = true, className, ..
           )}
           onClick={() => onPick(null)}
         >
-          <ColorSwatch color={null} />
+          <CellColorSwatch color={null} />
           <span className="sg:flex-1 sg:text-left">No color</span>
           {value === null ? <CheckIcon aria-hidden className="sg:size-3.5 sg:text-primary" /> : null}
         </button>

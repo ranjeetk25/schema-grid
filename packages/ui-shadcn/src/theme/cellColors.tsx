@@ -25,14 +25,14 @@ export function cellColorLabel(color: CellColor): string {
   return CELL_COLOR_TOKENS[color]?.label ?? color;
 }
 
-export interface ColorSwatchProps {
+export interface CellColorSwatchProps {
   /** `null` draws the "No color" swatch (hollow, struck through). */
   color: CellColor | null;
   className?: string;
 }
 
 /** A decorative rounded swatch in the palette's saturated color. */
-export function ColorSwatch({ color, className }: ColorSwatchProps) {
+export function CellColorSwatch({ color, className }: CellColorSwatchProps) {
   const style = color ? ({ "--sg-swatch": CELL_COLOR_TOKENS[color].swatch } as CSSProperties) : undefined;
   return (
     <span
