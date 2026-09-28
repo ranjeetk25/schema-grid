@@ -35,12 +35,21 @@ import { createAnnouncer, type Politeness, savedAnnouncement } from "../a11y/ann
 import { LiveAnnouncer } from "../a11y/LiveAnnouncer";
 import type { AppliedInfo } from "../editing/editController";
 import { FullWidthRowRenderer } from "../grouping/GroupRowRenderer";
-import type { DataSourceCapabilities, EffectiveCapabilities, GridRow, ViewDef } from "../internal/core";
+import type {
+  CellColor,
+  CellColorResult,
+  ColorRule,
+  DataSourceCapabilities,
+  EffectiveCapabilities,
+  GridRow,
+  ViewDef,
+} from "../internal/core";
 import { wrapWithCellShell } from "../range/CellShell";
 import { RANGE_CELL_CLASS_RULES } from "../range/useRangeSelection";
 import { SG_CLASSES, SG_KEYFRAMES_CSS } from "../theme/classNames";
 import type { SchemaGridStores } from "./gridContext";
 import {
+  type CellColorTarget,
   type ExportFormat,
   type SchemaGridProps,
   type UseSchemaGridSeams,
@@ -75,6 +84,21 @@ export interface SchemaGridHandle<Row extends GridRow = GridRow> {
   effectiveCapabilities: EffectiveCapabilities;
   /** The data source's raw capabilities; undefined until loaded. */
   capabilities: DataSourceCapabilities | undefined;
+  /**
+   * v0.4: paints (`null` clears) the manual color of `target` — default the
+   * range selection, else the focused cell. Cells this user can't paint are
+   * skipped and listed in `rejected` ("Read-only"; counts in the
+   * `onCellColorReport` prop). Optimistic with rollback; the promise rejects
+   * on a source error. One undo entry per paint. `null` when the source
+   * can't read + write colors or nothing is targeted.
+   */
+  setCellColor(color: CellColor | null, target?: CellColorTarget): Promise<CellColorResult | null>;
+  /** v0.4: the current view's color rules. */
+  colorRules: ColorRule[];
+  /** v0.4: replaces the view's color rules (→ `onViewChange`, like filter/sort). */
+  setColorRules(rules: ColorRule[]): void;
+  /** v0.4: `capabilities.cellColors` read + write and some target cell paintable by this user. */
+  canPaint(): boolean;
 }
 
 export type SchemaGridComponent = <Row extends GridRow = GridRow>(
@@ -136,6 +160,10 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       announce,
       effectiveCapabilities: grid.effectiveCapabilities,
       capabilities: grid.capabilities,
+      setCellColor: grid.setCellColor,
+      colorRules: grid.colorRules,
+      setColorRules: grid.setColorRules,
+      canPaint: grid.canPaint,
     }),
     [
       grid.api,
@@ -149,6 +177,10 @@ function SchemaGridInner<Row extends GridRow = GridRow>(
       announce,
       grid.effectiveCapabilities,
       grid.capabilities,
+      grid.setCellColor,
+      grid.colorRules,
+      grid.setColorRules,
+      grid.canPaint,
     ],
   );
 

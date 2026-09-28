@@ -35,6 +35,19 @@ describe("public barrels", () => {
       "createRemoteDataSource",
       "RemoteDataSourceError",
       "unwrapWireResult",
+      // v0.4 cell colors
+      "CELL_COLORS",
+      "COLOR_OPERATORS",
+      "CELL_COLOR_TOKENS",
+      "cellColorCssVariables",
+      "cellColorClass",
+      "createCellColorResolver",
+      "createCellColorClassRules",
+      "createRowColorClassRules",
+      "createColorController",
+      "columnOperatorsWithColors",
+      "withColorOperators",
+      "canFilterByColor",
     ]) {
       expect(mod, name).toHaveProperty(name);
       expect((mod as Record<string, unknown>)[name], name).toBeDefined();
@@ -61,7 +74,7 @@ describe("public barrels", () => {
 
   it("./filters exposes filter components and AST conversion", async () => {
     const mod = await import("../src/filters/index");
-    for (const name of ["ConditionFilter", "SetFilter", "FloatingFilter", "filterModelToAst", "astToFilterModel", "DEFAULT_FILTERS"]) {
+    for (const name of ["ConditionFilter", "SetFilter", "FloatingFilter", "filterModelToAst", "astToFilterModel", "DEFAULT_FILTERS", "columnOperatorsWithColors", "withColorOperators"]) {
       expect((mod as Record<string, unknown>)[name], name).toBeDefined();
     }
   });
