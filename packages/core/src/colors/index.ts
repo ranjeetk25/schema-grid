@@ -17,3 +17,11 @@ export { canColorCell } from "./access";
 
 /** Context for `resolveCellColor` / `resolveRowColor` (the filter match context). */
 export type ColorMatchContext = FilterMatchContext;
+export {
+  colorFilterBlockedMessage,
+  colorFilterBlockers,
+  colorRuleUnfilterableColumn,
+  type FilterScopeCapabilitiesLike,
+  sqlFilterablePredicate,
+  unfilterableColorRuleReason,
+} from "./blockers";

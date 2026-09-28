@@ -43,6 +43,7 @@ function dedupById(refs: LinkRef[]): LinkRef[] {
 export const linkFieldType: FieldType<LinkRef[], LinkConfig> = {
   id: "link",
   label: "Link",
+  requires: ["lookup"],
   configSchema: linkConfigSchema,
   defaultConfig,
 

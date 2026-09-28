@@ -12,6 +12,12 @@ export type ParseResult<T> =
   | { ok: false; error: string };
 
 /**
+ * v0.4.1: a data source capability a field type needs to be usable
+ * (`DataSourceCapabilities.lookup` / `.options`). See `fieldTypeAvailability`.
+ */
+export type FieldTypeRequirement = "lookup" | "options";
+
+/**
  * Contract implemented by every field type (built-in or custom).
  *
  * Implementations MUST tolerate partial/missing config at runtime: config
@@ -36,6 +42,8 @@ export interface FieldType<TValue = unknown, TConfig = unknown> {
   fillSeries?(values: (TValue | null)[], count: number, config: TConfig): TValue[];
   aggregations?: readonly AggregationId[];
   defaultValue(config: TConfig): TValue | null;
+  /** v0.4.1: capabilities the source must have for new columns of this type (link: lookup, user: options). */
+  requires?: readonly FieldTypeRequirement[];
 }
 
 /**
@@ -61,4 +69,5 @@ export interface AnyFieldType {
   fillSeries?(values: unknown[], count: number, config: unknown): unknown[];
   aggregations?: readonly AggregationId[];
   defaultValue(config: unknown): unknown;
+  requires?: readonly FieldTypeRequirement[];
 }

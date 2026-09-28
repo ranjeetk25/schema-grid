@@ -148,8 +148,8 @@ describe("in-memory applyChanges", () => {
     expect(res.conflicts).toEqual([]);
     const byCol = (rowId: string, columnId: string) =>
       res.errors.find((e) => e.rowId === rowId && e.columnId === columnId)?.message;
-    expect(byCol("r1", C.balance)).toMatch(/read-only/);
-    expect(byCol("r1", C.fee)).toMatch(/read-only/);
+    expect(byCol("r1", C.balance)).toBe("Column is read-only (formula)");
+    expect(byCol("r1", C.fee)).toBe("Only specific people can edit this column");
     expect(byCol("nope", C.name)).toMatch(/not found/i);
     expect(byCol("r2", C.paid)).toBeTruthy();
     expect(byCol("r3", C.name)).toMatch(/base version/);
