@@ -1028,7 +1028,7 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
     fetch: (input) =>
       guarded(async () => {
         const query = withDefaultSort(clampPage(input));
-        const qScope = colorQueryScope(query, scope, access);
+        const qScope = colorQueryScope(query, scope, access, caps);
         if (query.groupBy && query.groupBy.length > 0) {
           return executeGroupQuery(buildGroupQuery(query, qScope, options.db, access), qScope);
         }

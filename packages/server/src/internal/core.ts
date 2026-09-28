@@ -59,13 +59,28 @@ export type {
   CellColorChange,
   CellColorResult,
   ColorRule,
+  ColorRuleIssue,
   ColorRuleTarget,
 } from "@ranjeetk25/schema-grid-core";
 export {
   CELL_COLORS,
   canColorCell,
+  colorFilterBlockedMessage,
+  colorFilterBlockers,
+  colorRuleUnfilterableColumn,
   isCellColor,
+  sqlFilterablePredicate,
   validateColorRules,
+} from "@ranjeetk25/schema-grid-core";
+
+// ---- refusal messages / capability-gated field types (v0.4.1) ----------------
+export {
+  COLUMN_READ_ONLY_MESSAGE,
+  FORMULA_READ_ONLY_MESSAGE,
+  PERMISSION_EDIT_DENIED_MESSAGE,
+  cellEditDenial,
+  fieldTypeAvailability,
+  fieldTypeUnavailableMessage,
 } from "@ranjeetk25/schema-grid-core";
 
 // ---- data-source capabilities (spec v0.2 §C2) ------------------------------

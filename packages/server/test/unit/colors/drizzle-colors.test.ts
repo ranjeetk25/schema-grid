@@ -132,6 +132,31 @@ describe("createDrizzleDataSource: cell colors (v0.4)", () => {
     expect(statements()).toHaveLength(before);
   });
 
+  it("v0.4.1: colorIs through a rule testing a filterable:false column → FilterValidationError naming both labels, no SQL", async () => {
+    const schema = {
+      ...serverFixtureSchema,
+      columns: serverFixtureSchema.columns.map((c) => (c.id === C.status ? { ...c, filterable: false } : c)),
+    };
+    const { ds, statements } = make({ schema });
+    const label = (id: string) => schema.columns.find((c) => c.id === id)?.label;
+    const rules: ColorRule[] = [
+      { id: "r1", color: "green", target: { kind: "cells", columnIds: [C.name] }, when: { columnId: C.status, operator: "is", value: "paid" } },
+    ];
+    const err = await ds
+      .fetch({ filter: { columnId: C.name, operator: "colorIs", value: ["green"] }, sort: [], page: { offset: 0, limit: 10 }, colorRules: rules })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FilterValidationError);
+    expect((err as FilterValidationError).message).toBe(
+      `Can't filter "${label(C.name)}" by color: a color rule on it uses "${label(C.status)}", which can't be filtered on the server`,
+    );
+    expect((err as FilterValidationError).errors[0]).toMatchObject({ code: "unfilterableColumn", columnId: C.status, ruleIndex: 0, ruleId: "r1" });
+    expect(statements().filter((s) => s.sql.startsWith("select") && s.sql.includes("grid_rows"))).toHaveLength(0);
+    // The rule doesn't color `fee`: filtering fee by color compiles.
+    await expect(
+      ds.fetch({ filter: { columnId: C.fee, operator: "colorIsNone" }, sort: [], page: { offset: 0, limit: 10 }, colorRules: rules }),
+    ).resolves.toBeDefined();
+  });
+
   it("setCellColors: per-change checks like the in-memory source, one upsert per row, one transaction", async () => {
     const { ds, calls, statements } = make();
     const res = await ds.setCellColors?.({

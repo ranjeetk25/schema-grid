@@ -222,7 +222,7 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     fetch: (input) =>
       guarded(async () => {
         const query = withDefaultSort(input);
-        const qScope = colorQueryScope(query, scope, access);
+        const qScope = colorQueryScope(query, scope, access, caps);
         if (query.groupBy && query.groupBy.length > 0) {
           return executeGroupQuery(buildGroupQuery(query, qScope, options.db, access), qScope);
         }
