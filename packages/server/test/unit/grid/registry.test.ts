@@ -604,3 +604,142 @@ describe("schema store availability (v0.3.1: schema.reason, schemaWritable)", ()
     await expect(createMemorySchemaStore().available()).resolves.toBe(true);
   });
 });
+
+describe("per-user permission redaction (v0.4)", () => {
+  /** The fixture schema with per-person rules on `fee` (edit) and `notes` (view + edit) and one status option. */
+  function withPeople(schema: GridSchema = createFixtureSchema()): GridSchema {
+    return {
+      ...schema,
+      columns: schema.columns.map((c) => {
+        if (c.key === "fee") return { ...c, permissions: { read: "all", edit: { roles: ["admin"], users: ["u2", "u9"] } } };
+        if (c.key === "notes") return { ...c, permissions: { read: { users: ["u9"] }, edit: { users: ["u9"] } } };
+        if (c.key === "status") {
+          const options = (c.config as { options: { id: string }[] }).options.map((o) =>
+            o.id === "paid" ? { ...o, settableBy: { roles: ["admin"], users: ["u2", "u9"] } } : o,
+          );
+          return { ...c, config: { ...(c.config as object), options } };
+        }
+        return c;
+      }),
+    };
+  }
+  const col = (schema: GridSchema, key: string) => schema.columns.find((c) => c.key === key);
+  const paid = (schema: GridSchema) =>
+    (col(schema, "status")?.config as { options: { id: string; settableBy?: unknown }[] }).options.find((o) => o.id === "paid");
+  const userOf = (ctx: Ctx) => ({ id: FIXTURE_USERS[ctx.role].id, roles: [...FIXTURE_USERS[ctx.role].roles] });
+  const getSchema = async (registry: ReturnType<typeof createGridRegistry<Ctx>>, role: Role) => {
+    const res = await registry.handle("a", "getSchema", null, { role });
+    if (!res.ok) throw new Error(res.error.code);
+    return res.data;
+  };
+
+  it("a caller without schema write sees only themselves in each users list; other ids are not disclosed", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: withPeople(),
+        schemaStore: createMemorySchemaStore(),
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        user: userOf,
+        source: (ctx) => memory(ctx.role),
+      }),
+    ]);
+    const seen = await getSchema(registry, "counsellor");
+    expect(col(seen, "fee")?.permissions).toEqual({ read: "all", edit: { roles: ["admin"], users: ["u2"] } });
+    expect(col(seen, "notes")?.permissions).toEqual({ read: { users: [] }, edit: { users: [] } });
+    expect(paid(seen)?.settableBy).toEqual({ roles: ["admin"], users: ["u2"] });
+    expect(JSON.stringify(seen)).not.toContain("u9");
+  });
+
+  it("a caller with schema write gets the full lists", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: withPeople(),
+        schemaStore: createMemorySchemaStore(),
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        user: userOf,
+        source: (ctx) => memory(ctx.role),
+      }),
+    ]);
+    expect(await getSchema(registry, "admin")).toEqual(withPeople());
+  });
+
+  it("schemaWritable false counts as no schema write; a grid without a store still shows writers the full lists", async () => {
+    const forbidden = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: withPeople(), schemaStore: createMemorySchemaStore(), schemaWritable: () => false, user: userOf, source: () => memory("admin") }),
+    ]);
+    expect(col(await getSchema(forbidden, "admin"), "notes")?.permissions).toEqual({ read: { users: [] }, edit: { users: [] } });
+    const noStore = createGridRegistry([defineGrid<Ctx>({ id: "a", schema: withPeople(), user: userOf, source: () => memory("admin") })]);
+    expect(await getSchema(noStore, "admin")).toEqual(withPeople());
+  });
+
+  it("the caller defaults to ctx.user; without any user every list is emptied", async () => {
+    interface UserCtx {
+      user?: { id: string; roles: string[] };
+    }
+    const registry = createGridRegistry<UserCtx>([
+      defineGrid<UserCtx>({ id: "a", schema: withPeople(), schemaStore: createMemorySchemaStore(), permission: (_ctx, op) => op !== "updateSchema", source: () => memory("admin") }),
+    ]);
+    const mine = await registry.handle("a", "getSchema", null, { user: { id: "u9", roles: [] } });
+    expect(mine.ok && col(mine.data, "notes")?.permissions).toEqual({ read: { users: ["u9"] }, edit: { users: ["u9"] } });
+    const anonymous = await registry.handle("a", "getSchema", null, {});
+    expect(anonymous.ok && col(anonymous.data, "fee")?.permissions).toEqual({ read: "all", edit: { roles: ["admin"], users: [] } });
+  });
+
+  it("redactPermissionUsers: false serves the full lists to everyone", async () => {
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: withPeople(),
+        schemaStore: createMemorySchemaStore(),
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        redactPermissionUsers: false,
+        user: userOf,
+        source: (ctx) => memory(ctx.role),
+      }),
+    ]);
+    expect(await getSchema(registry, "counsellor")).toEqual(withPeople());
+  });
+
+  it("a schema without users lists is served untouched and asks no write gates", async () => {
+    const permission = vi.fn((_ctx: Ctx, _op: string) => true);
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: createMemorySchemaStore(), permission, user: userOf, source: () => memory("admin") }),
+    ]);
+    expect(await getSchema(registry, "counsellor")).toEqual(createFixtureSchema());
+    expect(permission.mock.calls.map((c) => c[1])).toEqual(["getSchema"]);
+  });
+
+  it("redaction never feeds back into storage: non-writers cannot updateSchema, and the store keeps full lists", async () => {
+    const store = createMemorySchemaStore({ a: withPeople() });
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({
+        id: "a",
+        schema: createFixtureSchema(),
+        schemaStore: store,
+        permission: (ctx, op) => op !== "updateSchema" || ctx.role === "admin",
+        user: userOf,
+        source: (ctx) => memory(ctx.role),
+      }),
+    ]);
+    const redacted = await getSchema(registry, "counsellor");
+    expect(await registry.handle("a", "updateSchema", redacted, { role: "counsellor" })).toMatchObject({ status: 403 });
+    expect(await store.get("a")).toEqual(withPeople());
+  });
+
+  it("updateSchema dedupes users lists before persisting", async () => {
+    const store = createMemorySchemaStore();
+    const registry = createGridRegistry([
+      defineGrid<Ctx>({ id: "a", schema: createFixtureSchema(), schemaStore: store, user: userOf, source: () => memory("admin") }),
+    ]);
+    const base = createFixtureSchema();
+    const next: GridSchema = {
+      ...base,
+      columns: base.columns.map((c) => (c.key === "fee" ? { ...c, permissions: { read: "all", edit: { users: ["u2", "u2", "u9"] } } } : c)),
+    };
+    const res = await registry.handle("a", "updateSchema", next, { role: "admin" });
+    expect(res.ok && col(res.data, "fee")?.permissions).toEqual({ read: "all", edit: { users: ["u2", "u9"] } });
+    expect(col((await store.get("a")) as GridSchema, "fee")?.permissions).toEqual({ read: "all", edit: { users: ["u2", "u9"] } });
+  });
+});

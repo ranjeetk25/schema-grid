@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createRows, deleteRows } from "../../../src/changes/rows-crud";
 import { uuidv7 } from "../../../src/changes/uuid";
+import { createServerContext } from "../../../src/context";
 import { PermissionError, RowValidationError } from "../../../src/errors";
+import { createDefaultRegistry, createRolePermissionResolver } from "../../../src/internal/core";
 import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
 import { OPTIONS, col, makeCtx, tables } from "../../helpers/schemas";
 
@@ -64,6 +66,22 @@ describe("createRows", () => {
     await expect(createRows([{ cells: { nope: 3 } }], ctx, deps)).rejects.toBeInstanceOf(RowValidationError);
     await expect(createRows([{ cells: { secret: "x" } }], ctx, deps)).rejects.toThrow(/read-only/);
     expect(calls).toHaveLength(0);
+  });
+
+  it("v0.4 per-user rules: a listed editor may set the cell, an unlisted one is refused, superRoles bypass", async () => {
+    const perPerson = {
+      ...schema,
+      columns: schema.columns.map((c) => (c.id === "secret" ? { ...c, permissions: { read: { users: ["priya"] }, edit: { users: ["priya"] } } } : c)),
+    };
+    const as = (user: { id: string; roles: string[] }, superRoles: string[] = []) =>
+      createServerContext({ schema: perPerson, registry: createDefaultRegistry(), resolver: createRolePermissionResolver({ superRoles }), user, now: () => NOW });
+    const create = (user: { id: string; roles: string[] }, superRoles?: string[]) => {
+      const { db } = createFakeMysql();
+      return createRows([{ id: "n1", cells: { secret: "x" } }], as(user, superRoles), { db, tables, gridId: "grid1" });
+    };
+    expect((await create({ id: "priya", roles: [] }))[0]?.cells).toMatchObject({ secret: "x" });
+    await expect(create({ id: "rahul", roles: ["admin"] })).rejects.toThrow(/read-only/);
+    expect((await create({ id: "boss", roles: ["super"] }, ["super"]))[0]?.cells).toMatchObject({ secret: "x" });
   });
 });
 
