@@ -227,6 +227,14 @@ const endpoint = toFetchHandler(grids, { basePath: "/grid", context: (request) =
 app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js route handlers take `endpoint` as is
 ```
 
+**Cell colors (v0.4).** The `colors` store is optional: color rules saved on a view render and filter
+(`colorIs` / `colorIsNone`) without it, while painting cells ("Cell color", shared by every user) needs it — pass
+the same store to every data source (`createDrizzleDataSource({ …, colors })`, `createSqlViewDataSource({ …,
+colors })`); it is keyed by grid id, so one table serves every grid. Anyone who can edit a cell can paint it.
+Painting never bumps a row's version, and painted rows reach other users through the change feed. Details:
+[server README, "Cell colors"](../packages/server/README.md#cell-colors), wire format in
+[`wire-contract.md`](./wire-contract.md#cell-colors-v04).
+
 `toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json({ strict: false }), …)` — before
 the global `express.json()`, see "Server (Express)") and
 `toLambdaHandler(grids, { context })` (routes `POST /grid/{gridId}/{op}`) serve the same routes. There is exactly one
