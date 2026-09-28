@@ -14,6 +14,8 @@ export { CommonFields, NameField, ColumnOptionsFields, draftAsColumn, type Commo
 export { FormulaEditor, checkFormula, type FormulaCheck, type FormulaEditorProps } from "./FormulaEditor";
 export { PermissionsStep, editNotSubsetOfRead, permissionsError, type PermissionsStepProps } from "./PermissionsStep";
 export { describePermissions, hiddenFromRoles, setEditRule, setViewRule, titleCaseRole } from "./permissions-model";
+export { PeoplePicker, type PeoplePickerProps } from "./PeoplePicker";
+export { type PeopleNames, type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 export { PreviewStep, sampleValueFor, type PreviewStepProps } from "./PreviewStep";
 export { fieldTypeMeta, type FieldTypeMeta } from "./type-meta";
 export { KEY_PATTERN, slugifyKey, uniqueKey } from "./keys";

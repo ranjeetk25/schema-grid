@@ -78,10 +78,15 @@ const roleLabel = (role: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
-/** "Only Admin can set this" when `user` may not set `option` (v0.3 `settableBy`), else null. */
+/**
+ * "Only Admin can set this" when `user` may not set `option` (v0.3
+ * `settableBy`; v0.4 per-person rules add "specific people", never ids), else null.
+ */
 export function optionLockReason(option: Option, user: PermissionUser | undefined): string | null {
   if (canSetOption(option, user)) return null;
-  const roles = option.settableBy && option.settableBy !== "all" ? option.settableBy.roles.map(roleLabel) : [];
+  const rule = option.settableBy && option.settableBy !== "all" ? option.settableBy : {};
+  const roles = (rule.roles ?? []).map(roleLabel);
+  if (rule.users?.length) roles.push("specific people");
   if (roles.length === 0) return "Nobody can set this";
   return `Only ${roles.length === 1 ? roles[0] : `${roles.slice(0, -1).join(", ")} or ${roles[roles.length - 1]}`} can set this`;
 }

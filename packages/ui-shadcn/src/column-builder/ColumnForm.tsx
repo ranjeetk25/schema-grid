@@ -3,6 +3,7 @@ import { type ReactNode, type RefObject, useEffect, useId, useMemo, useReducer, 
 import type { AccessMap } from "../internal/access";
 import type { ColumnDef, DataSource, FieldTypeId, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
+import { type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/button";
 import { Tooltip } from "../ui/tooltip";
@@ -46,6 +47,8 @@ export interface ColumnBuilderProps {
   onDraftChange?(draft: DraftColumn | null): void;
   /** Type pre-selected for a new column. */
   initialType?: FieldTypeId;
+  /** v0.4: People pickers in "Who can access" and option "Who can set" (per-person permissions). */
+  userDirectory?: UserDirectory;
 }
 
 const defaultId = () =>
@@ -245,7 +248,11 @@ export function ColumnFormBody({
   portalled?: boolean;
 }) {
   const { draft, dispatch, visibleErrors, touch, setFormulaValid, editing, submitted, requirements, nameRef, save } = state;
-  const { schema, registry, uiRegistry, access, roles, dataSource, sampleRows } = props;
+  const { schema, registry, uiRegistry, access, roles, dataSource, sampleRows, userDirectory } = props;
+  const peopleNames = usePeopleNames(
+    userDirectory,
+    [draft.permissions.read, draft.permissions.edit].flatMap((rule) => (rule === "all" ? [] : (rule.users ?? []))),
+  );
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const accessBlocked = submitted && requirements.some((r) => r.field === "permissions");
@@ -289,18 +296,20 @@ export function ColumnFormBody({
               }}
               className="sg:pt-1 sg:transition-[opacity,translate] sg:duration-200 sg:ease-out sg:starting:translate-y-1 sg:starting:opacity-0"
             >
-              <TypeConfigFields
-                draft={draft}
-                dispatch={dispatch}
-                schema={schema}
-                registry={registry}
-                access={access}
-                errors={visibleErrors}
-                onFormulaValidityChange={setFormulaValid}
-                sampleRows={sampleRows}
-                roles={roles}
-                portalled={portalled}
-              />
+              <UserDirectoryProvider value={userDirectory}>
+                <TypeConfigFields
+                  draft={draft}
+                  dispatch={dispatch}
+                  schema={schema}
+                  registry={registry}
+                  access={access}
+                  errors={visibleErrors}
+                  onFormulaValidityChange={setFormulaValid}
+                  sampleRows={sampleRows}
+                  roles={roles}
+                  portalled={portalled}
+                />
+              </UserDirectoryProvider>
             </div>
           ) : null}
         </Reveal>
@@ -312,7 +321,7 @@ export function ColumnFormBody({
         </Section>
         <Section
           title="Who can access"
-          summary={describePermissions(draft.permissions, { readOnly: draft.type === "formula" })}
+          summary={describePermissions(draft.permissions, { readOnly: draft.type === "formula" }, peopleNames)}
           open={accessOpen || accessBlocked}
           onOpenChange={setAccessOpen}
         >
@@ -320,6 +329,7 @@ export function ColumnFormBody({
             value={draft.permissions}
             roles={roles}
             computed={draft.type === "formula"}
+            {...(userDirectory ? { userDirectory } : {})}
             onChange={(permissions) => dispatch({ type: "setPermissions", permissions })}
           />
         </Section>

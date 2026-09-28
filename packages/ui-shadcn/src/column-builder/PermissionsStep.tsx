@@ -1,9 +1,11 @@
 import { Check, EyeOff } from "lucide-react";
 import { useId, useState } from "react";
 import type { ColumnPermissions, RoleRule } from "../internal/core-contracts";
+import { type PeopleNames, type UserDirectory, usePeopleNames } from "../internal/people";
 import { SG_ROOT, cn } from "../lib/cn";
 import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
-import { describePermissions, hiddenFromRoles, setEditRule, setViewRule, titleCaseRole } from "./permissions-model";
+import { PeoplePicker } from "./PeoplePicker";
+import { describePermissions, hiddenFromRoles, isEmptyRule, rolesIn, setEditRule, setViewRule, titleCaseRole, usersIn } from "./permissions-model";
 
 export interface PermissionsStepProps {
   value: ColumnPermissions;
@@ -12,43 +14,56 @@ export interface PermissionsStepProps {
   roles: string[];
   /** Formula columns: computed, so nobody can edit — the "Can edit" row is hidden. */
   computed?: boolean;
+  /**
+   * v0.4: adds a People picker (per-person `users`) under each row's roles.
+   * Absent → no People picker; `users` already on a rule are kept untouched.
+   */
+  userDirectory?: UserDirectory;
   className?: string;
 }
 
 const EMPTY_ROLES = "Choose at least one role";
+const EMPTY_ROLES_OR_PEOPLE = "Choose at least one role or person";
 
-/** First blocking error (an empty role list), or null. */
+/** First blocking error (a rule with neither roles nor people), or null. */
 export function permissionsError(p: ColumnPermissions): string | null {
   for (const rule of [p.read, p.edit]) {
-    if (rule !== "all" && rule.roles.length === 0) return EMPTY_ROLES;
+    if (isEmptyRule(rule)) return EMPTY_ROLES;
   }
   return null;
 }
 
-/** True when some role could edit without being able to read. The UI never produces this (it auto-adjusts). */
+/** True when some role (or person) could edit without being able to read. The UI never produces this (it auto-adjusts). */
 export function editNotSubsetOfRead(p: ColumnPermissions): boolean {
   if (p.read === "all") return false;
   if (p.edit === "all") return true;
-  const readRoles = p.read.roles;
-  return p.edit.roles.some((r) => !readRoles.includes(r));
+  const readRoles = rolesIn(p.read);
+  const readUsers = usersIn(p.read);
+  return rolesIn(p.edit).some((r) => !readRoles.includes(r)) || usersIn(p.edit).some((u) => !readUsers.includes(u));
 }
 
 function AccessRow({
   label,
   rule,
   roles,
+  directory,
+  names,
   onChange,
 }: {
   label: "Can view" | "Can edit";
   rule: RoleRule;
   roles: string[];
+  directory: UserDirectory | undefined;
+  names: PeopleNames;
   onChange(rule: RoleRule): void;
 }) {
   const labelId = useId();
   const mode = rule === "all" ? "all" : "roles";
-  const selected = rule === "all" ? [] : rule.roles;
+  const selected = rolesIn(rule);
+  const users = usersIn(rule);
   // Roles on the rule that the host no longer lists still show, so they can be removed.
   const offered = [...roles, ...selected.filter((r) => !roles.includes(r))];
+  const people = label === "Can view" ? "People that can view" : "People that can edit";
 
   return (
     <div className="sg:flex sg:flex-col sg:gap-2">
@@ -62,11 +77,11 @@ function AccessRow({
           value={mode}
           onValueChange={(v) => {
             if (v === "all") onChange("all");
-            else if (v === "roles") onChange({ roles: selected });
+            else if (v === "roles") onChange(rule === "all" ? { roles: [] } : rule);
           }}
         >
           <ToggleGroupItem value="all">Everyone</ToggleGroupItem>
-          <ToggleGroupItem value="roles">Only roles…</ToggleGroupItem>
+          <ToggleGroupItem value="roles">{directory ? "Only some…" : "Only roles…"}</ToggleGroupItem>
         </ToggleGroup>
       </div>
       {rule !== "all" ? (
@@ -80,7 +95,7 @@ function AccessRow({
                     key={role}
                     type="button"
                     aria-pressed={on}
-                    onClick={() => onChange({ roles: on ? selected.filter((r) => r !== role) : [...selected, role] })}
+                    onClick={() => onChange({ ...rule, roles: on ? selected.filter((r) => r !== role) : [...selected, role] })}
                     className={cn(
                       "sg:inline-flex sg:h-6 sg:items-center sg:gap-1 sg:rounded-full sg:border sg:px-2.5 sg:text-xs sg:font-medium sg:outline-none",
                       "sg:transition-colors sg:duration-150 sg:focus-visible:ring-[3px] sg:focus-visible:ring-ring",
@@ -98,9 +113,14 @@ function AccessRow({
           ) : (
             <p className="sg:text-xs sg:text-muted-foreground">This grid has no roles to choose from.</p>
           )}
-          {selected.length === 0 ? (
+          {directory ? (
+            <PeoplePicker label={people} value={users} onChange={(next) => onChange({ ...rule, users: next })} directory={directory} names={names} />
+          ) : users.length ? (
+            <p className="sg:text-xs sg:text-muted-foreground">{`Plus ${users.length} specific ${users.length === 1 ? "person" : "people"}`}</p>
+          ) : null}
+          {isEmptyRule(rule) ? (
             <p role="alert" className="sg:text-xs sg:text-danger">
-              {EMPTY_ROLES}
+              {directory ? EMPTY_ROLES_OR_PEOPLE : EMPTY_ROLES}
             </p>
           ) : null}
         </div>
@@ -110,12 +130,14 @@ function AccessRow({
 }
 
 /**
- * "Who can access": Can view / Can edit, each Everyone or specific roles.
- * Editors are always kept a subset of viewers automatically (with a short note).
+ * "Who can access": Can view / Can edit, each Everyone or specific roles
+ * (plus people with a `userDirectory`, v0.4). Editors are always kept a
+ * subset of viewers automatically (with a short note).
  */
-export function PermissionsStep({ value, onChange, roles, computed = false, className }: PermissionsStepProps) {
+export function PermissionsStep({ value, onChange, roles, computed = false, userDirectory, className }: PermissionsStepProps) {
   const [note, setNote] = useState<string | null>(null);
   const hidden = hiddenFromRoles(value, roles);
+  const names = usePeopleNames(userDirectory, [...usersIn(value.read), ...usersIn(value.edit)]);
 
   return (
     <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-4", className)}>
@@ -123,8 +145,10 @@ export function PermissionsStep({ value, onChange, roles, computed = false, clas
         label="Can view"
         rule={value.read}
         roles={roles}
+        directory={userDirectory}
+        names={names}
         onChange={(read) => {
-          const next = setViewRule(value, read);
+          const next = setViewRule(value, read, names);
           setNote(next.note);
           onChange(next.value);
         }}
@@ -139,8 +163,10 @@ export function PermissionsStep({ value, onChange, roles, computed = false, clas
           label="Can edit"
           rule={value.edit}
           roles={roles}
+          directory={userDirectory}
+          names={names}
           onChange={(edit) => {
-            const next = setEditRule(value, edit);
+            const next = setEditRule(value, edit, names);
             setNote(next.note);
             onChange(next.value);
           }}
@@ -149,7 +175,7 @@ export function PermissionsStep({ value, onChange, roles, computed = false, clas
 
       <div className="sg:flex sg:flex-col sg:gap-1.5 sg:rounded-md sg:bg-subtle sg:px-3 sg:py-2.5">
         <p data-testid="permissions-summary" className="sg:text-sm sg:text-foreground">
-          {describePermissions(value, { readOnly: computed })}
+          {describePermissions(value, { readOnly: computed }, names)}
         </p>
         {hidden.length ? (
           <div className="sg:flex sg:flex-wrap sg:items-center sg:gap-1.5">

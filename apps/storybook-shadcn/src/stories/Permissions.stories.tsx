@@ -1,8 +1,8 @@
 import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
-import { type Access, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
-import { Badge, useGridThemeFromShadcn } from "@ranjeetk25/schema-grid-ui-shadcn";
+import { type Access, type ActorRef, type ColumnPermissions, resolveColumnAccess } from "@ranjeetk25/schema-grid-core";
+import { Badge, PermissionsStep, type UserDirectory, useGridThemeFromShadcn } from "@ranjeetk25/schema-grid-ui-shadcn";
 import type { Meta, StoryObj } from "@storybook/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { GRID_OPTIONS, uiRegistry } from "../support/Workbench";
 import { USERS, type UserKey, createMemoryDataSource, createPermissionMatrixSchema, instrument, registry, resolver } from "../support/shared";
 
@@ -91,3 +91,31 @@ export const Matrix: StoryObj = {
 export const Admin: StoryObj = { render: () => <RoleGrid who="admin" /> };
 export const Counsellor: StoryObj = { render: () => <RoleGrid who="counsellor" /> };
 export const Viewer: StoryObj = { render: () => <RoleGrid who="viewer" /> };
+
+/** A fake host directory (v0.4 `userDirectory`): search by name, resolve known ids. */
+const PEOPLE: ActorRef[] = [
+  { id: "u-priya", name: "Priya Sharma" },
+  { id: "u-rahul", name: "Rahul Verma" },
+  { id: "u-asha", name: "Asha Iyer" },
+  { id: "u-vikram", name: "Vikram Singh" },
+];
+const fakeDirectory: UserDirectory = {
+  search: async (query) => PEOPLE.filter((p) => p.name?.toLowerCase().includes(query.trim().toLowerCase())),
+  resolve: async (ids) => PEOPLE.filter((p) => ids.includes(p.id)),
+};
+
+function PerPersonAccess() {
+  // "u-left" is not in the directory: it shows as the raw id, marked "unknown user".
+  const [value, setValue] = useState<ColumnPermissions>({ read: "all", edit: { roles: ["finance_team"], users: ["u-priya", "u-left"] } });
+  return (
+    <div className="sg-ui sg:flex sg:max-w-md sg:flex-col sg:gap-4">
+      <PermissionsStep value={value} onChange={setValue} roles={["admin", "counsellor", "finance_team"]} userDirectory={fakeDirectory} />
+      <code data-testid="per-person-value" className="sg:text-xs sg:text-muted-foreground">
+        {JSON.stringify(value)}
+      </code>
+    </div>
+  );
+}
+
+/** v0.4: the "Who can access" section with People pickers (per-person permissions). */
+export const PerPerson: StoryObj = { render: () => <PerPersonAccess /> };
