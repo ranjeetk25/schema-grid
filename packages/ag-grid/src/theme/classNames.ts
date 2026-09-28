@@ -1,7 +1,8 @@
 /**
  * Class name constants and raw CSS for our own cell/row decorations
  * (range selection, pending/error/remote-changed cells, the fill handle,
- * group rows, "load more" rows, and rows scrolled out of view).
+ * group rows, "load more" rows, rows scrolled out of view, and v0.4 cell
+ * colors).
  *
  * Every selector below is scoped under `.sg-root` (the class the grid's
  * wrapping element carries) so this CSS never leaks onto the rest of the
@@ -10,6 +11,9 @@
  * `css` option; `SG_CSS` is exported raw so a consumer that can't use the
  * Theming part mechanism can ship it as a stylesheet instead.
  */
+
+import { CELL_COLORS, type CellColor } from "../internal/core";
+import { CELL_COLOR_TOKENS, cellColorVar } from "./cellColorTokens";
 
 export const SG_CLASSES = {
   root: "sg-root",
@@ -32,7 +36,19 @@ export const SG_CLASSES = {
   formula: "sg-cell-formula",
   /** Transient flash when an edit is attempted on a read-only cell. */
   readOnlyHint: "sg-cell-readonly-hint",
+  /**
+   * v0.4: a cell showing a color (manual or rule); it also carries
+   * `sg-color-<name>` (`cellColorClass`), which sets `--sg-cell-color`.
+   */
+  cellColored: "sg-cell-colored",
+  /** v0.4: a row colored by a `row` rule; it also carries `sg-color-<name>`. */
+  rowColored: "sg-row-colored",
 } as const;
+
+/** v0.4: the class carrying a palette color (`sg-color-red`), on colored cells and rows. */
+export function cellColorClass(color: CellColor): `sg-color-${CellColor}` {
+  return `sg-color-${color}`;
+}
 
 export type SgClassName = (typeof SG_CLASSES)[keyof typeof SG_CLASSES];
 
@@ -53,6 +69,46 @@ const CHEVRON =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b8b94' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";
 const R = `.${SG_CLASSES.root}`;
 const EDGE = "2px";
+const RANGE_BG = `var(--sg-range-bg, color-mix(in srgb, ${ACCENT} 8%, transparent))`;
+
+/**
+ * v0.4 cell colors. `sg-color-<name>` only sets `--sg-cell-color` (from
+ * `--sg-color-<name>`, light token as fallback); `sg-cell-colored` /
+ * `sg-row-colored` paint it. Declared BEFORE the range / status rules:
+ * pending and error tints win while they last, and a range over a colored
+ * cell layers its tint on top (background-image) instead of replacing the
+ * color; the range edges (::before) and AG Grid's focus border sit above
+ * any background, so they stay visible.
+ */
+const SG_CELL_COLOR_CSS = `${CELL_COLORS.map(
+  (c) => `${R} .${cellColorClass(c)} {
+  --sg-cell-color: var(${cellColorVar(c)}, ${CELL_COLOR_TOKENS[c].light});
+}
+`,
+).join("\n")}
+${R} .ag-row.${SG_CLASSES.rowColored} {
+  /* Two classes: out-ranks AG Grid's single-class .ag-row-odd background. */
+  background-color: var(--sg-cell-color);
+}
+
+${R} .${SG_CLASSES.cellColored} {
+  background-color: var(--sg-cell-color);
+}
+
+${R} .${SG_CLASSES.cellColored}.${SG_CLASSES.range} {
+  background-color: var(--sg-cell-color);
+  background-image: linear-gradient(${RANGE_BG}, ${RANGE_BG});
+}
+
+${R} .sg-color-swatch {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+`;
 
 /** Cell/row decorations (range, status, fill, group rows). Every selector scoped under `.sg-root`. */
 const SG_DECORATION_CSS = `
@@ -71,8 +127,9 @@ ${R} .ag-cell a:hover {
   text-decoration-color: currentColor;
 }
 
+${SG_CELL_COLOR_CSS}
 ${R} .${SG_CLASSES.range} {
-  background-color: var(--sg-range-bg, color-mix(in srgb, ${ACCENT} 8%, transparent));
+  background-color: ${RANGE_BG};
 }
 
 ${R} .${SG_CLASSES.rangeTop}::before,
