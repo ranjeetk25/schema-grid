@@ -50,7 +50,9 @@ export interface GridDefinitionInput<Ctx = undefined> {
   /**
    * v0.4: the caller, for `redactPermissionUsers` (use the same user the
    * `source` builds its data source with). Default: `ctx.user` when it is a
-   * `{ id, roles }` object; no user → every redacted list is `[]`.
+   * `{ id, roles }` object; no user → every redacted list is `[]`. v0.4.1: when
+   * redaction runs and this yields no user (or one without a `roles` array),
+   * the registry logs a one-time `console.warn` per grid id outside production.
    */
   user?: (ctx: Ctx) => PermissionUser | undefined | Promise<PermissionUser | undefined>;
 }

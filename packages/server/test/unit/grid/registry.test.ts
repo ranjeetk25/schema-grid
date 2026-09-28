@@ -687,6 +687,74 @@ describe("per-user permission redaction (v0.4)", () => {
     expect(anonymous.ok && col(anonymous.data, "fee")?.permissions).toEqual({ read: "all", edit: { roles: ["admin"], users: [] } });
   });
 
+  describe("v0.4.1: a one-time dev warning when redaction runs without a user", () => {
+    interface UserCtx {
+      user?: { id: string; roles?: unknown };
+    }
+    const grid = (id: string, extra: Partial<Parameters<typeof defineGrid<UserCtx>>[0]> = {}) =>
+      defineGrid<UserCtx>({
+        id,
+        schema: withPeople(),
+        schemaStore: createMemorySchemaStore(),
+        permission: (_ctx, op) => op !== "updateSchema",
+        source: () => memory("admin"),
+        ...extra,
+      });
+    const withWarnSpy = async (fn: (warn: ReturnType<typeof vi.spyOn>) => Promise<void>, env = "test") => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("NODE_ENV", env);
+      try {
+        await fn(warn);
+      } finally {
+        vi.unstubAllEnvs();
+        warn.mockRestore();
+      }
+    };
+
+    it("no user, or a ctx.user without roles → one warning per grid id, naming defineGrid({ user })", () =>
+      withWarnSpy(async (warn) => {
+        const registry = createGridRegistry<UserCtx>([grid("a"), grid("b")]);
+        await registry.handle("a", "getSchema", null, {});
+        await registry.handle("a", "getSchema", null, {});
+        await registry.handle("a", "getSchema", null, { user: { id: "u9" } });
+        expect(warn).toHaveBeenCalledTimes(1);
+        const message = String(warn.mock.calls[0]?.[0]);
+        expect(message).toContain('Grid "a"');
+        expect(message).toContain("per-person");
+        expect(message).toContain("defineGrid({ user");
+        await registry.handle("b", "getSchema", null, { user: { id: "u9" } });
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(String(warn.mock.calls[1]?.[0])).toContain('Grid "b"');
+      }));
+
+    it("an explicit user resolver yielding no user or no roles array warns too", () =>
+      withWarnSpy(async (warn) => {
+        const noRoles = createGridRegistry<UserCtx>([grid("a", { user: () => ({ id: "u9" }) as never })]);
+        await noRoles.handle("a", "getSchema", null, {});
+        const none = createGridRegistry<UserCtx>([grid("a", { user: async () => undefined })]);
+        await none.handle("a", "getSchema", null, {});
+        expect(warn).toHaveBeenCalledTimes(2);
+      }));
+
+    it("no warning with a user, with redaction off, for schema writers, or in production", async () => {
+      await withWarnSpy(async (warn) => {
+        const registry = createGridRegistry<UserCtx>([
+          grid("a"),
+          grid("off", { redactPermissionUsers: false }),
+          grid("writer", { permission: () => true }),
+        ]);
+        await registry.handle("a", "getSchema", null, { user: { id: "u9", roles: [] } });
+        await registry.handle("off", "getSchema", null, {});
+        await registry.handle("writer", "getSchema", null, {});
+        expect(warn).not.toHaveBeenCalled();
+      });
+      await withWarnSpy(async (warn) => {
+        await createGridRegistry<UserCtx>([grid("a")]).handle("a", "getSchema", null, {});
+        expect(warn).not.toHaveBeenCalled();
+      }, "production");
+    });
+  });
+
   it("redactPermissionUsers: false serves the full lists to everyone", async () => {
     const registry = createGridRegistry([
       defineGrid<Ctx>({

@@ -17,6 +17,8 @@ import { assertValidSchema } from "../schema/validate-schema";
 import type { GridDefinition } from "./define-grid";
 import { dedupePermissionUsers, hasPermissionUsers, redactPermissionUsers, userFromContext } from "./permission-users";
 
+const isProduction = (): boolean => typeof process !== "undefined" && process.env?.NODE_ENV === "production";
+
 /** One entry of `registry.list(ctx)`. */
 export interface GridListing {
   id: string;
@@ -225,7 +227,23 @@ export function createGridRegistry<Ctx = undefined>(
     if (def.redactPermissionUsers === false || !hasPermissionUsers(schema)) return schema;
     if ((await req.permit("updateSchema")) && (await req.schemaWritable())) return schema;
     const user = def.user ? await def.user(ctx) : userFromContext(ctx);
+    if (!user || !Array.isArray(user.roles)) warnMissingUser(def);
     return redactPermissionUsers(schema, user);
+  }
+
+  /**
+   * v0.4.1: redaction without a `{ id, roles }` user empties every per-person
+   * list, so listed users lose access they were given. Tell the developer
+   * once per grid id (this registry), never in production.
+   */
+  const warnedMissingUser = new Set<string>();
+  function warnMissingUser(def: GridDefinition<Ctx>): void {
+    if (warnedMissingUser.has(def.id) || isProduction()) return;
+    warnedMissingUser.add(def.id);
+    const from = def.user ? "the defineGrid `user` resolver" : "ctx.user";
+    console.warn(
+      `[schema-grid] Grid "${def.id}": redactPermissionUsers is on, but ${from} gave no user with a roles array, so per-person permission lists (column permissions, option settableBy) are being emptied for this caller. Pass defineGrid({ user: (ctx) => ({ id, roles }) }) (the same user your source uses) or put { id, roles } on ctx.user.`,
+    );
   }
 
   async function run(def: GridDefinition<Ctx>, op: GridOperation, input: unknown, ctx: Ctx, req: RequestGates): Promise<WireResult> {
