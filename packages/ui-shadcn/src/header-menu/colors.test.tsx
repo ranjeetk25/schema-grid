@@ -26,7 +26,7 @@ const actions: HeaderMenuActions = {
   canGroup: false,
 };
 
-function setup(current: ColumnColorFilter | undefined) {
+function setup(current: ColumnColorFilter | undefined, blockedReason?: string) {
   const anchor = document.createElement("button");
   anchor.setAttribute("data-test-anchor", "");
   document.body.appendChild(anchor);
@@ -42,7 +42,11 @@ function setup(current: ColumnColorFilter | undefined) {
     />
   );
   const utils = renderUi(
-    current === undefined ? menu : <CellColorFilterProvider value={{ activeColors: () => current, filterByColor: set }}>{menu}</CellColorFilterProvider>,
+    current === undefined ? menu : <CellColorFilterProvider
+        value={{ activeColors: () => current, filterByColor: set, ...(blockedReason ? { blockedReason: () => blockedReason } : {}) }}
+      >
+        {menu}
+      </CellColorFilterProvider>,
   );
   return { ...utils, onClose, set };
 }
@@ -90,6 +94,24 @@ describe("header menu: Filter by color", () => {
     expect(within(sub).getByRole("menuitemcheckbox", { name: "Green" })).toHaveAttribute("aria-checked", "true");
     expect(within(sub).getByRole("menuitemcheckbox", { name: "Red" })).toHaveAttribute("aria-checked", "false");
     fireEvent.click(within(sub).getByRole("menuitem", { name: "Clear color filter" }));
+    expect(set).toHaveBeenCalledWith(FIXTURE_IDS.payment, null);
+  });
+
+  it("is disabled with the reason when a color rule blocks the column (v0.4.1)", async () => {
+    const reason = `a color rule on it uses "Verdict", which can't be filtered on the server`;
+    const { user, set } = setup(null, reason);
+    const item = screen.getByRole("menuitem", { name: /Filter by color/ });
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent(`Can't filter by color: ${reason}`);
+    await user.click(item);
+    expect(screen.queryByRole("menu", { name: /Filter by color/ })).toBeNull();
+    expect(set).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menuitem", { name: "Clear color filter" })).toBeNull();
+  });
+
+  it("a blocked column with an active color filter can still clear it (v0.4.1)", async () => {
+    const { set } = setup(["red"], "blocked");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clear color filter" }));
     expect(set).toHaveBeenCalledWith(FIXTURE_IDS.payment, null);
   });
 });

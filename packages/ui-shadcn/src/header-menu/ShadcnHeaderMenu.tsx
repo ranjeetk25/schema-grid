@@ -126,6 +126,7 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
   // v0.4: "Filter by color" only inside a CellColorFilterProvider (the workbench provides one when the source filters by color).
   const colorFilter = useCellColorFilter();
   const activeColors = colorFilter?.activeColors(column.colId) ?? null;
+  const colorBlocked = colorFilter?.blockedReason?.(column.colId) ?? null;
 
   const trigger =
     typeof document === "undefined"
@@ -188,7 +189,27 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
         <Item icon={<ChevronsLeftRightIcon />} label="Autosize all columns" onSelect={run(() => actions.autosizeAll())} />
         <DropdownMenuSeparator />
         <Item icon={<ListFilterIcon />} label="Filter…" hint="⌘↵" disabled={!canFilter} onSelect={run(() => actions.openFilter())} />
-        {colorFilter ? (
+        {colorFilter && colorBlocked ? (
+          <>
+            <DropdownMenuItem disabled title={`Can't filter by color: ${colorBlocked}`} className="sg:items-start">
+              <PaletteIcon className="sg:mt-0.5" />
+              <span className="sg:flex sg:min-w-0 sg:flex-1 sg:flex-col">
+                <span data-slot="header-menu-label" className="sg:truncate">
+                  Filter by color
+                </span>
+                <span data-slot="header-menu-hint" className="sg:text-xs sg:whitespace-normal sg:text-muted-foreground">
+                  {`Can't filter by color: ${colorBlocked}`}
+                </span>
+              </span>
+            </DropdownMenuItem>
+            {activeColors !== null ? (
+              <DropdownMenuItem onSelect={run(() => colorFilter.filterByColor(column.colId, null))}>
+                <XIcon />
+                Clear color filter
+              </DropdownMenuItem>
+            ) : null}
+          </>
+        ) : colorFilter ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <PaletteIcon />
