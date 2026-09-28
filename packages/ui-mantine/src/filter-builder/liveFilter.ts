@@ -25,6 +25,7 @@
  * - An identical filter is never re-applied.
  */
 import {
+  COLOR_OPERATORS,
   type FieldTypeRegistry,
   type FilterCondition,
   type FilterNode,
@@ -86,7 +87,8 @@ export function isComplete(cond: FilterCondition, ctx: PruneContext): boolean {
   if (ctx.readable && !ctx.readable.has(cond.columnId)) return false;
   const column = ctx.schema.columns.find((c) => c.id === cond.columnId);
   if (!column) return false;
-  const op = getColumnOperators(column, ctx.registry).find((o) => o.id === cond.operator);
+  // v0.4: color operators are valid on any readable column (core validates them; capabilities gate the picker).
+  const op = [...getColumnOperators(column, ctx.registry), ...COLOR_OPERATORS].find((o) => o.id === cond.operator);
   if (!op) return false;
   return valueMatchesKind(op.valueKind, cond.value);
 }

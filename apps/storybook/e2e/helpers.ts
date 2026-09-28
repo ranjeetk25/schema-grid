@@ -15,6 +15,7 @@ export const STORIES = {
   conflict: "6-conflict-prompt--keep-theirs-or-overwrite",
   polling: "7-polling-sync--polling-highlight",
   saveErrors: "8-workbench-states--save-errors",
+  cellColors: "9-cell-colors--cell-colors",
 } as const;
 
 export async function openStory(

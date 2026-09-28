@@ -1,4 +1,5 @@
 import { DEFAULT_THEME, createTheme, mergeMantineTheme } from "@mantine/core";
+import { CELL_COLORS, CELL_COLOR_TOKENS } from "@ranjeetk25/schema-grid-ag-grid";
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
@@ -84,5 +85,16 @@ describe("mantineGridCssVariablesResolver --sg-* contract", () => {
     expect(out.dark["--mantine-color-body"]).toBe("#18181b");
     expect(out.variables["--sg-popup-shadow-light"]).toBeTruthy();
     expect(out.variables["--ag-font-family"]).toBe("var(--mantine-font-family)");
+  });
+});
+
+describe("mantineGridCssVariablesResolver cell colors (v0.4)", () => {
+  const out = mantineGridCssVariablesResolver(mergeMantineTheme(DEFAULT_THEME, schemaGridMantineTheme));
+
+  it("sets every palette color per scheme from the grid's tokens", () => {
+    for (const color of CELL_COLORS) {
+      expect(out.light[`--sg-color-${color}`]).toBe(CELL_COLOR_TOKENS[color].light);
+      expect(out.dark[`--sg-color-${color}`]).toBe(CELL_COLOR_TOKENS[color].dark);
+    }
   });
 });

@@ -41,7 +41,7 @@ persist column edits). Other props:
 |---|---|
 | `resolver`, `registry`, `uiRegistry`, `mode` | defaults: role resolver, default registries, `"server"` with `client` else `"client"` |
 | `views` + `onViewsChange` / `viewStore` | controlled views, or a `WorkbenchViewStore` (`load(gridId)`/`save(gridId, views)`); default `createLocalStorageViewStore()` keyed by grid id |
-| `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling }>` — `false` turns one off |
+| `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling, paint, colorRules }>` — `false` turns one off |
 | `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities` (raw, once loaded), `effectiveCapabilities` (core `mergeCapabilities`, `null` until loaded), `openImport`, `openExport`, `openAddColumn`, `refetch` |
 | `emptyState` | shown over the grid when there are no rows |
 | `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload), export failures (`op: "export"`, banner with Retry) |
@@ -99,17 +99,59 @@ as `ChangeResult.rejected`: the cell reverts with no error state, nothing is
 announced assertively, and the bar reads "N changes not saved" (paste
 summaries add "R not saved").
 
+### Cell colors (v0.4)
+
+Excel-style colors, all derived from the grid's `handle` and the source's
+`capabilities.cellColors` (`{ read, write, filter }`):
+
+- **Paint:** the toolbar's "Cell color" popover (palette + "No color") paints
+  the range selection, else the focused cell (`handle.setCellColor`). It shows
+  when the source reads **and** writes colors (`features.paint`); the swatches
+  are disabled with a hint until a selected cell is paintable
+  (`handle.canPaint()`, re-checked on selection / focus changes). Each paint
+  is one undo step. When cells were skipped (no edit access) or rejected, a
+  toast says so (`notifyCellColorReport`, same optional peer as the paste
+  toast); `gridProps.onCellColorReport` still receives every report. There is
+  no cell context menu, so painting lives in the toolbar only.
+- **Color rules:** the "Color rules" button (a count badge when the view has
+  rules) opens a dialog, loaded on first open, listing the view's rules. Each
+  has a palette swatch, the target (whole row or a multi-select of readable
+  columns), a condition built with the regular `FilterBuilder` (no color
+  operators: a rule can't test colors), an Enabled switch, move up / down and
+  delete. Save validates with core's `validateColorRules` (problems show
+  under their rule) and calls `handle.setColorRules`, which flows to the view
+  like filter / sort (the view shows unsaved changes until saved). Rules are
+  evaluated client-side, so the button shows for any source once
+  capabilities load (`features.colorRules`), and hides when the user can read
+  no column.
+- **Filter by color:** with `cellColors.filter`, the filter builder offers
+  "color is" (a swatch multi-select) and "has no color" on every readable
+  column, `filterable: false` ones included (color operators only there);
+  pass `capabilities` to a standalone `FilterBuilder` / `FilterButton` to get
+  them. The header menu gets a "Filter by color" submenu (palette, "No
+  color", "Clear color filter") that sets one top-level color condition for
+  the column (`setColumnColorFilter`). Outside the workbench, wrap the grid in
+  `<CellColorFilterProvider value={{ filterByColor, activeColors }}>` to get
+  the submenu; without a provider it is hidden. Chips read "Status color is
+  Red, Blue".
+- **Palette / dark mode:** `CELL_COLOR_PALETTE` (label, swatch, fill per
+  `CellColor`) and `<CellColorSwatch color>` use ag-grid's
+  `CELL_COLOR_TOKENS`; `mantineGridCssVariablesResolver` sets the
+  `--sg-color-<name>` variables per colour scheme
+  (`cellColorCssVariables("light" | "dark")`), so painted cells, rule colors
+  and swatches follow Mantine's dark mode.
+
 ### Lazy chunks
 
-The import wizard, the export dialog and the column panel load on first
-open, and `@ranjeetk25/schema-grid-io` (exceljs, papaparse) is imported only
+The import wizard, the export dialog, the column panel and the color rules
+dialog load on first open, and `@ranjeetk25/schema-grid-io` (exceljs, papaparse) is imported only
 inside an export / import run, so none of them sit in the page chunk.
 
 ## Entry points
 
 | Import | Contents |
 |---|---|
-| `@ranjeetk25/schema-grid-ui-mantine` | everything below, plus `ViewSwitcher`, `GroupByBar`, `ConflictPopover`, `RemoteChangedBadge`, `useGridThemeFromMantine`, `notifyClipboardReport` |
+| `@ranjeetk25/schema-grid-ui-mantine` | everything below, plus `ViewSwitcher`, `GroupByBar`, `ConflictPopover`, `RemoteChangedBadge`, `useGridThemeFromMantine`, `notifyClipboardReport`, and v0.4 `CellColorButton`, `CellColorPicker`, `ColorSwatchMultiSelect`, `ColorRulesDialog`, `CellColorFilterProvider`, `setColumnColorFilter`, `CELL_COLOR_PALETTE`, `CellColorSwatch`, `notifyCellColorReport` |
 | `…/editors` | editors, renderers, `createMantineUiRegistry()` |
 | `…/filter-builder` | `FilterBuilder`, `FilterChips`, `FilterButton`, draft model |
 | `…/column-builder` | `ColumnBuilderModal`, `ZodForm`, `FormulaEditor`, column draft model |
@@ -174,7 +216,9 @@ Popup set: `longText`, `date`, `datetime`, `select`, `multiSelect`,
 shows a toast such as "Pasted 40 cells, 3 skipped (2 invalid, 1 read-only)".
 Mount `<Notifications />` from `@mantine/notifications` in your app for it to
 appear. When the package is not installed it resolves `"unavailable"` and
-never throws.
+never throws. `notifyCellColorReport(report)` (v0.4) does the same for a paint
+that skipped or lost cells ("Colored 3 cells red, 1 skipped (read-only)") and
+resolves `"nothing"` without a toast when every cell was painted.
 
 ## Upstream contracts
 
