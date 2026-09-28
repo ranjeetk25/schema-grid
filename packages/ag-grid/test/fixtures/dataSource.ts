@@ -163,6 +163,8 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     deleteRows: (ids: string[]) => inner.deleteRows(ids),
     // v0.3.1: core's in-memory source answers `getRows` (rows as `fetch` would serve them).
     getRows: (ids: string[]) => inner.getRows(ids),
+    // v0.4: core's in-memory source stores manual cell colors.
+    setCellColors: (batch) => inner.setCellColors(batch),
     getChanges: calls.getChanges,
     getOptions: calls.getOptions,
     createOption: calls.createOption,

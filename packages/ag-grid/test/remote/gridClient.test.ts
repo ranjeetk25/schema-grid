@@ -121,7 +121,12 @@ describe("createGridClient", () => {
   it("capabilities() infers them without a request when the server predates the op", async () => {
     const { fetch } = fakeServer();
     const client = createGridClient({ baseUrl: "/grid", gridId: "admissions", fetch, supports: { capabilities: false } });
-    expect(await client.capabilities()).toEqual({ ...DEFAULT_CAPABILITIES, write: { ...DEFAULT_CAPABILITIES.write } });
+    // v0.4: the remote source exposes setCellColors (supports default all), so inference marks it writable.
+    expect(await client.capabilities()).toEqual({
+      ...DEFAULT_CAPABILITIES,
+      write: { ...DEFAULT_CAPABILITIES.write },
+      cellColors: { read: false, write: true, filter: false },
+    });
     expect(fetch).not.toHaveBeenCalled();
   });
 
