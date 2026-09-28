@@ -5,8 +5,10 @@
  * `apply(changes, source)`:
  *   1. drops what the client already knows it can't paint: unknown rows or
  *      columns and cells failing `canColor` (`canColorCell`). They are
- *      reported in the result's `rejected` (message "Read-only" /
- *      "Row not found" / "Column not found") and counted in `skipped`.
+ *      reported in the result's `rejected` (message "Row not found" /
+ *      "Column not found", or v0.4.1 core's `cellEditDenial` for the column:
+ *      "Column is read-only (formula)" / "Column is read-only" / "Only
+ *      specific people can edit this column") and counted in `skipped`.
  *   2. applies the rest optimistically: the row store gets the rows with
  *      their new `colors` (same version: colors never bump it), and the
  *      cells are marked pending (`isPending`) so fetched / polled rows don't
@@ -23,7 +25,15 @@
  *
  * `apply` resolves `null` when the data source has no `setCellColors`.
  */
-import type { CellColor, CellColorChange, CellColorResult, ColumnDef, GridRow, GridSchema } from "../internal/core";
+import {
+  type CellColor,
+  type CellColorChange,
+  type CellColorResult,
+  type ColumnDef,
+  cellEditDenial,
+  type GridRow,
+  type GridSchema,
+} from "../internal/core";
 import { cellKey } from "../state/cellStatusStore";
 import type { RowStore } from "../state/rowStore";
 import type { ColorUndoChange } from "../undo/undoStack";
@@ -56,6 +66,7 @@ export interface ColorController {
   isPending(rowId: string, columnId: string): boolean;
 }
 
+/** Fallback refusal message; v0.4.1: unpaintable cells get core's `cellEditDenial` message instead. */
 export const COLOR_READ_ONLY_MESSAGE = "Read-only";
 
 /** The row's manual color for a column, or null. */
@@ -154,7 +165,7 @@ export function createColorController<Row extends GridRow = GridRow>(opts: Color
       const skip = (message: string) => rejected.push({ rowId: c.rowId, columnId: c.columnId, message });
       if (!row) skip("Row not found");
       else if (!column) skip("Column not found");
-      else if (!opts.canColor(row, column)) skip(COLOR_READ_ONLY_MESSAGE);
+      else if (!opts.canColor(row, column)) skip(cellEditDenial(column, "read")?.message ?? COLOR_READ_ONLY_MESSAGE);
       else planned.push({ rowId: c.rowId, columnId: c.columnId, prev: manualColorOf(row, c.columnId), next: c.color });
     }
     const skipped = rejected.length;

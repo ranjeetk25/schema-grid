@@ -237,8 +237,8 @@ describe("setCellColor / canPaint", () => {
     expect(result).toMatchObject({
       applied: [{ rowId: "r1", columnId: "name", color: "red" }],
       rejected: [
-        { rowId: "r1", columnId: "status", message: "Read-only" },
-        { rowId: "r1", columnId: "total", message: "Read-only" },
+        { rowId: "r1", columnId: "status", message: "Only specific people can edit this column" },
+        { rowId: "r1", columnId: "total", message: "Column is read-only (formula)" },
       ],
     });
     expect(onCellColorReport).toHaveBeenCalledWith({ color: "red", requested: 3, applied: 1, skipped: 2, rejected: 0 });

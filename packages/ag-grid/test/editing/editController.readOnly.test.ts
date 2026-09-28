@@ -1,6 +1,7 @@
 /** C3: client-side write enforcement in the edit controller (v0.2). */
 import { describe, expect, it, vi } from "vitest";
 import { createEditController, READ_ONLY_MESSAGE } from "../../src/editing/editController";
+import { PERMISSION_EDIT_DENIED_MESSAGE } from "../../src/internal/core";
 import { createCellStatusStore } from "../../src/state/cellStatusStore";
 import { createRowStore } from "../../src/state/rowStore";
 import type { CellChange, ChangeBatch, GridRow, SchemaGridEvents } from "../../src/internal/core";
@@ -43,7 +44,8 @@ describe("editController: canEditCell enforcement (C3)", () => {
     expect(rowStore.getRow("r1")?.cells.status).toBe("open");
     expect(ds.rows().find((r) => r.id === "r1")?.cells.status).toBe("open");
     expect(outcome.result.applied.map((c) => c.columnId)).toEqual(["name"]);
-    expect(outcome.result.errors).toEqual([{ rowId: "r1", columnId: "status", message: READ_ONLY_MESSAGE }]);
+    // v0.4.1: the server's message for the column (status: `permissions.edit` admin only).
+    expect(outcome.result.errors).toEqual([{ rowId: "r1", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE }]);
     expect(outcome.readOnly).toEqual([{ rowId: "r1", columnId: "status" }]);
     expect(READ_ONLY_MESSAGE).toBe("Read-only");
     // Reported, not marked as a cell error.
@@ -63,8 +65,22 @@ describe("editController: canEditCell enforcement (C3)", () => {
     expect(rowStore.getRevision()).toBe(rev);
     expect(outcome.vetoed).toBe(false);
     expect(outcome.batch.changes).toEqual([]);
-    expect(outcome.result).toEqual({ applied: [], conflicts: [], errors: [{ rowId: "r1", columnId: "status", message: "Read-only" }] });
+    expect(outcome.result).toEqual({ applied: [], conflicts: [], errors: [{ rowId: "r1", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE }] });
     expect(onCellsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the server's refusal message per column (v0.4.1)", async () => {
+    const { controller } = setup({ readOnly: new Set(["status", "total", "name"]) });
+    const outcome = await controller.submit(
+      [change("r1", "status", "open", "x"), change("r1", "total", 20, 1), change("r1", "name", "Asha", "A")],
+      "paste",
+    );
+    expect(outcome.result.errors).toEqual([
+      { rowId: "r1", columnId: "status", message: "Only specific people can edit this column" },
+      { rowId: "r1", columnId: "total", message: "Column is read-only (formula)" },
+      { rowId: "r1", columnId: "name", message: "Column is read-only" },
+    ]);
+    expect(outcome.readOnly).toHaveLength(3);
   });
 
   it("rejects changes for rows missing from the row store", async () => {
@@ -85,7 +101,7 @@ describe("editController: canEditCell enforcement (C3)", () => {
     const sent = ds.calls.applyChanges.mock.calls[0]?.[0] as ChangeBatch;
     expect(sent.changes.map((c) => c.columnId)).toEqual(["name"]);
     expect(rowStore.getRow("r2")?.cells.status).not.toBe("sneaky");
-    expect(outcome.result.errors).toEqual([{ rowId: "r2", columnId: "status", message: "Read-only" }]);
+    expect(outcome.result.errors).toEqual([{ rowId: "r2", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE }]);
   });
 
   it("a veto still wins, and read-only rejections are reported with it", async () => {
@@ -93,7 +109,7 @@ describe("editController: canEditCell enforcement (C3)", () => {
     const outcome = await controller.submit([change("r1", "name", "Asha", "A"), change("r1", "status", "open", "x")], "edit");
     expect(outcome.vetoed).toBe(true);
     expect(ds.calls.applyChanges).not.toHaveBeenCalled();
-    expect(outcome.result.errors).toEqual([{ rowId: "r1", columnId: "status", message: "Read-only" }]);
+    expect(outcome.result.errors).toEqual([{ rowId: "r1", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE }]);
   });
 
   it("server errors are merged after the read-only ones", async () => {
@@ -101,7 +117,7 @@ describe("editController: canEditCell enforcement (C3)", () => {
     ds.errorOn("r1", "name", "Name is locked");
     const outcome = await controller.submit([change("r1", "status", "open", "x"), change("r1", "name", "Asha", "A")], "edit");
     expect(outcome.result.errors).toEqual([
-      { rowId: "r1", columnId: "status", message: "Read-only" },
+      { rowId: "r1", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE },
       { rowId: "r1", columnId: "name", message: "Name is locked" },
     ]);
     expect(cellStatus.get("r1", "status").error).toBeFalsy();
@@ -113,7 +129,7 @@ describe("editController: canEditCell enforcement (C3)", () => {
     ds.failNextApply(new Error("down"));
     const outcome = await controller.submit([change("r1", "status", "open", "x"), change("r1", "name", "Asha", "A")], "edit");
     expect(outcome.result.errors).toEqual([
-      { rowId: "r1", columnId: "status", message: "Read-only" },
+      { rowId: "r1", columnId: "status", message: PERMISSION_EDIT_DENIED_MESSAGE },
       { rowId: "r1", columnId: "name", message: "down" },
     ]);
   });
@@ -148,6 +164,6 @@ describe("editController: canEditCell enforcement (C3)", () => {
     readOnly.add("score");
     const redo = await controller.submit([change("r1", "score", 10, 11)], "redo");
     expect(ds.calls.applyChanges).toHaveBeenCalledTimes(2);
-    expect(redo.result.errors).toEqual([{ rowId: "r1", columnId: "score", message: "Read-only" }]);
+    expect(redo.result.errors).toEqual([{ rowId: "r1", columnId: "score", message: "Column is read-only" }]);
   });
 });
