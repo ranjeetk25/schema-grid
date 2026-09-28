@@ -67,6 +67,8 @@ async function invoke(ds: DataSource<GridRow>, op: GridOperation, input: unknown
     }
     case "getRows":
       return ds.getRows?.((input as WireInput<"getRows">).ids);
+    case "setCellColors":
+      return ds.setCellColors?.(input as WireInput<"setCellColors">);
     case "capabilities":
       // Sources without `capabilities()` get a default computed from what they implement.
       return getDataSourceCapabilities(ds);
@@ -121,7 +123,9 @@ export function createDataSourceHandler(
     const parsed = wireSchemas[op].input.safeParse(rawInput);
     if (!parsed.success) {
       const issues = toWireIssues(parsed.error);
-      const filterOnly = op === "fetch" && issues.length > 0 && issues.every((i) => i.path[0] === "filter");
+      // Malformed filters and color rules (v0.4) are both filter problems.
+      const filterOnly =
+        op === "fetch" && issues.length > 0 && issues.every((i) => i.path[0] === "filter" || i.path[0] === "colorRules");
       const result = filterOnly
         ? fail("FILTER_INVALID", "Malformed filter", { issues })
         : fail("INPUT_INVALID", `Invalid input for "${op}"`, { issues });

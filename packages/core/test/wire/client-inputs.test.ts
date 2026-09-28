@@ -31,6 +31,13 @@ describe("client-sent inputs vs wireSchemas[op].input", () => {
     await ds.createOption?.(C.status, "New");
     await ds.lookup?.(C.programs, "x");
     await ds.getRows?.(["r1", "r2"]);
+    await ds.setCellColors?.({ id: "c1", changes: [{ rowId: "r1", columnId: C.name, color: "red" }] });
+    await ds.fetch({
+      filter: { columnId: C.name, operator: "colorIs", value: ["red"] },
+      sort: [],
+      page: { offset: 0, limit: 10 },
+      colorRules: [{ id: "x", color: "blue", target: { kind: "row" }, when: null }],
+    });
     await ds.capabilities?.();
     const ops = new Set(sent.map(([op]) => op));
     for (const op of GRID_OPERATIONS) {
