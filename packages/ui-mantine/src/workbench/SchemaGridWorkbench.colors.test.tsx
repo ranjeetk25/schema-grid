@@ -219,4 +219,48 @@ describe("<SchemaGridWorkbench> cell colors (v0.4)", () => {
       within(pop).getByRole("option", { name: "color is" }),
     ).toBeInTheDocument();
   });
+
+  it("v0.4.1: a rule testing an unfilterable column blocks color filtering on the columns it colors", async () => {
+    const base = createFixtureSchema();
+    const schema: GridSchema = {
+      ...base,
+      columns: base.columns.map((c) => (c.id === C.notes ? { ...c, filterable: false } : c)),
+    };
+    const { container, user, handle } = renderWorkbench({ schema, dataSource: memory(schema) });
+    await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+    await act(async () => {
+      handle()?.setColorRules([
+        {
+          id: "r1",
+          color: "red",
+          target: { kind: "cells", columnIds: [C.name] },
+          when: { columnId: C.notes, operator: "isNotEmpty" },
+        },
+      ]);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Color rules" })).toHaveTextContent("1"),
+    );
+    await user.click(await screen.findByRole("button", { name: "Filter" }));
+    const pop = await screen.findByRole("dialog", { name: /^Filter/ });
+    await user.click(within(pop).getByRole("button", { name: "Add condition" }));
+    const column = within(pop)
+      .getAllByLabelText("Column")
+      .filter((e) => e.tagName === "INPUT")
+      .at(-1);
+    if (!column) throw new Error("no column picker");
+    await user.click(column);
+    await user.click(await within(pop).findByRole("option", { name: "Name" }));
+    const op = within(pop)
+      .getAllByLabelText("Operator")
+      .filter((e) => e.tagName === "INPUT")
+      .at(-1);
+    if (!op) throw new Error("no operator picker");
+    expect(op).toHaveAttribute(
+      "aria-description",
+      `Can't filter by color: a color rule on it uses "Internal notes", which can't be filtered on the server`,
+    );
+    await user.click(op);
+    expect(within(pop).queryByRole("option", { name: "color is" })).toBeNull();
+  });
 });

@@ -249,6 +249,46 @@ describe("<ColorRulesDialog>", () => {
     expect(names).not.toContain("Secret");
   });
 
+  describe("unfilterable columns in a rule's condition (v0.4.1)", () => {
+    const unfilterable = {
+      ...schema,
+      columns: schema.columns.map((c) => (c.id === FIXTURE_IDS.notes ? { ...c, filterable: false } : c)),
+    };
+    const NOTE = "Can't be used to filter by color";
+
+    it("offers a filterable:false column, saves the rule and notes it can't filter by color", async () => {
+      const { user, rule, onSave, dialog } = renderDialog({
+        rules: [],
+        schema: unfilterable,
+        access: buildFixtureAccess(unfilterable),
+      });
+      await user.click(within(dialog).getByRole("button", { name: "Add rule" }));
+      const r = rule(1);
+      expect(within(r).queryByText(NOTE)).toBeNull();
+      await user.click(within(r).getByRole("button", { name: "Add condition" }));
+      await pick(user, r, "Column", "Notes");
+      await pick(user, r, "Operator", "is not empty");
+      expect(within(r).getByText(NOTE)).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Save" }));
+      expect(onSave).toHaveBeenCalledWith([
+        expect.objectContaining({
+          when: { op: "and", children: [{ columnId: FIXTURE_IDS.notes, operator: "isNotEmpty" }] },
+        }),
+      ]);
+    });
+
+    it("an existing rule on an unfilterable column shows the note; others don't", () => {
+      const { rule } = renderDialog({
+        schema: unfilterable,
+        access: buildFixtureAccess(unfilterable),
+        rules: [RULES[0] as ColorRule, { ...(RULES[0] as ColorRule), id: "r3", when: { columnId: FIXTURE_IDS.notes, operator: "isNotEmpty" } }],
+      });
+      expect(within(rule(1)).queryByText(NOTE)).toBeNull();
+      const note = within(rule(2)).getByText(NOTE);
+      expect(note).toHaveAttribute("title", `Uses "Notes", which can't be filtered on the server`);
+    });
+  });
+
   it("Cancel discards edits", async () => {
     const { user, rule, onSave, onClose, dialog } = renderDialog();
     await user.click(
