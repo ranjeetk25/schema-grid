@@ -19,7 +19,7 @@ const CREATE_ITEM_VALUE = "c:create";
 export type CreatableSelectEditorProps = UiEditorProps<string, unknown>;
 
 /** v0.4.1: shown instead of "Create …" when the grid's capabilities say `options: false`. */
-const CREATE_UNAVAILABLE_MESSAGE = "Adding options isn't set up for this grid";
+export const CREATE_OPTION_UNAVAILABLE_MESSAGE = "Creating options isn't set up for this grid";
 
 const errorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : typeof err === "string" && err ? err : "Could not create option";
@@ -159,7 +159,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
         </p>
       ) : null}
       {showCreateOff ? (
-        <p className="sg:border-b sg:border-border sg:px-2.5 sg:py-1.5 sg:text-xs sg:text-muted-foreground">{CREATE_UNAVAILABLE_MESSAGE}</p>
+        <p className="sg:border-b sg:border-border sg:px-2.5 sg:py-1.5 sg:text-xs sg:text-muted-foreground">{CREATE_OPTION_UNAVAILABLE_MESSAGE}</p>
       ) : null}
       <CommandList {...highlight.listProps}>
         {!showCreate ? <CommandEmpty>Nothing found</CommandEmpty> : null}

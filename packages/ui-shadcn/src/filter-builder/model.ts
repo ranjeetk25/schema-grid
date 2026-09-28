@@ -9,13 +9,13 @@
  * v0.4 filter by color: with `capabilities.cellColors.filter`, every column
  * also offers ag-grid's color operators (`colorIs` / `colorIsNone`), and
  * `filterable: false` columns become pickable with those operators only.
- * v0.4.1: a column a color rule blocks (`colorFilterBlockedReasons`) gets no
+ * v0.4.1: a column a view color rule blocks (`colorBlockedReason`) gets no
  * color operators; the rules dialog's builder picks `filterable: false`
- * columns with their own operators (`allowUnfilterable`).
+ * columns with their own operators (`allowUnfilterable`). Both come in a
+ * `ColumnPickOptions` last argument.
  */
 import {
   type CellColor,
-  type ColorRule,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterCondition,
@@ -31,6 +31,7 @@ import {
 import { type AccessMap, readableColumns } from "../internal/access";
 import {
   type CellColorCapabilitiesLike,
+  type ColorRulesInput,
   canFilterByColor,
   colorFilterBlockedReason,
   columnOperatorsWithColors,
@@ -59,34 +60,40 @@ export type FilterDraft = DraftGroup;
 export interface DraftContext {
   schema: GridSchema;
   registry: FieldTypeRegistry;
-  /** Source capabilities (`handle.effectiveCapabilities`): `cellColors.filter` adds the color operators. */
-  capabilities?: CellColorCapabilitiesLike;
-  /** v0.4.1: column id → why it can't be filtered by color (`colorFilterBlockedReasons`); no color operators there. */
-  blocked?: ColorBlockedReasons;
+  /**
+   * Source capabilities (`handle.effectiveCapabilities`): `cellColors.filter`
+   * adds the color operators; v0.4.1: the `filter` scope / per-column
+   * `filterable` count for `colorRules`.
+   */
+  capabilities?: CellColorCapabilitiesLike & FilterScopeCapabilitiesLike;
+  /** v0.4.1: the view's color rules; a column one of them blocks gets no color operators. */
+  colorRules?: ColorRulesInput;
   /** v0.4.1: `filterable: false` columns are pickable and validate (the color rules dialog). */
   allowUnfilterable?: boolean;
 }
 
-/** v0.4.1: column id → why the server can't filter it by color (`colorFilterBlockedReason`). */
-export type ColorBlockedReasons = ReadonlyMap<string, string>;
+/** v0.4.1: the optional last argument of `filterableColumns` / `operatorsFor`. */
+export interface ColumnPickOptions {
+  /** Offer `filterable: false` columns with their own operators (client-side conditions, e.g. color rules). */
+  allowUnfilterable?: boolean;
+  /** The view's color rules and the (effective) schema: a column one of them blocks gets no color operators. */
+  colorRules?: ColorRulesInput;
+}
 
 /**
- * v0.4.1: every column of `schema` a color rule blocks from filtering by
- * color, with the reason (ag-grid `colorFilterBlockedReason`, checked against
- * `capabilities`' filter scope when given). Empty without rules.
+ * v0.4.1: why `column` can't be filtered by color, or null. Null unless the
+ * source filters by color (`capabilities.cellColors.filter`) and a rule in
+ * `colorRules` that can color `column` tests a column the server can't filter
+ * on (`filterable: false`, or outside `capabilities`' filter scope):
+ * ag-grid's `colorFilterBlockedReason`.
  */
-export function colorFilterBlockedReasons(
-  schema: GridSchema,
-  rules: readonly ColorRule[] | undefined,
-  capabilities?: FilterScopeCapabilitiesLike,
-): Map<string, string> {
-  const out = new Map<string, string>();
-  if (!rules || rules.length === 0) return out;
-  for (const column of schema.columns) {
-    const reason = colorFilterBlockedReason(column, rules, schema, capabilities);
-    if (reason) out.set(column.id, reason);
-  }
-  return out;
+export function colorBlockedReason(
+  column: ColumnDef,
+  capabilities: (CellColorCapabilitiesLike & FilterScopeCapabilitiesLike) | undefined,
+  colorRules: ColorRulesInput | undefined,
+): string | null {
+  if (!colorRules || !canFilterByColor(capabilities)) return null;
+  return colorFilterBlockedReason(column, colorRules.rules, colorRules.schema, capabilities);
 }
 
 export type ConditionPatch = Partial<Pick<DraftCondition, "columnId" | "operator" | "value">>;
@@ -113,19 +120,21 @@ const emptyCondition = (): DraftCondition => ({
  * Columns that may appear in a filter picker: readable ones only (fail
  * closed), minus `filterable: false` (v0.2 C1) unless the source filters by
  * color (the color operators apply to every readable column) and no color
- * rule blocks it (`blocked`, v0.4.1), or `allowUnfilterable` (v0.4.1, color
- * rule conditions render client-side).
+ * rule blocks it (`options.colorRules`, v0.4.1), or with
+ * `options.allowUnfilterable` (v0.4.1, color rule conditions render client-side).
  */
 export function filterableColumns(
   schema: GridSchema,
   access: AccessMap,
-  capabilities?: CellColorCapabilitiesLike,
-  blocked?: ColorBlockedReasons,
-  allowUnfilterable = false,
+  capabilities?: CellColorCapabilitiesLike & FilterScopeCapabilitiesLike,
+  options: ColumnPickOptions = {},
 ): ColumnDef[] {
   const colors = canFilterByColor(capabilities);
   return readableColumns(schema, access).filter(
-    (c) => allowUnfilterable || c.filterable !== false || (colors && !blocked?.has(c.id)),
+    (c) =>
+      options.allowUnfilterable ||
+      c.filterable !== false ||
+      (colors && colorBlockedReason(c, capabilities, options.colorRules) === null),
   );
 }
 
@@ -135,18 +144,25 @@ export function filterableColumns(
  * the color operators follow, and a `filterable: false` column offers only
  * those (ag-grid `columnOperatorsWithColors`). Without it, a `filterable:
  * false` column keeps its type's operators so a saved condition still reads.
- * v0.4.1: a column in `blocked` gets no color operators (a blocked
- * `filterable: false` column, none at all while colors filter).
+ * v0.4.1: a column `options.colorRules` blocks gets no color operators (a
+ * blocked `filterable: false` column, none at all while colors filter).
  */
 export function operatorsFor(
   column: ColumnDef,
   registry: FieldTypeRegistry,
-  capabilities?: CellColorCapabilitiesLike,
-  blocked?: ColorBlockedReasons,
+  capabilities?: CellColorCapabilitiesLike & FilterScopeCapabilitiesLike,
+  options: ColumnPickOptions = {},
 ): readonly FilterOperatorDef[] {
   if (!canFilterByColor(capabilities)) return getColumnOperators(column, registry);
-  if (blocked?.has(column.id)) return column.filterable === false ? [] : getColumnOperators(column, registry);
+  if (colorBlockedReason(column, capabilities, options.colorRules) !== null) {
+    return column.filterable === false ? [] : getColumnOperators(column, registry);
+  }
   return columnOperatorsWithColors(column, registry, capabilities);
+}
+
+/** `operatorsFor` with a draft context's capabilities, color rules and `allowUnfilterable` (v0.4.1). */
+export function operatorsInContext(column: ColumnDef, ctx: DraftContext): readonly FilterOperatorDef[] {
+  return operatorsFor(column, ctx.registry, ctx.capabilities, { colorRules: ctx.colorRules, allowUnfilterable: ctx.allowUnfilterable });
 }
 
 export function defaultValueFor(valueKind: FilterValueKind): FilterValue | undefined {
@@ -175,7 +191,7 @@ export function findOperator(
   if (!columnId || !operatorId) return undefined;
   const column = ctx.schema.columns.find((c) => c.id === columnId);
   if (!column) return undefined;
-  return operatorsFor(column, ctx.registry, ctx.capabilities, ctx.blocked).find((o) => o.id === operatorId);
+  return operatorsInContext(column, ctx).find((o) => o.id === operatorId);
 }
 
 // ---------------------------------------------------------------------------
@@ -349,7 +365,7 @@ export function updateCondition(draft: FilterDraft, id: string, patch: Condition
     if (patch.columnId !== undefined && patch.columnId !== n.columnId) {
       next.columnId = patch.columnId;
       const column = patch.columnId && ctx ? ctx.schema.columns.find((c) => c.id === patch.columnId) : undefined;
-      const first = column && ctx ? operatorsFor(column, ctx.registry, ctx.capabilities, ctx.blocked)[0] : undefined;
+      const first = column && ctx ? operatorsInContext(column, ctx)[0] : undefined;
       next.operator = first?.id ?? null;
       next.value = first ? defaultValueFor(first.valueKind) : undefined;
       return next;

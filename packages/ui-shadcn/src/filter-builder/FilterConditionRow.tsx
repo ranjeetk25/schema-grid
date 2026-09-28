@@ -45,7 +45,7 @@ export function FilterConditionRow({
   const invalid = Boolean(errors?.column || errors?.operator || errors?.value);
   const errorId = useId();
   const rowError = errors?.column ?? errors?.operator;
-  const colorBlocked = api.colorBlockedReason?.(condition.columnId);
+  const colorBlocked = api.colorBlockedReasonFor?.(condition.columnId);
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the row; a labelled group is the intent

@@ -8,7 +8,7 @@ import type { ColorRule, FilterNode, GridSchema } from "../internal/core-contrac
 import { FIXTURE_IDS, buildFixtureAccess, buildFixtureRegistry, buildFixtureSchema, buildStubUiRegistry } from "../test/fixtures";
 import { renderUi } from "../test/render";
 import { FilterBuilder } from "./FilterBuilder";
-import { colorFilterBlockedReasons, filterableColumns, operatorsFor } from "./model";
+import { colorBlockedReason, filterableColumns, operatorsFor } from "./model";
 
 const COLORS_ON = { cellColors: { read: true, write: true, filter: true } };
 
@@ -36,27 +36,35 @@ const blockingRule: ColorRule = {
 };
 const REASON = `a color rule on it uses "Notes", which can't be filtered on the server`;
 
-describe("colorFilterBlockedReasons (model)", () => {
-  it("maps each column a rule blocks to the reason; others are absent", () => {
-    const reasons = colorFilterBlockedReasons(schema, [blockingRule]);
-    expect(reasons.get(FIXTURE_IDS.payment)).toBe(REASON);
-    expect(reasons.get(FIXTURE_IDS.notes)).toBe(REASON);
-    expect(reasons.has(FIXTURE_IDS.amount)).toBe(false);
-    expect(colorFilterBlockedReasons(schema, undefined).size).toBe(0);
+const colorRules = { rules: [blockingRule], schema };
+
+describe("colorBlockedReason (model)", () => {
+  it("names the reason for each column a rule blocks, only while colors filter", () => {
+    expect(colorBlockedReason(col(FIXTURE_IDS.payment), COLORS_ON, colorRules)).toBe(REASON);
+    expect(colorBlockedReason(col(FIXTURE_IDS.notes), COLORS_ON, colorRules)).toBe(REASON);
+    expect(colorBlockedReason(col(FIXTURE_IDS.amount), COLORS_ON, colorRules)).toBeNull();
+    expect(colorBlockedReason(col(FIXTURE_IDS.payment), undefined, colorRules)).toBeNull();
+    expect(colorBlockedReason(col(FIXTURE_IDS.payment), COLORS_ON, undefined)).toBeNull();
+  });
+
+  it("counts columns outside the capabilities' filter scope as unfilterable", () => {
+    const onAmount = { ...blockingRule, when: { columnId: FIXTURE_IDS.amount, operator: "isEmpty" } };
+    const scoped = { ...COLORS_ON, filter: { columnIds: [FIXTURE_IDS.payment] } };
+    expect(colorBlockedReason(col(FIXTURE_IDS.payment), COLORS_ON, { rules: [onAmount], schema })).toBeNull();
+    expect(colorBlockedReason(col(FIXTURE_IDS.payment), scoped, { rules: [onAmount], schema })).toContain('"Amount"');
   });
 
   it("drops the color operators of a blocked column, and a blocked filterable:false column from the picker", () => {
-    const blocked = colorFilterBlockedReasons(schema, [blockingRule]);
-    expect(ids(operatorsFor(col(FIXTURE_IDS.payment), registry, COLORS_ON, blocked))).not.toContain("colorIs");
-    expect(ids(operatorsFor(col(FIXTURE_IDS.amount), registry, COLORS_ON, blocked))).toContain("colorIs");
-    expect(operatorsFor(col(FIXTURE_IDS.notes), registry, COLORS_ON, blocked)).toEqual([]);
-    const picked = filterableColumns(schema, access, COLORS_ON, blocked).map((c) => c.id);
+    expect(ids(operatorsFor(col(FIXTURE_IDS.payment), registry, COLORS_ON, { colorRules }))).not.toContain("colorIs");
+    expect(ids(operatorsFor(col(FIXTURE_IDS.amount), registry, COLORS_ON, { colorRules }))).toContain("colorIs");
+    expect(operatorsFor(col(FIXTURE_IDS.notes), registry, COLORS_ON, { colorRules })).toEqual([]);
+    const picked = filterableColumns(schema, access, COLORS_ON, { colorRules }).map((c) => c.id);
     expect(picked).not.toContain(FIXTURE_IDS.notes);
     expect(picked).toContain(FIXTURE_IDS.payment);
   });
 
   it("allowUnfilterable: filterable:false columns are pickable with their own operators (no colors)", () => {
-    const picked = filterableColumns(schema, access, undefined, undefined, true).map((c) => c.id);
+    const picked = filterableColumns(schema, access, undefined, { allowUnfilterable: true }).map((c) => c.id);
     expect(picked).toContain(FIXTURE_IDS.notes);
     expect(ids(operatorsFor(col(FIXTURE_IDS.notes), registry))).toContain("isEmpty");
   });

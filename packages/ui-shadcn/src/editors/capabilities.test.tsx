@@ -104,7 +104,7 @@ describe("CreatableSelectEditor without capabilities.options", () => {
     );
     await user.type(screen.getByRole("combobox"), "Brand new");
     expect(screen.queryByRole("option", { name: /Create/ })).toBeNull();
-    expect(screen.getByText("Adding options isn't set up for this grid")).toBeInTheDocument();
+    expect(screen.getByText("Creating options isn't set up for this grid")).toBeInTheDocument();
     await user.keyboard("{Enter}");
     expect(dataSource.createOption).not.toHaveBeenCalled();
   });

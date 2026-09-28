@@ -86,6 +86,7 @@ export {
   type CellColorCapabilitiesLike,
   type CellColorReport,
   type CellColorToken,
+  type ColorRulesInput,
   type SchemaGridHandle,
 } from "@ranjeetk25/schema-grid-ag-grid";
 

@@ -5,6 +5,7 @@ import { readableColumnIds } from "../internal/access";
 import {
   type ColorRule,
   type ColumnDef,
+  type ColumnScope,
   type DataSource,
   type FieldTypeCapabilitiesLike,
   type FieldTypeRegistry,
@@ -31,12 +32,12 @@ import {
   addCondition as addConditionTo,
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
-  colorFilterBlockedReasons,
+  colorBlockedReason,
   filterableColumns,
   findNode,
   findOperator,
   fromDraftIndexed,
-  operatorsFor,
+  operatorsInContext,
   removeNode,
   setGroupOp,
   toDraft,
@@ -86,8 +87,8 @@ export interface FilterDraftApi {
   readable?: ReadonlySet<string>;
   maxDepth: number;
   operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
-  /** v0.4.1: why the column can't be filtered by color (a color rule blocks it), when color filtering is otherwise on. */
-  colorBlockedReason?(columnId: string | null): string | undefined;
+  /** v0.4.1: why the column can't be filtered by color (a color rule blocks it), when color filtering is otherwise on; else null. */
+  colorBlockedReasonFor?(columnId: string | null): string | null;
   /** v0.4.1: the builder's capabilities, for the value pickers (`lookup` / `options`). */
   capabilities?: FieldTypeCapabilitiesLike;
   addCondition(groupId: string): void;
@@ -171,24 +172,35 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
 
   // Only the flag matters: a new capabilities object with the same answer keeps the context.
   const colors = canFilterByColor(capabilities);
-  // v0.4.1: columns a color rule blocks (only matters while colors filter). Keyed by content, so an equal answer keeps the context.
-  const blockedKey = useMemo(
-    () => (colors ? JSON.stringify([...colorFilterBlockedReasons(schema, colorRules, capabilities)]) : "[]"),
-    [colors, schema, colorRules, capabilities],
-  );
-  const ctx: DraftContext = useMemo(
-    () => ({
+  // v0.4.1: the filter scope only matters for color rules while colors filter. Keyed by content, so an equal answer keeps the context.
+  const scopeKey =
+    colors && colorRules && colorRules.length > 0
+      ? JSON.stringify({
+          filter: capabilities?.filter ?? "all",
+          off: Object.entries(capabilities?.columns ?? {})
+            .filter(([, c]) => c?.filterable === false)
+            .map(([id]) => id),
+        })
+      : "";
+  const ctx: DraftContext = useMemo(() => {
+    const scope = scopeKey ? (JSON.parse(scopeKey) as { filter: ColumnScope; off: string[] }) : null;
+    return {
       schema,
       registry,
-      ...(colors ? { capabilities: COLORS_ON } : {}),
-      ...(blockedKey !== "[]" ? { blocked: new Map<string, string>(JSON.parse(blockedKey)) } : {}),
+      ...(colors
+        ? {
+            capabilities: scope
+              ? { ...COLORS_ON, filter: scope.filter, columns: Object.fromEntries(scope.off.map((id) => [id, { filterable: false }])) }
+              : COLORS_ON,
+          }
+        : {}),
+      ...(scope && colorRules ? { colorRules: { rules: colorRules, schema } } : {}),
       ...(allowUnfilterable ? { allowUnfilterable } : {}),
-    }),
-    [schema, registry, colors, blockedKey, allowUnfilterable],
-  );
+    };
+  }, [schema, registry, colors, scopeKey, colorRules, allowUnfilterable]);
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
   const columns = useMemo(
-    () => filterableColumns(schema, access, ctx.capabilities, ctx.blocked, ctx.allowUnfilterable),
+    () => filterableColumns(schema, access, ctx.capabilities, { colorRules: ctx.colorRules, allowUnfilterable: ctx.allowUnfilterable }),
     [schema, access, ctx],
   );
 
@@ -227,11 +239,17 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, registry, ctx.capabilities, ctx.blocked) : [];
+      return column ? operatorsInContext(column, ctx) : [];
     },
-    [schema, registry, ctx],
+    [schema, ctx],
   );
-  const colorBlockedReason = useCallback((columnId: string | null) => (columnId ? ctx.blocked?.get(columnId) : undefined), [ctx]);
+  const colorBlockedReasonFor = useCallback(
+    (columnId: string | null) => {
+      const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
+      return column ? colorBlockedReason(column, ctx.capabilities, ctx.colorRules) : null;
+    },
+    [schema, ctx],
+  );
   const pickerCapabilities = capabilities ? { lookup: capabilities.lookup, options: capabilities.options } : undefined;
 
   const addGroup = (groupId: string) => {
@@ -249,7 +267,7 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
     readable,
     maxDepth,
     operatorsForColumnId,
-    colorBlockedReason,
+    colorBlockedReasonFor,
     ...(pickerCapabilities ? { capabilities: pickerCapabilities } : {}),
     addCondition: (groupId) => commit(addConditionTo(draftRef.current, groupId)),
     addGroup,

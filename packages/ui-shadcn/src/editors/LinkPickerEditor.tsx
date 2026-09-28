@@ -10,6 +10,9 @@ import { AsyncCombobox } from "./AsyncCombobox";
 export type LinkValue = LinkRef[] | LinkRef;
 export type LinkPickerEditorProps = UiEditorProps<LinkValue, unknown>;
 
+/** Shown instead of searching when the grid can't look records up (no `lookup` method or `capabilities.lookup: false`). */
+const LINK_UNAVAILABLE_MESSAGE = "Linking isn't set up for this grid";
+
 const isLinkRef = (v: unknown): v is LinkRef =>
   !!v && typeof v === "object" && typeof (v as LinkRef).id === "string" && typeof (v as LinkRef).label === "string";
 
@@ -76,7 +79,7 @@ export function LinkPickerEditor({
     return (
       <div className={cn(SG_ROOT, "sg:flex sg:flex-col sg:gap-1 sg:px-2.5 sg:py-2")}>
         {current.length > 0 ? <span className="sg:text-sm">{current.map((l) => l.label).join(", ")}</span> : null}
-        <span className="sg:text-xs sg:text-muted-foreground">{unavailable ?? "Lookup not configured"}</span>
+        <span className="sg:text-xs sg:text-muted-foreground">{unavailable ?? LINK_UNAVAILABLE_MESSAGE}</span>
       </div>
     );
   }
