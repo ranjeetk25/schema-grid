@@ -114,6 +114,7 @@ export function FilterConditionRow({ condition, api, schema, uiRegistry, dataSou
             schema={schema}
             registry={uiRegistry}
             dataSource={dataSource}
+            {...(api.capabilities ? { capabilities: api.capabilities } : {})}
             error={errors?.value}
             size="xs"
             onChange={(v) => api.updateCondition(condition.id, { value: v })}

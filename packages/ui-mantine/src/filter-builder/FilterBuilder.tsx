@@ -3,6 +3,7 @@ import { IconAlertCircle } from "../internal/icons";
 import { type KeyboardEvent, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
 import type { CellColorCapabilitiesLike } from "../internal/color-contracts";
+import type { FieldTypeCapabilitiesLike } from "../internal/core-contracts";
 import { readableColumnIds } from "../internal/access";
 import {
   type ColorRule,
@@ -49,6 +50,12 @@ import {
 } from "./model";
 
 /** Inline errors of one condition row, by field. */
+/** v0.4.1: color filtering (`cellColors.filter`) plus option / people search (`options`); `handle.effectiveCapabilities` fits. */
+export type FilterCapabilitiesLike =
+  | (NonNullable<CellColorCapabilitiesLike> & NonNullable<FieldTypeCapabilitiesLike>)
+  | null
+  | undefined;
+
 export interface RowErrors {
   /** Group-level error (e.g. nesting too deep); set on group ids. */
   group?: string;
@@ -87,7 +94,7 @@ export interface UseFilterDraftOptions extends ApplyModeInput {
    * With `cellColors.filter`, every readable column offers "color is" (a
    * swatch picker) and "has no color". Omit it and no color operator shows.
    */
-  capabilities?: CellColorCapabilitiesLike;
+  capabilities?: FilterCapabilitiesLike;
   /**
    * v0.4.1: the view's color rules. A column one of them blocks (an enabled
    * rule that can color it tests a column the server can't filter on) gets
@@ -121,6 +128,8 @@ export interface FilterDraftApi {
    * filters by color (`colorRules` block it), or null.
    */
   colorBlockedReasonFor?(columnId: string | null): string | null;
+  /** v0.4.1: the builder's `capabilities`; value inputs skip people / option search without `options`. */
+  capabilities?: FilterCapabilitiesLike;
   addCondition(groupId: string): void;
   addGroup(groupId: string): void;
   remove(id: string): void;
@@ -285,6 +294,7 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
     maxDepth,
     operatorsForColumnId,
     colorBlockedReasonFor,
+    ...(capabilities ? { capabilities } : {}),
     addCondition: (groupId) => {
       const next = addConditionTo(draftRef.current, groupId);
       const added = findLastCondition(next, groupId);
@@ -358,7 +368,7 @@ export interface FilterBuilderProps extends ApplyModeInput {
   /** Injectable timer (tests). */
   timer?: FilterTimer;
   /** v0.4: the source's capabilities; `cellColors.filter` adds "color is" / "has no color" (see `useFilterDraft`). */
-  capabilities?: CellColorCapabilitiesLike;
+  capabilities?: FilterCapabilitiesLike;
   /** v0.4.1: the view's color rules; a column one of them blocks offers no color operators (see `useFilterDraft`). */
   colorRules?: readonly ColorRule[];
   /** v0.4.1: offer and apply `filterable: false` columns (a color rule's condition; see `useFilterDraft`). */
