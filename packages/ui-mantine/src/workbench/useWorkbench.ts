@@ -14,18 +14,29 @@
  * through `onError`), the "schema-unavailable" banner (`schema.reason ===
  * "store-unavailable"`), `refetchAfterSave` / `confirmOnResubmit` threaded
  * to the grid / the events merge, and `slotContext.refreshRows`.
+ *
+ * v0.4 cell colors: `cellColors.paint` (paint the selection through
+ * `handle.setCellColor`, `canPaint` kept current from the range selection /
+ * focused cell), `cellColors.rules` / `setRules` (the view's color rules via
+ * `handle.setColorRules`), `cellColors.filter` (header-menu "Filter by color",
+ * only when the source filters by color) and the last paint report.
  */
-import type {
-  ClipboardReport,
-  SchemaGridEvents,
-  SchemaGridHandle,
-  SchemaGridPollOptions,
+import {
+  type CellColorReport,
+  type ClipboardReport,
+  type SchemaGridEvents,
+  type SchemaGridHandle,
+  type SchemaGridPollOptions,
+  canFilterByColor,
 } from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type Access,
+  type CellColor,
+  type CellColorResult,
   type ChangeConflict,
   type ChangeError,
   type ChangeFeedEntry,
+  type ColorRule,
   type ColumnDef,
   DEFAULT_TIME_ZONE,
   type DataSource,
@@ -47,6 +58,7 @@ import {
 import { createDefaultRegistry } from "@ranjeetk25/schema-grid-core/field-types";
 import type { validateRows } from "@ranjeetk25/schema-grid-io/import";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ColumnColorFilter, columnColorFilter, setColumnColorFilter } from "../cell-colors/colorFilter";
 import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { type ColumnPickerItem, columnSignature, listPickerColumns, toColumnState } from "./columnPicker";
 import { tapDataSource, toWorkbenchError } from "./errors";
@@ -167,6 +179,10 @@ function download(blob: Blob, name: string) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+const NO_COLOR_RULES: ColorRule[] = [];
+/** Grid events after which `handle.canPaint()` may answer differently. */
+const PAINT_EVENTS = ["cellFocused", "modelUpdated"] as const;
 
 export function renderSlot(slot: WorkbenchSlot | undefined, ctx: WorkbenchSlotContext) {
   return typeof slot === "function" ? slot(ctx) : (slot ?? null);
@@ -396,6 +412,75 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     );
   }, []);
   useEffect(() => () => clearTimeout(searchTimer.current), []);
+
+  // ---- cell colors (v0.4) ------------------------------------------------------
+  const colorRules: ColorRule[] = liveView?.colorRules ?? activeView?.colorRules ?? NO_COLOR_RULES;
+  const setColorRules = useCallback((rules: ColorRule[]) => {
+    const h = handleRef.current;
+    if (!h) return;
+    h.setColorRules(rules);
+    // The grid reports the view back through onViewChange; keep our copy current right away too.
+    setLiveView((v) => (v ? { ...v, colorRules: rules } : v));
+  }, []);
+  const [colorReport, setColorReport] = useState<CellColorReport | null>(null);
+  const [canPaint, setCanPaint] = useState(false);
+  const paintFeature = features.paint;
+  const handleForPaint = handleRef.current;
+  /** Re-reads `handle.canPaint()` (range selection / focused cell / loaded rows changed). */
+  const refreshCanPaint = useCallback(() => {
+    const h = handleRef.current;
+    setCanPaint(!!h && h.canPaint());
+  }, []);
+  useEffect(() => {
+    const h = handleForPaint;
+    if (!h || !paintFeature) {
+      setCanPaint(false);
+      return;
+    }
+    // The AG Grid api may arrive after the handle: attach its listeners on the first update that finds it.
+    let api: ReturnType<SchemaGridHandle["api"]> = null;
+    const update = () => {
+      if (!api) {
+        api = h.api();
+        if (api) for (const e of PAINT_EVENTS) api.addEventListener(e, update);
+      }
+      setCanPaint(h.canPaint());
+    };
+    update();
+    const unsubscribe = h.stores.range.subscribe(update);
+    return () => {
+      unsubscribe();
+      if (api && !api.isDestroyed()) for (const e of PAINT_EVENTS) api.removeEventListener(e, update);
+    };
+  }, [handleForPaint, paintFeature]);
+  const paint = useCallback(
+    async (color: CellColor | null): Promise<CellColorResult | null> => {
+      const h = handleRef.current;
+      if (!h) return null;
+      try {
+        return await h.setCellColor(color);
+      } finally {
+        bump();
+        refreshCanPaint();
+      }
+    },
+    [bump, refreshCanPaint],
+  );
+  const onCellColorReport = useCallback((r: CellColorReport) => setColorReport(r), []);
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const canFilterColors = canFilterByColor(effectiveCapabilities);
+  const colorFilter = useMemo(
+    () =>
+      canFilterColors
+        ? {
+            filterByColor: (columnId: string, colors: ColumnColorFilter) =>
+              applyFilter(setColumnColorFilter(filterRef.current, columnId, colors)),
+            activeColors: (columnId: string) => columnColorFilter(filterRef.current, columnId),
+          }
+        : null,
+    [canFilterColors, applyFilter],
+  );
 
   const groupByRef = useRef(groupBy);
   groupByRef.current = groupBy;
@@ -976,6 +1061,21 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
     },
     // column picker
     columns: { items: columnItems, apply: applyColumns },
+    // cell colors (v0.4)
+    cellColors: {
+      /** The current view's color rules. */
+      rules: colorRules,
+      setRules: setColorRules,
+      /** Some selected cell is paintable (`handle.canPaint()`), kept current. */
+      canPaint,
+      refreshCanPaint,
+      paint,
+      onReport: onCellColorReport,
+      /** The last paint's report (skipped / rejected counts). */
+      lastReport: colorReport,
+      /** Header-menu "Filter by color" (`CellColorFilterProvider` value); null when the source can't filter by color. */
+      filter: colorFilter,
+    },
     // status
     clipboard,
     onClipboardReport,

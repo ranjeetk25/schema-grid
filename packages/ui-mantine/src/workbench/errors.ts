@@ -22,6 +22,7 @@ const VERBS: Record<string, string> = {
   updateSchema: "change columns",
   getSchema: "load columns",
   capabilities: "load grid settings",
+  setCellColors: "color cells",
 };
 
 export const verbFor = (op: string): string => VERBS[op] ?? op;
@@ -97,6 +98,7 @@ const OPS = [
   "createOption",
   "lookup",
   "capabilities",
+  "setCellColors",
 ] as const;
 const READS = new Set(["fetch", "getChanges"]);
 

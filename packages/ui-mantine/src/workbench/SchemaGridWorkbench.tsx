@@ -21,6 +21,11 @@
  *
  * v0.3.1: the "save" banner (red, role alert, auto-dismiss paused on hover)
  * and the neutral "schema-unavailable" banner.
+ *
+ * v0.4 cell colors: "Cell color" (paint the selection; a toast when cells
+ * were skipped) and "Color rules" (the view's rules, dialog loaded lazily) in
+ * the toolbar, "color is" in the filter builder and "Filter by color" in the
+ * header menu when the source filters by color.
  */
 import {
   ActionIcon,
@@ -53,12 +58,15 @@ import {
   IconWifiOff,
 } from "@tabler/icons-react";
 import { type CSSProperties, type ReactNode, Suspense, createContext, lazy, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { CellColorButton } from "../cell-colors/CellColorButton";
 import { ConflictPopover, initialsOf } from "../conflict/ConflictPopover";
 import { useMantineConflictPrompt } from "../conflict/useMantineConflictPrompt";
 import { createMantineUiRegistry } from "../editors";
 import { FilterButton } from "../filter-builder/FilterButton";
 import { FilterChips } from "../filter-builder/FilterChips";
-import { MantineHeaderMenu } from "../header-menu";
+import { CellColorFilterProvider, MantineHeaderMenu } from "../header-menu";
+import { IconPalette } from "../internal/icons";
+import { notifyCellColorReport } from "../notifications/notifyCellColorReport";
 import { notifyClipboardReport } from "../notifications/notifyClipboardReport";
 import { GroupByBar } from "../views/GroupByBar";
 import { ViewSwitcher } from "../views/ViewSwitcher";
@@ -70,6 +78,7 @@ import { type WorkbenchBanner, renderSlot, useWorkbench } from "./useWorkbench";
 const ColumnPanel = lazy(() => import("../column-builder/ColumnPanel").then((m) => ({ default: m.ColumnPanel })));
 const ImportWizard = lazy(() => import("../import-export/ImportWizard").then((m) => ({ default: m.ImportWizard })));
 const ExportDialog = lazy(() => import("../import-export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+const ColorRulesDialog = lazy(() => import("../cell-colors/ColorRulesDialog").then((m) => ({ default: m.ColorRulesDialog })));
 
 /** True once `opened` has been true (keeps a lazily mounted surface mounted afterwards so its state survives). */
 function useEverOpened(opened: boolean): boolean {
@@ -311,6 +320,11 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   const panelEver = useEverOpened(wb.panel.opened);
   const importEver = useEverOpened(wb.importDialog.opened);
   const exportEver = useEverOpened(wb.exportDialog.opened);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rulesEver = useEverOpened(rulesOpen);
+  const hasReadableColumn = [...wb.access.values()].some((a) => a === "read" || a === "edit");
+  const showColorRules = features.colorRules && hasReadableColumn;
+  const ruleCount = wb.cellColors.rules.length;
   const fill = height === "fill";
   const rootStyle: CSSProperties = {
     display: "flex",
@@ -405,6 +419,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                   value={wb.filter}
                   onChange={wb.applyFilter}
                   dataSource={wb.dataSource}
+                  {...(wb.effectiveCapabilities ? { capabilities: wb.effectiveCapabilities } : {})}
                 />
               ) : null}
               {features.group ? (
@@ -415,6 +430,27 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                   value={wb.groupBy}
                   onChange={wb.applyGroupBy}
                 />
+              ) : null}
+              {features.paint ? <CellColorButton canPaint={wb.cellColors.canPaint} onPaint={wb.cellColors.paint} /> : null}
+              {showColorRules ? (
+                <Button
+                  variant="subtle"
+                  color="gray"
+                  aria-label="Color rules"
+                  aria-description={ruleCount > 0 ? `${ruleCount} ${ruleCount === 1 ? "rule" : "rules"} in this view` : undefined}
+                  onClick={() => setRulesOpen(true)}
+                  leftSection={<IconPalette size={16} stroke={1.75} aria-hidden />}
+                  rightSection={
+                    ruleCount > 0 ? (
+                      <Badge size="sm" circle variant="light" aria-hidden style={{ fontVariantNumeric: "tabular-nums" }}>
+                        {ruleCount}
+                      </Badge>
+                    ) : undefined
+                  }
+                  styles={{ root: { paddingInline: 10 }, section: { marginInlineEnd: 6 } }}
+                >
+                  Color rules
+                </Button>
               ) : null}
               {features.search ? (
                 <TextInput
@@ -504,39 +540,46 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           }}
         >
           {schema ? (
-            <SchemaGrid
-              {...(props.gridProps ?? {})}
-              ref={wb.setHandle}
-              schema={schema}
-              dataSource={wb.dataSource}
-              user={props.user}
-              resolver={wb.resolver}
-              registry={wb.registry}
-              uiRegistry={uiRegistry}
-              mode={wb.mode}
-              view={wb.activeView}
-              onViewChange={wb.onViewChange}
-              events={wb.events}
-              height="100%"
-              poll={wb.poll}
-              {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
-              gridOptions={gridOptions}
-              headerMenu={props.gridProps?.headerMenu ?? MantineHeaderMenu}
-              onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
-              {...(features.addColumn
-                ? {
-                    onEditColumn: wb.onEditColumn,
-                    onAddColumn: wb.onAddColumn,
-                    onInsertColumn: wb.onInsertColumn,
-                    draftColumn: wb.panel.draftColumn,
-                  }
-                : {})}
-              {...(props.pageSize ? { pageSize: props.pageSize } : {})}
-              onClipboardReport={(report) => {
-                wb.onClipboardReport(report);
-                void notifyClipboardReport(report);
-              }}
-            />
+            <CellColorFilterProvider value={wb.cellColors.filter}>
+              <SchemaGrid
+                {...(props.gridProps ?? {})}
+                ref={wb.setHandle}
+                schema={schema}
+                dataSource={wb.dataSource}
+                user={props.user}
+                resolver={wb.resolver}
+                registry={wb.registry}
+                uiRegistry={uiRegistry}
+                mode={wb.mode}
+                view={wb.activeView}
+                onViewChange={wb.onViewChange}
+                events={wb.events}
+                height="100%"
+                poll={wb.poll}
+                {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
+                gridOptions={gridOptions}
+                headerMenu={props.gridProps?.headerMenu ?? MantineHeaderMenu}
+                onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
+                {...(features.addColumn
+                  ? {
+                      onEditColumn: wb.onEditColumn,
+                      onAddColumn: wb.onAddColumn,
+                      onInsertColumn: wb.onInsertColumn,
+                      draftColumn: wb.panel.draftColumn,
+                    }
+                  : {})}
+                {...(props.pageSize ? { pageSize: props.pageSize } : {})}
+                onClipboardReport={(report) => {
+                  wb.onClipboardReport(report);
+                  void notifyClipboardReport(report);
+                }}
+                onCellColorReport={(report) => {
+                  props.gridProps?.onCellColorReport?.(report);
+                  wb.cellColors.onReport(report);
+                  void notifyCellColorReport(report);
+                }}
+              />
+            </CellColorFilterProvider>
           ) : (
             <Group justify="center" h="100%" mih={160} data-testid="workbench-loading">
               {wb.schemaLoading ? <Loader size="sm" color="gray" /> : null}
@@ -599,6 +642,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             <span data-testid="filter-ast">{JSON.stringify(wb.filter)}</span>
             <span data-testid="last-export">{wb.exportDialog.lastExport ?? ""}</span>
             <span data-testid="import-job">{wb.importDialog.job ? JSON.stringify(wb.importDialog.job) : ""}</span>
+            <span data-testid="color-report">{wb.cellColors.lastReport ? JSON.stringify(wb.cellColors.lastReport) : "none"}</span>
           </VisuallyHidden>
         </Group>
 
@@ -634,6 +678,21 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               access={wb.access}
               job={wb.importDialog.job}
               onCommit={wb.importDialog.commit}
+            />
+          </Suspense>
+        ) : null}
+        {schema && showColorRules && rulesEver ? (
+          <Suspense fallback={null}>
+            <ColorRulesDialog
+              opened={rulesOpen}
+              onClose={() => setRulesOpen(false)}
+              schema={wb.effectiveSchema ?? schema}
+              registry={wb.registry}
+              uiRegistry={uiRegistry}
+              access={wb.access}
+              rules={wb.cellColors.rules}
+              onSave={wb.cellColors.setRules}
+              dataSource={wb.dataSource}
             />
           </Suspense>
         ) : null}

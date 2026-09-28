@@ -14,7 +14,24 @@ export * from "./import-export";
 export { ViewSwitcher, type ViewSwitcherProps } from "./views/ViewSwitcher";
 export { GroupByBar, type GroupByBarProps } from "./views/GroupByBar";
 export { ConflictPopover, initialsOf, type ConflictPopoverProps } from "./conflict/ConflictPopover";
-export { MantineHeaderMenu, type HeaderMenuActions, type HeaderMenuColumn, type HeaderMenuProps } from "./header-menu";
+export {
+  CellColorFilterProvider,
+  MantineHeaderMenu,
+  useCellColorFilter,
+  type CellColorFilterValue,
+  type HeaderMenuActions,
+  type HeaderMenuColumn,
+  type HeaderMenuProps,
+} from "./header-menu";
+// v0.4 cell colors (the rules dialog is also lazy-loaded by the workbench; importing it here is for hosts)
+export * from "./cell-colors";
+export {
+  CELL_COLOR_PALETTE,
+  CellColorSwatch,
+  cellColorLabel,
+  type CellColorPaletteEntry,
+  type CellColorSwatchProps,
+} from "./theme/cellColorPalette";
 export {
   MANTINE_SET_FILTER_TYPES,
   MantineConditionFilter,
@@ -51,6 +68,11 @@ export {
   type ClipboardReportMessage,
   type NotifyClipboardReportOptions,
 } from "./notifications/notifyClipboardReport";
+export {
+  formatCellColorReport,
+  notifyCellColorReport,
+  type NotifyCellColorReportOptions,
+} from "./notifications/notifyCellColorReport";
 export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./internal/grid-contracts";
 
 // One-component page
