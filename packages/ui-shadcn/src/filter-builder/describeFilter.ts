@@ -1,4 +1,6 @@
 import {
+  COLOR_OPERATORS,
+  type CellColor,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterCondition,
@@ -9,6 +11,7 @@ import {
   getColumnOperators,
 } from "../internal/core-contracts";
 import { type AccessMap, isReadable } from "../internal/access";
+import { cellColorLabel } from "../theme/cellColors";
 import { countConditions } from "./model";
 
 const RELATIVE_TEXT: Record<RelativeDate["relative"], string> = {
@@ -60,10 +63,12 @@ export function describeConditionParts(
   if (access && !isReadable(access, cond.columnId)) return { hidden: true, column: "Hidden column", operator: "", value: null };
   const column = schema.columns.find((c) => c.id === cond.columnId);
   const label = column?.label ?? cond.columnId;
-  const operator = column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined;
+  const colorOperator = COLOR_OPERATORS.find((o) => o.id === cond.operator);
+  const operator = colorOperator ?? (column ? getColumnOperators(column, registry).find((o) => o.id === cond.operator) : undefined);
   const opLabel = operator?.label ?? cond.operator;
   const parts = (value: string | null): ConditionParts => ({ hidden: false, column: label, operator: opLabel, value });
-  const fmt = formatter(column, registry);
+  // v0.4: color conditions read their palette labels ("color is Red, Teal").
+  const fmt = colorOperator ? (v: unknown) => cellColorLabel(v as CellColor) : formatter(column, registry);
   const v = cond.value;
 
   switch (operator?.valueKind) {

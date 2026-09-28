@@ -5,8 +5,13 @@
  * and allows incomplete conditions (no column / operator yet) while editing.
  * The root of a draft is always a group (depth 1); a group inside the root is
  * depth 2, and so on.
+ *
+ * v0.4 filter by color: with `capabilities.cellColors.filter`, every column
+ * also offers ag-grid's color operators (`colorIs` / `colorIsNone`), and
+ * `filterable: false` columns become pickable with those operators only.
  */
 import {
+  type CellColor,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterCondition,
@@ -19,6 +24,12 @@ import {
   isFilterGroup,
 } from "../internal/core-contracts";
 import { type AccessMap, readableColumns } from "../internal/access";
+import {
+  type CellColorCapabilitiesLike,
+  canFilterByColor,
+  columnOperatorsWithColors,
+  withColorOperators,
+} from "../internal/grid-contracts";
 
 export interface DraftCondition {
   kind: "condition";
@@ -43,6 +54,8 @@ export type FilterDraft = DraftGroup;
 export interface DraftContext {
   schema: GridSchema;
   registry: FieldTypeRegistry;
+  /** Source capabilities (`handle.effectiveCapabilities`): `cellColors.filter` adds the color operators. */
+  capabilities?: CellColorCapabilitiesLike;
 }
 
 export type ConditionPatch = Partial<Pick<DraftCondition, "columnId" | "operator" | "value">>;
@@ -65,14 +78,30 @@ const emptyCondition = (): DraftCondition => ({
 // Columns / operators / values
 // ---------------------------------------------------------------------------
 
-/** Columns that may appear in a filter picker: readable ones only (fail closed), minus `filterable: false` (v0.2 C1). */
-export function filterableColumns(schema: GridSchema, access: AccessMap): ColumnDef[] {
-  return readableColumns(schema, access).filter((c) => c.filterable !== false);
+/**
+ * Columns that may appear in a filter picker: readable ones only (fail
+ * closed), minus `filterable: false` (v0.2 C1) unless the source filters by
+ * color (the color operators apply to every readable column).
+ */
+export function filterableColumns(schema: GridSchema, access: AccessMap, capabilities?: CellColorCapabilitiesLike): ColumnDef[] {
+  const colors = canFilterByColor(capabilities);
+  return readableColumns(schema, access).filter((c) => colors || c.filterable !== false);
 }
 
-/** Operators for a column; formula columns use their `config.resultType`'s operators (core `getColumnOperators`). */
-export function operatorsFor(column: ColumnDef, registry: FieldTypeRegistry): readonly FilterOperatorDef[] {
-  return getColumnOperators(column, registry);
+/**
+ * Operators for a column; formula columns use their `config.resultType`'s
+ * operators (core `getColumnOperators`). With `capabilities.cellColors.filter`
+ * the color operators follow, and a `filterable: false` column offers only
+ * those (ag-grid `columnOperatorsWithColors`). Without it, a `filterable:
+ * false` column keeps its type's operators so a saved condition still reads.
+ */
+export function operatorsFor(
+  column: ColumnDef,
+  registry: FieldTypeRegistry,
+  capabilities?: CellColorCapabilitiesLike,
+): readonly FilterOperatorDef[] {
+  if (column.filterable === false && canFilterByColor(capabilities)) return columnOperatorsWithColors(column, registry, capabilities);
+  return withColorOperators(getColumnOperators(column, registry), capabilities);
 }
 
 export function defaultValueFor(valueKind: FilterValueKind): FilterValue | undefined {
@@ -101,7 +130,7 @@ export function findOperator(
   if (!columnId || !operatorId) return undefined;
   const column = ctx.schema.columns.find((c) => c.id === columnId);
   if (!column) return undefined;
-  return operatorsFor(column, ctx.registry).find((o) => o.id === operatorId);
+  return operatorsFor(column, ctx.registry, ctx.capabilities).find((o) => o.id === operatorId);
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +304,7 @@ export function updateCondition(draft: FilterDraft, id: string, patch: Condition
     if (patch.columnId !== undefined && patch.columnId !== n.columnId) {
       next.columnId = patch.columnId;
       const column = patch.columnId && ctx ? ctx.schema.columns.find((c) => c.id === patch.columnId) : undefined;
-      const first = column && ctx ? operatorsFor(column, ctx.registry)[0] : undefined;
+      const first = column && ctx ? operatorsFor(column, ctx.registry, ctx.capabilities)[0] : undefined;
       next.operator = first?.id ?? null;
       next.value = first ? defaultValueFor(first.valueKind) : undefined;
       return next;
@@ -291,4 +320,26 @@ export function updateCondition(draft: FilterDraft, id: string, patch: Condition
     if ("value" in patch) next.value = patch.value;
     return next;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Filter by color (header menu "Filter by color")
+// ---------------------------------------------------------------------------
+
+const isColorOperatorId = (operator: string) => operator === "colorIs" || operator === "colorIsNone";
+
+/**
+ * `filter` with ONE color condition on `columnId`: `colorIs [colors]`, or
+ * `colorIsNone` for `null`. The column's own top-level color conditions are
+ * replaced; everything else is kept. An AND root is extended; an OR root (or
+ * a bare condition) is AND-ed with the new condition.
+ */
+export function withColorFilter(filter: FilterNode | null, columnId: string, colors: readonly CellColor[] | null): FilterNode {
+  const condition: FilterCondition =
+    colors === null ? { columnId, operator: "colorIsNone" } : { columnId, operator: "colorIs", value: [...colors] };
+  const same = (n: FilterNode) => !isFilterGroup(n) && n.columnId === columnId && isColorOperatorId(n.operator);
+  if (!filter) return { op: "and", children: [condition] };
+  if (!isFilterGroup(filter)) return { op: "and", children: same(filter) ? [condition] : [filter, condition] };
+  if (filter.op === "or") return { op: "and", children: [filter, condition] };
+  return { op: "and", children: [...filter.children.filter((c) => !same(c)), condition] };
 }

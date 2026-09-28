@@ -11,7 +11,7 @@ export * from "./column-builder";
 export * from "./import-export";
 
 // Root-only areas
-export { ShadcnHeaderMenu } from "./header-menu/ShadcnHeaderMenu";
+export { ShadcnHeaderMenu, createShadcnHeaderMenu, type ShadcnHeaderMenuOptions } from "./header-menu/ShadcnHeaderMenu";
 export type {
   HeaderMenuActions,
   HeaderMenuColumn,
@@ -35,6 +35,13 @@ export {
   type GridThemeParams,
   type UseGridThemeFromShadcnOptions,
 } from "./theme/useGridThemeFromShadcn";
+export {
+  CELL_COLOR_PALETTE,
+  ColorSwatch,
+  cellColorLabel,
+  type CellColorPaletteEntry,
+  type ColorSwatchProps,
+} from "./theme/cellColors";
 export {
   formatClipboardReport,
   notifyClipboardReport,

@@ -11,15 +11,40 @@ import {
   GroupIcon,
   ListFilterIcon,
   MoveHorizontalIcon,
+  PaletteIcon,
   PencilIcon,
   PinOffIcon,
   XIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { CellColor } from "../internal/core-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { CELL_COLOR_PALETTE, ColorSwatch } from "../theme/cellColors";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import type { HeaderMenuComponent, HeaderMenuProps } from "./contract";
+
+export interface ShadcnHeaderMenuOptions {
+  /**
+   * v0.4: adds a "Filter by color" submenu (palette swatches + "No color").
+   * Called with the column id and the picked color, `null` for "No color"
+   * (`colorIsNone`); the host sets the condition (the workbench uses
+   * `withColorFilter`). Offer it only when the source can filter by color
+   * (`canFilterByColor(handle.effectiveCapabilities)`).
+   */
+  filterByColor?(columnId: string, color: CellColor | null): void;
+  /** Read on every render: `false` hides the submenu (e.g. capabilities not loaded). Default: shown. */
+  canFilterByColor?(): boolean;
+}
 
 interface Rect {
   left: number;
@@ -65,6 +90,18 @@ function Item({
 }
 
 /**
+ * `ShadcnHeaderMenu` with options (v0.4 "Filter by color"). Create it once
+ * (module scope or a `useMemo`/`useState` initialiser): a new component
+ * identity remounts every open menu. The callbacks may read refs.
+ */
+export function createShadcnHeaderMenu(options: ShadcnHeaderMenuOptions = {}): HeaderMenuComponent {
+  function ShadcnHeaderMenuWithOptions(props: HeaderMenuProps) {
+    return <HeaderMenuView {...props} options={options} />;
+  }
+  return ShadcnHeaderMenuWithOptions;
+}
+
+/**
  * Column header menu (Radix DropdownMenu), controlled by `opened` / `onClose`
  * and anchored to `anchor` through a zero-chrome virtual trigger laid over
  * the anchor's rect (portalled to <body>, so transformed / clipped header
@@ -72,7 +109,13 @@ function Item({
  * reports the close through `onClose`). Optional items render only when their
  * callback exists (Group by also needs `canGroup`).
  */
-export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({ column, anchor, opened, onClose, actions }: HeaderMenuProps) {
+export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu(props: HeaderMenuProps) {
+  return <HeaderMenuView {...props} options={NO_OPTIONS} />;
+};
+
+const NO_OPTIONS: ShadcnHeaderMenuOptions = {};
+
+function HeaderMenuView({ column, anchor, opened, onClose, actions, options }: HeaderMenuProps & { options: ShadcnHeaderMenuOptions }) {
   const [rect, setRect] = useState<Rect>(() => rectOf(anchor));
   // One close report per opening: Radix can signal "close" more than once
   // (item select, then focus / pointer outside) before the host re-renders.
@@ -109,6 +152,8 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
   const canSort = actions.canSort !== false;
   const showEdit = typeof actions.editColumn === "function";
   const showInsert = typeof actions.insertColumn === "function";
+  const { filterByColor } = options;
+  const showColor = typeof filterByColor === "function" && options.canFilterByColor?.() !== false;
 
   const trigger =
     typeof document === "undefined"
@@ -171,6 +216,29 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
         <Item icon={<ChevronsLeftRightIcon />} label="Autosize all columns" onSelect={run(() => actions.autosizeAll())} />
         <DropdownMenuSeparator />
         <Item icon={<ListFilterIcon />} label="Filter…" hint="⌘↵" disabled={!canFilter} onSelect={run(() => actions.openFilter())} />
+        {showColor ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <PaletteIcon />
+              <span data-slot="header-menu-label" className="sg:flex-1 sg:truncate">
+                Filter by color
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent aria-label="Filter by color" className="sg:w-44">
+              {CELL_COLOR_PALETTE.map((p) => (
+                <DropdownMenuItem key={p.color} onSelect={run(() => filterByColor?.(column.colId, p.color))}>
+                  <ColorSwatch color={p.color} />
+                  {p.label}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={run(() => filterByColor?.(column.colId, null))}>
+                <ColorSwatch color={null} />
+                No color
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         {showGroup ? <Item icon={<GroupIcon />} label="Group by" onSelect={run(() => actions.groupBy?.())} /> : null}
         {showEdit || showInsert ? <DropdownMenuSeparator /> : null}
         {showEdit ? <Item icon={<PencilIcon />} label="Edit column…" onSelect={run(() => actions.editColumn?.())} /> : null}
@@ -185,4 +253,4 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
       </DropdownMenuContent>
     </DropdownMenu>
   );
-};
+}

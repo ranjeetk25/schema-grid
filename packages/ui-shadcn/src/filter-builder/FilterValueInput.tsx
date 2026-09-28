@@ -15,6 +15,7 @@ import {
 import { type UiFieldTypeRegistry, filterInputFor } from "../internal/grid-contracts";
 import { getSelectOptions, optionToneStyle } from "../internal/options";
 import { cn } from "../lib/cn";
+import { CELL_COLOR_PALETTE, ColorSwatch } from "../theme/cellColors";
 import { Input } from "../ui/input";
 import { ErrorText, MultiPicker, NumberField, type PickerItem, SelectField, TagsInput, ToneDot } from "./pickers";
 
@@ -62,6 +63,9 @@ const asRelative = (v: unknown): RelativeDate | null =>
   v && typeof v === "object" && "relative" in v ? (v as RelativeDate) : null;
 
 const isMeValue = (v: unknown) => !!v && typeof v === "object" && (v as { me?: unknown }).me === true;
+
+/** v0.4 `colorIs`: one item per palette color, with its swatch. */
+const COLOR_ITEMS: PickerItem[] = CELL_COLOR_PALETTE.map((p) => ({ value: p.color, label: p.label, icon: <ColorSwatch color={p.color} /> }));
 
 const optionItems = (column: ColumnDef): PickerItem[] =>
   getSelectOptions(column.config).map((o) => ({ value: o.id, label: o.label, icon: <ToneDot style={optionToneStyle(o)} /> }));
@@ -187,6 +191,21 @@ export function FilterValueInput(props: FilterValueInputProps) {
 
     case "multi": {
       const current = Array.isArray(value) ? value.map((v) => String(v)) : [];
+      if (operator.id === "colorIs") {
+        return (
+          <Stack error={error} errorId={errorId}>
+            <MultiPicker
+              aria-label="Colors"
+              placeholder="Select colors"
+              items={COLOR_ITEMS}
+              value={current}
+              onChange={(v) => onChange(v)}
+              invalid={invalid}
+              describedBy={describedBy}
+            />
+          </Stack>
+        );
+      }
       if (isOptionType || type === "user") {
         return (
           <Stack error={error} errorId={errorId}>
