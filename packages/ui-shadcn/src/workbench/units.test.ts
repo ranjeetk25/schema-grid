@@ -14,7 +14,7 @@ import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { classifyError, tapDataSource } from "./errors";
 import { collectRows } from "./exportRows";
 import { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
-import { ALL_ROWS_VIEW, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
+import { ALL_ROWS_VIEW, comparableView, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
 
 /** The grid's effective matrix for the fixture schema under `over` (real core capability objects). */
 const effective = (over: Partial<DataSourceCapabilities> = {}, schema: GridSchema = createFixtureSchema()) =>
@@ -202,5 +202,13 @@ describe("schema ops", () => {
   it("skips users-only rules (v0.4 per-person permissions)", () => {
     const s: GridSchema = { ...schema, columns: [{ ...col("a", 0), permissions: { read: { users: ["u9"] }, edit: {} } }] };
     expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["viewer"]);
+  });
+});
+
+describe("comparableView (v0.4)", () => {
+  it("counts color rules as a view change; no rules equals an empty list", () => {
+    const rule = { id: "r", color: "red" as const, target: { kind: "row" as const }, when: null };
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [rule] })).not.toBe(comparableView(ALL_ROWS_VIEW));
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [] })).toBe(comparableView(ALL_ROWS_VIEW));
   });
 });

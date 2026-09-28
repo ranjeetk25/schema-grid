@@ -121,6 +121,8 @@ describe("<SchemaGridWorkbench> cell colors", () => {
     await waitFor(() => expect(getHandle().colorRules).toHaveLength(1));
     expect(getHandle().colorRules[0]).toMatchObject({ color: "red", target: { kind: "row" }, when: null });
     await waitFor(() => expect(screen.getByRole("button", { name: /^Color rules/ })).toHaveTextContent("1"));
+    // Rules live in the view: it now has unsaved changes.
+    expect(screen.getByTestId("view-dirty-dot")).toBeInTheDocument();
   });
 
   it("offers color operators in the filter builder", async () => {
