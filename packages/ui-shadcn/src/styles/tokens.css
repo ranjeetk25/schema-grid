@@ -83,6 +83,17 @@
     --sg-tone-orange-bg: #fff7ed;
     --sg-tone-orange-fg: #c2410c;
     --sg-tone-orange-dot: #f97316;
+
+    /* v0.4 cell colors: the grid's --sg-color-* fills (ag-grid CELL_COLOR_TOKENS). */
+    --sg-color-red: #fee2e2;
+    --sg-color-orange: #ffedd5;
+    --sg-color-yellow: #fef9c3;
+    --sg-color-green: #dcfce7;
+    --sg-color-teal: #ccfbf1;
+    --sg-color-blue: #dbeafe;
+    --sg-color-purple: #f3e8ff;
+    --sg-color-pink: #fce7f3;
+    --sg-color-gray: #f4f4f5;
   }
 
   .dark,
@@ -141,6 +152,17 @@
     --sg-tone-yellow-fg: #fde047;
     --sg-tone-orange-bg: rgb(249 115 22 / 0.14);
     --sg-tone-orange-fg: #fdba74;
+
+    /* Translucent, so hover and range selection still read over a color. */
+    --sg-color-red: rgba(239, 68, 68, 0.24);
+    --sg-color-orange: rgba(249, 115, 22, 0.24);
+    --sg-color-yellow: rgba(234, 179, 8, 0.22);
+    --sg-color-green: rgba(34, 197, 94, 0.22);
+    --sg-color-teal: rgba(20, 184, 166, 0.22);
+    --sg-color-blue: rgba(59, 130, 246, 0.24);
+    --sg-color-purple: rgba(168, 85, 247, 0.24);
+    --sg-color-pink: rgba(236, 72, 153, 0.24);
+    --sg-color-gray: rgba(161, 161, 170, 0.22);
   }
 
   /*

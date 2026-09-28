@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type SchemaGridThemeOverrides, createSchemaGridTheme } from "../internal/grid-contracts";
+import { type SchemaGridThemeOverrides, cellColorCssVariables, createSchemaGridTheme } from "../internal/grid-contracts";
 
 export type GridColorScheme = "light" | "dark";
 
@@ -34,6 +34,12 @@ export interface GridThemeFromShadcn {
   scheme: GridColorScheme;
   /** Resolved colours for hosts that need raw values (charts, canvas, emails). */
   params: GridThemeParams;
+  /**
+   * v0.4: the scheme's `--sg-color-*` cell color fills (ag-grid
+   * `cellColorCssVariables(scheme)`). `styles.css` already declares them for
+   * `:root` and `.dark`; spread these onto a container styled without it.
+   */
+  cellColorVariables: Record<`--sg-color-${string}`, string>;
 }
 
 /**
@@ -189,5 +195,8 @@ export function useGridThemeFromShadcn(options: UseGridThemeFromShadcnOptions = 
     cache.current.themes[scheme] = theme;
   }
 
-  return useMemo(() => ({ theme, scheme, params: readParams(root, scheme, overrides) }), [theme, scheme, root, overrides]);
+  return useMemo(
+    () => ({ theme, scheme, params: readParams(root, scheme, overrides), cellColorVariables: cellColorCssVariables(scheme) }),
+    [theme, scheme, root, overrides],
+  );
 }

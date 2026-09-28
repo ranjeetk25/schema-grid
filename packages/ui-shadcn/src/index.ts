@@ -12,6 +12,7 @@ export * from "./import-export";
 
 // Root-only areas
 export { ShadcnHeaderMenu } from "./header-menu/ShadcnHeaderMenu";
+export { CellColorFilterProvider, useCellColorFilter, type CellColorFilterContextValue } from "./header-menu/cellColorFilter";
 export type {
   HeaderMenuActions,
   HeaderMenuColumn,
@@ -36,12 +37,42 @@ export {
   type UseGridThemeFromShadcnOptions,
 } from "./theme/useGridThemeFromShadcn";
 export {
+  CELL_COLOR_PALETTE,
+  CellColorSwatch,
+  cellColorLabel,
+  type CellColorPaletteEntry,
+  type CellColorSwatchProps,
+} from "./theme/cellColors";
+export {
+  cellColorSummary,
+  formatCellColorReport,
+  notifyCellColorReport,
+  type NotifyCellColorReportOptions,
+} from "./notifications/notifyCellColorReport";
+export {
   formatClipboardReport,
   notifyClipboardReport,
   type ClipboardReportMessage,
   type NotifyClipboardReportOptions,
 } from "./notifications/notifyClipboardReport";
 export type { ClipboardReport, ConflictResolution, SchemaGridEvents } from "./internal/grid-contracts";
+
+// v0.4 cell colors: paint popover, swatch picker, color rules editor
+export { CellColorButton, useCanPaint, type CellColorButtonProps, type CellColorPaintHandle } from "./colors/CellColorButton";
+export { CellColorPicker, type CellColorPickerProps } from "./colors/CellColorPicker";
+export { ColorSwatchMultiSelect, type ColorSwatchMultiSelectProps } from "./colors/ColorSwatchMultiSelect";
+export { ColorRulesDialog, type ColorRulesDialogProps } from "./colors/ColorRulesDialog";
+export {
+  addColorRule,
+  moveColorRule,
+  newColorRuleId,
+  removeColorRule,
+  ruleIssueMessages,
+  updateColorRule,
+  validateColorRulesDraft,
+} from "./colors/colorRulesModel";
+export type { CellColor, ColorRule, ColorRuleTarget } from "./internal/core-contracts";
+export type { CellColorReport } from "./internal/grid-contracts";
 
 // Host toolbar primitives (the kit's own shadcn components, so a host's chrome
 // around the grid matches it: 32px controls, Linear tooltips, segmented control).

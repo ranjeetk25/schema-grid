@@ -87,7 +87,7 @@ persist column edits). Other props:
 |---|---|
 | `resolver`, `registry`, `uiRegistry`, `mode` | defaults: role resolver, default registries, `"server"` with `client` else `"client"` |
 | `views` + `onViewsChange` / `viewStore` | controlled views, or a `WorkbenchViewStore` (`load(gridId)`/`save(gridId, views)`); default `createLocalStorageViewStore()` keyed by grid id |
-| `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling }>` — `false` turns one off |
+| `features` | `Partial<{ filter, group, search, views, export, import, addColumn, undo, polling, paint, colorRules }>` — `false` turns one off |
 | `toolbarStart`, `toolbarEnd`, `statusBar` | a node or `(ctx) => node`; `ctx` has `handle`, `schema`, `features`, `capabilities` (raw, once loaded), `effectiveCapabilities` (core `mergeCapabilities`, `null` until loaded), `openImport`, `openExport`, `openAddColumn`, `refetch` |
 | `emptyState` | shown over the grid when there are no rows |
 | `onError(error)` | every `{ kind, op, message, error }` also shown as a banner: `permission-denied`, `network` (Retry), `capability-denied`, `schema-changed` (Reload), export failures (`op: "export"`, banner with Retry) |
@@ -146,9 +146,48 @@ as `ChangeResult.rejected`: the cell reverts with no error state, nothing is
 announced assertively, and the bar reads "N changes not saved" (paste
 summaries add "R not saved").
 
+### Cell colors (v0.4)
+
+The workbench exposes the grid's cell colors (see the ag-grid README, "Cell colors") without extra wiring:
+
+- **Paint:** a "Cell color" toolbar button (paint bucket) opens the palette (9 swatches + "No color") and paints
+  the range selection, or the focused cell, through `handle.setCellColor`. It shows only when the source reads
+  and writes colors (`features.paint`: `capabilities.cellColors.read` + `write`), and is unavailable until `handle.canPaint()`
+  (some selected cell is editable). Each paint is one undo step. Skipped read-only cells and rejected ones go to
+  the status bar ("Colored 2 cells, 1 skipped (1 read-only)") and a `sonner` toast; your
+  `gridProps.onCellColorReport` still runs. The grid has no cell context menu, so painting is toolbar-only.
+- **Color rules:** a "Color rules" button (`features.colorRules`, with the rule count) opens a dialog listing the current view's rules.
+  Each rule has a color, a target (whole row, or chosen columns), a condition built with the `FilterBuilder`
+  (color operators excluded), an on / off switch, move up / down and delete. "Save rules" validates with
+  core's `validateColorRules` (issues show on the rule) and calls `handle.setColorRules`, so the view is marked
+  unsaved like a filter change. Rules render client-side, so they work without the `cellColors` capability.
+- **Filter by color:** with `cellColors.filter`, the Filter builder offers "color is" (a swatch multi-picker) and
+  "has no color" on every readable column, `filterable: false` ones included, and each column's header menu gets
+  a "Filter by color" submenu (palette, "No color", "Clear color filter"; the active color is checked) that sets
+  one color condition on that column. ag-grid's header-menu actions can't set a filter, so the workbench puts a
+  `CellColorFilterProvider` around the grid and `ShadcnHeaderMenu` reads it (`useCellColorFilter`).
+
+The pieces are exported for hosts that build their own page:
+
+| Export | |
+|---|---|
+| `CellColorButton` (`handle`, `onError`), `useCanPaint(handle)` | the paint popover and its live enabled state |
+| `CellColorPicker` (`value`, `onPick`, `allowNone`) | the swatch grid |
+| `ColorSwatchMultiSelect` (`value`, `onChange`) | the palette multi-select (the `colorIs` value editor) |
+| `ColorRulesDialog` (`opened`, `onClose`, `schema`, `registry`, `uiRegistry`, `access`, `rules`, `onSave`, `dataSource`) | the rules editor; `addColorRule`, `moveColorRule`, `updateColorRule`, `removeColorRule`, `validateColorRulesDraft`, `ruleIssueMessages` are its pure model |
+| `FilterBuilder` / `FilterButton` `capabilities` prop | pass `handle.effectiveCapabilities` to get the color operators |
+| `CellColorFilterProvider` (`value: { get(columnId), set(columnId, next) } \| null`), `useCellColorFilter()` | wrap `<SchemaGrid headerMenu={ShadcnHeaderMenu}>` to get the header submenu |
+| `setColumnColorFilter(filter, columnId, next)`, `columnColorFilter(filter, columnId)` | write / read one column's color condition: `CellColor[]` (`colorIs`), `"none"` (`colorIsNone`), `null` (none / clear) |
+| `formatCellColorReport`, `notifyCellColorReport`, `cellColorSummary` | paint report text and toast |
+| `CELL_COLOR_PALETTE`, `CellColorSwatch`, `cellColorLabel` | the palette (label, light / dark fill, swatch per `CellColor`) |
+
+Dark mode: `styles.css` declares the grid's `--sg-color-*` fills for `:root` and `.dark` (ag-grid's
+`cellColorCssVariables("light" | "dark")`), and `useGridThemeFromShadcn()` returns the current scheme's map as
+`cellColorVariables` for containers styled without the stylesheet.
+
 ### Lazy chunks
 
-The import wizard, the export dialog and the column panel load on first
+The import wizard, the export dialog, the column panel and the color rules dialog load on first
 open, and `@ranjeetk25/schema-grid-io` (exceljs, papaparse) is imported only
 inside an export / import run, so none of them sit in the page chunk.
 

@@ -45,6 +45,10 @@ export interface WorkbenchFeatures {
   addColumn: boolean;
   undo: boolean;
   polling: boolean;
+  /** v0.4 "Cell color" paint popover; needs `capabilities.cellColors` read + write. */
+  paint: boolean;
+  /** v0.4 "Color rules" dialog (rules are saved on the view and render client-side). */
+  colorRules: boolean;
 }
 
 export type WorkbenchFeatureName = keyof WorkbenchFeatures;

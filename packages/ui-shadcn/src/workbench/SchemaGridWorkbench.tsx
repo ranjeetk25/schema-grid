@@ -23,6 +23,14 @@
  *
  * v0.3.1: the "save" banner (red, role alert, auto-dismiss paused on hover)
  * and the neutral "schema-unavailable" banner.
+ *
+ * v0.4 cell colors: a "Cell color" paint popover (`features.paint`: the
+ * source reads + writes colors; enabled while `handle.canPaint()`), a
+ * "Color rules" dialog (`features.colorRules`, lazy) editing the view's
+ * rules through `handle.setColorRules`, "color is" operators in the filter
+ * builder and a "Filter by color" header submenu (`CellColorFilterProvider`
+ * around the grid) when `cellColors.filter`, and paint reports in the
+ * status bar (a toast when cells were skipped or rejected).
  */
 import { SchemaGrid } from "@ranjeetk25/schema-grid-ag-grid";
 import type { FilterNode } from "@ranjeetk25/schema-grid-core";
@@ -32,6 +40,7 @@ import {
   InfoIcon,
   LoaderCircleIcon,
   LockIcon,
+  PaletteIcon,
   PlusIcon,
   Redo2Icon,
   RefreshCwIcon,
@@ -43,16 +52,22 @@ import {
   XIcon,
 } from "lucide-react";
 import { type CSSProperties, type ReactNode, Suspense, createContext, lazy, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { CellColorButton } from "../colors/CellColorButton";
 import { ConflictPopover } from "../conflict/ConflictPopover";
 import { useShadcnConflictPrompt } from "../conflict/useShadcnConflictPrompt";
 import { createShadcnUiRegistry } from "../editors";
 import { FilterButton } from "../filter-builder/FilterButton";
 import { FilterChips } from "../filter-builder/FilterChips";
+import { columnColorFilter, setColumnColorFilter } from "../filter-builder/model";
+import { CellColorFilterProvider, type CellColorFilterContextValue } from "../header-menu/cellColorFilter";
 import { ShadcnHeaderMenu } from "../header-menu/ShadcnHeaderMenu";
+import { type CellColorReport, canFilterByColor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
+import { cellColorSummary, notifyCellColorReport } from "../notifications/notifyCellColorReport";
 import { notifyClipboardReport } from "../notifications/notifyClipboardReport";
 import { useGridThemeFromShadcn } from "../theme/useGridThemeFromShadcn";
 import { Avatar } from "../ui/avatar";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Separator } from "../ui/separator";
@@ -67,6 +82,7 @@ import { type WorkbenchBanner, renderSlot, useWorkbench } from "./useWorkbench";
 const ColumnPanel = lazy(() => import("../column-builder/ColumnPanel").then((m) => ({ default: m.ColumnPanel })));
 const ImportWizard = lazy(() => import("../import-export/ImportWizard").then((m) => ({ default: m.ImportWizard })));
 const ExportDialog = lazy(() => import("../import-export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+const ColorRulesDialog = lazy(() => import("../colors/ColorRulesDialog").then((m) => ({ default: m.ColorRulesDialog })));
 
 /** True once `opened` has been true (keeps a lazily mounted surface mounted afterwards so its state survives). */
 function useEverOpened(opened: boolean): boolean {
@@ -78,6 +94,8 @@ function useEverOpened(opened: boolean): boolean {
 }
 
 const PANEL_WIDTH = 420;
+
+const ignorePaintError = () => {};
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const UNDO_KEYS = IS_MAC ? "⌘Z" : "Ctrl+Z";
@@ -222,6 +240,34 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   const [filterDraft, setFilterDraft] = useState<{ draft: FilterNode | null; dirty: boolean }>({ draft: null, dirty: false });
   const gridBoxRef = useRef<HTMLDivElement>(null);
 
+  // ---- v0.4 cell colors ------------------------------------------------------
+  const [colorReport, setColorReport] = useState<CellColorReport | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const rulesEver = useEverOpened(rulesOpen);
+  const colorRules = wb.handle?.colorRules ?? [];
+  // Header "Filter by color": provided (context) only when the source filters by color and Filter is on.
+  const colorFilterOn = features.filter && canFilterByColor(wb.effectiveCapabilities);
+  const filterRef = useRef(wb.filter);
+  filterRef.current = wb.filter;
+  const applyFilter = wb.applyFilter;
+  const colorFilter = useMemo<CellColorFilterContextValue | null>(
+    () =>
+      colorFilterOn
+        ? {
+            get: (columnId) => columnColorFilter(filterRef.current, columnId),
+            set: (columnId, next) => applyFilter(setColumnColorFilter(filterRef.current, columnId, next)),
+          }
+        : null,
+    [colorFilterOn, applyFilter],
+  );
+  const hostColorReport = props.gridProps?.onCellColorReport;
+  const onCellColorReport = (report: CellColorReport) => {
+    setColorReport(report);
+    if (report.skipped + report.rejected > 0) void notifyCellColorReport(report);
+    hostColorReport?.(report);
+  };
+  const status = colorReport ? [...wb.status, cellColorSummary(colorReport)] : wb.status;
+
   const filtered = wb.filter !== null || wb.search.trim() !== "";
   const blocked = wb.banners.some((b) => b.kind === "network" || b.kind === "permission-denied");
   const emptyValue = useMemo<EmptyContextValue>(
@@ -335,10 +381,22 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
                   onChange={wb.applyFilter}
                   onDraftChange={(draft, dirty) => setFilterDraft({ draft, dirty })}
                   dataSource={wb.dataSource}
+                  capabilities={wb.effectiveCapabilities}
                 />
               ) : null}
               {features.group ? (
                 <GroupByBar schema={wb.effectiveSchema ?? schema} registry={wb.registry} access={wb.access} value={wb.groupBy} onChange={wb.applyGroupBy} />
+              ) : null}
+              {features.colorRules ? (
+                <Button variant="secondary" aria-haspopup="dialog" onClick={() => setRulesOpen(true)}>
+                  <PaletteIcon aria-hidden className="sg:size-4 sg:text-muted-foreground" />
+                  Color rules
+                  {colorRules.length > 0 ? (
+                    <Badge variant="primary" data-testid="color-rules-count" className="sg:min-w-5 sg:justify-center sg:rounded-full sg:px-1.5">
+                      {colorRules.length}
+                    </Badge>
+                  ) : null}
+                </Button>
               ) : null}
               {features.search ? (
                 <div className="sg:relative sg:w-50">
@@ -374,6 +432,8 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             </div>
             <div className="sg:flex sg:flex-none sg:items-center sg:gap-0.5">
               {renderSlot(props.toolbarEnd, slotContext)}
+              {/* A failed paint is rolled back by the grid and reported by the data-source tap (banner + onError). */}
+              {features.paint ? <CellColorButton handle={wb.handle} onError={ignorePaintError} /> : null}
               <ColumnsButton items={wb.columns.items} onChange={wb.columns.apply} />
               {features.undo ? (
                 <>
@@ -436,40 +496,43 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           style={typeof height === "number" ? { height } : undefined}
         >
           {schema ? (
-            <SchemaGrid
-              {...(props.gridProps ?? {})}
-              ref={wb.setHandle}
-              schema={schema}
-              dataSource={wb.dataSource}
-              user={props.user}
-              resolver={wb.resolver}
-              registry={wb.registry}
-              uiRegistry={uiRegistry}
-              mode={wb.mode}
-              view={wb.activeView}
-              onViewChange={wb.onViewChange}
-              events={wb.events}
-              height="100%"
-              poll={wb.poll}
-              {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
-              theme={props.gridProps?.theme ?? theme}
-              gridOptions={gridOptions}
-              headerMenu={props.gridProps?.headerMenu ?? ShadcnHeaderMenu}
-              onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
-              {...(features.addColumn
-                ? {
-                    onEditColumn: wb.onEditColumn,
-                    onAddColumn: wb.onAddColumn,
-                    onInsertColumn: wb.onInsertColumn,
-                    draftColumn: wb.panel.draftColumn,
-                  }
-                : {})}
-              {...(props.pageSize ? { pageSize: props.pageSize } : {})}
-              onClipboardReport={(report) => {
-                wb.onClipboardReport(report);
-                void notifyClipboardReport(report);
-              }}
-            />
+            <CellColorFilterProvider value={colorFilter}>
+              <SchemaGrid
+                {...(props.gridProps ?? {})}
+                ref={wb.setHandle}
+                schema={schema}
+                dataSource={wb.dataSource}
+                user={props.user}
+                resolver={wb.resolver}
+                registry={wb.registry}
+                uiRegistry={uiRegistry}
+                mode={wb.mode}
+                view={wb.activeView}
+                onViewChange={wb.onViewChange}
+                events={wb.events}
+                height="100%"
+                poll={wb.poll}
+                {...(wb.refetchAfterSave !== undefined ? { refetchAfterSave: wb.refetchAfterSave } : {})}
+                theme={props.gridProps?.theme ?? theme}
+                gridOptions={gridOptions}
+                headerMenu={props.gridProps?.headerMenu ?? ShadcnHeaderMenu}
+                onGroupByColumn={features.group ? wb.onGroupByColumn : undefined}
+                {...(features.addColumn
+                  ? {
+                      onEditColumn: wb.onEditColumn,
+                      onAddColumn: wb.onAddColumn,
+                      onInsertColumn: wb.onInsertColumn,
+                      draftColumn: wb.panel.draftColumn,
+                    }
+                  : {})}
+                {...(props.pageSize ? { pageSize: props.pageSize } : {})}
+                onClipboardReport={(report) => {
+                  wb.onClipboardReport(report);
+                  void notifyClipboardReport(report);
+                }}
+                onCellColorReport={onCellColorReport}
+              />
+            </CellColorFilterProvider>
           ) : (
             <div data-testid="workbench-loading" className="sg:flex sg:h-full sg:min-h-40 sg:items-center sg:justify-center">
               {wb.schemaLoading ? <LoaderCircleIcon aria-label="Loading" className="sg:size-4 sg:animate-spin sg:text-muted-foreground" /> : null}
@@ -494,7 +557,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
           data-testid="workbench-status"
           className="sg:mt-2 sg:flex sg:h-7.5 sg:flex-none sg:items-center sg:gap-1.5 sg:overflow-hidden sg:border-t sg:border-border sg:px-4 sg:text-xs sg:text-muted-foreground sg:tabular-nums"
         >
-          <StatusItems items={wb.status} extra={slotContext ? renderSlot(props.statusBar, slotContext) : null} />
+          <StatusItems items={status} extra={slotContext ? renderSlot(props.statusBar, slotContext) : null} />
           {prompt.pendingCount > 0 ? (
             <button
               type="button"
@@ -510,6 +573,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             <span data-testid="feed-count">{wb.feedCount}</span>
             <span data-testid="clipboard-report">{wb.clipboard ? JSON.stringify(wb.clipboard) : "none"}</span>
             <span data-testid="filter-ast">{JSON.stringify(wb.filter)}</span>
+            <span data-testid="color-report">{colorReport ? JSON.stringify(colorReport) : "none"}</span>
             <span data-testid="last-export">{wb.exportDialog.lastExport ?? ""}</span>
             <span data-testid="import-job">{wb.importDialog.job ? JSON.stringify(wb.importDialog.job) : ""}</span>
           </div>
@@ -534,6 +598,21 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
               onDelete={(id) => void wb.panel.remove(id)}
               dataSource={wb.dataSource}
               width={PANEL_WIDTH}
+            />
+          </Suspense>
+        ) : null}
+        {schema && rulesEver ? (
+          <Suspense fallback={null}>
+            <ColorRulesDialog
+              opened={rulesOpen}
+              onClose={() => setRulesOpen(false)}
+              schema={wb.effectiveSchema ?? schema}
+              registry={wb.registry}
+              uiRegistry={uiRegistry}
+              access={wb.access}
+              rules={colorRules}
+              onSave={(rules) => wb.handle?.setColorRules(rules)}
+              dataSource={wb.dataSource}
             />
           </Suspense>
         ) : null}

@@ -19,6 +19,7 @@ const VERBS: Record<string, string> = {
   getOptions: "load options",
   createOption: "add options",
   lookup: "search linked records",
+  setCellColors: "color cells",
   updateSchema: "change columns",
   getSchema: "load columns",
   capabilities: "load grid settings",
@@ -97,6 +98,8 @@ const OPS = [
   "createOption",
   "lookup",
   "capabilities",
+  // v0.4 manual cell colors (optional; stays absent when the source lacks it).
+  "setCellColors",
 ] as const;
 const READS = new Set(["fetch", "getChanges"]);
 

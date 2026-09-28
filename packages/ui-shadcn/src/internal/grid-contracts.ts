@@ -72,6 +72,20 @@ export type AddColumnPosition = Parameters<NonNullable<import("@ranjeetk25/schem
 // Theme (used by theme/useGridThemeFromShadcn)
 export { createSchemaGridTheme, type SchemaGridThemeOverrides } from "@ranjeetk25/schema-grid-ag-grid";
 
+// v0.4 cell colors: palette tokens (theme/cellColors), the filter builder's
+// color operators and the workbench's paint report.
+export {
+  CELL_COLOR_TOKENS,
+  canFilterByColor,
+  cellColorCssVariables,
+  columnOperatorsWithColors,
+  withColorOperators,
+  type CellColorCapabilitiesLike,
+  type CellColorReport,
+  type CellColorToken,
+  type SchemaGridHandle,
+} from "@ranjeetk25/schema-grid-ag-grid";
+
 // ---------------------------------------------------------------------------
 // Widget contracts (owned by ui-shadcn)
 // ---------------------------------------------------------------------------
