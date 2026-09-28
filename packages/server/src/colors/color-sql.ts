@@ -73,7 +73,7 @@ export function shownColorExpr(columnId: string, scope: SqlScope, translateWhen:
 }
 
 /**
- * `colorIs [..]` → `(<shown> IS NOT NULL AND <shown> IN ('red', …))` (two-valued);
+ * `colorIs [..]` → `COALESCE(<shown> IN ('red', …), FALSE)` (two-valued, `<shown>` evaluated once);
  * `colorIsNone` → `(<shown> IS NULL)`. Only palette colors are ever inlined; a
  * list without one matches nothing. Inside a rule's own `when` → FALSE.
  */
@@ -84,5 +84,5 @@ export function translateColorCondition(cond: FilterCondition, scope: SqlScope, 
   const values = Array.isArray(cond.value) ? [...new Set(cond.value.filter(isCellColor))] : [];
   if (!shown || values.length === 0) return sql`FALSE`;
   const list = sql.join(values.map(colorLiteral), sql`, `);
-  return sql`(${shown} IS NOT NULL AND ${shown} IN (${list}))`;
+  return sql`COALESCE(${shown} IN (${list}), FALSE)`;
 }

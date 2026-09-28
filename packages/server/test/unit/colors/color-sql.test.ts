@@ -34,8 +34,8 @@ describe("colorIs / colorIsNone → SQL of the SHOWN color", () => {
   it("manual only (no rules): the stored color, path bound as a parameter", () => {
     const r = t({ columnId: "name", operator: "colorIs", value: ["red", "blue"] }, withColors(undefined));
     const shown = MANUAL;
-    expect(r.sql).toBe(`(${shown} IS NOT NULL AND ${shown} IN ('red', 'blue'))`);
-    expect(r.params).toEqual(['$."name"', '$."name"']);
+    expect(r.sql).toBe(`COALESCE(${shown} IN ('red', 'blue'), FALSE)`);
+    expect(r.params).toEqual(['$."name"']);
     const none = t({ columnId: "name", operator: "colorIsNone" }, withColors(undefined));
     expect(none.sql).toBe(`(${shown} IS NULL)`);
     expect(none.params).toEqual(['$."name"']);
@@ -55,9 +55,9 @@ describe("colorIs / colorIsNone → SQL of the SHOWN color", () => {
     const w3 = when(bigFee);
     const manual = "JSON_UNQUOTE(JSON_EXTRACT(`sg_colors`.`colors`, ?))";
     const shown = `COALESCE(${manual}, CASE WHEN ${w1.sql} THEN 'green' WHEN ${w3.sql} THEN 'yellow' END, CASE WHEN ${w3.sql} THEN 'gray' END)`;
-    expect(r.sql).toBe(`(${shown} IS NOT NULL AND ${shown} IN ('green'))`);
+    expect(r.sql).toBe(`COALESCE(${shown} IN ('green'), FALSE)`);
     const once = ['$."name"', ...w1.params, ...w3.params, ...w3.params];
-    expect(r.params).toEqual([...once, ...once]);
+    expect(r.params).toEqual(once);
   });
 
   it("without a store the manual part is left out (rules-only); nothing at all → constant", () => {
@@ -74,7 +74,7 @@ describe("colorIs / colorIsNone → SQL of the SHOWN color", () => {
       { id: "bad", color: "'; DROP TABLE x; --", target: { kind: "row" }, when: paid },
     ] as unknown as ColorRule[];
     const r = t({ columnId: "fee", operator: "colorIs", value: ["purple", "nope' OR 1=1"] as never }, withColors(rules, false));
-    expect(r.sql).toBe("(CASE WHEN TRUE THEN 'purple' END IS NOT NULL AND CASE WHEN TRUE THEN 'purple' END IN ('purple'))");
+    expect(r.sql).toBe("COALESCE(CASE WHEN TRUE THEN 'purple' END IN ('purple'), FALSE)");
     const none = t({ columnId: "fee", operator: "colorIs", value: ["nope"] as never }, withColors(rules, false));
     expect(none.sql).toBe("FALSE");
   });
@@ -92,7 +92,7 @@ describe("colorIs / colorIsNone → SQL of the SHOWN color", () => {
       { id: "loop", color: "red", target: { kind: "row" }, when: { columnId: "name", operator: "colorIs", value: ["red"] } },
     ] as ColorRule[];
     const r = t({ columnId: "fee", operator: "colorIs", value: ["red"] }, withColors(rules, false));
-    expect(r.sql).toBe("(CASE WHEN FALSE THEN 'red' END IS NOT NULL AND CASE WHEN FALSE THEN 'red' END IN ('red'))");
+    expect(r.sql).toBe("COALESCE(CASE WHEN FALSE THEN 'red' END IN ('red'), FALSE)");
   });
 
   it("shownColorExpr is exposed for other translators", () => {

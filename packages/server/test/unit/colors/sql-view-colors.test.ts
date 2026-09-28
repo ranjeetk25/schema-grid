@@ -87,7 +87,7 @@ describe("createSqlViewDataSource: cell colors (v0.4)", () => {
   it("colorIs reads the joined document", async () => {
     const { ds, statements } = make();
     await ds.fetch({ filter: { columnId: "name", operator: "colorIs", value: ["red"] }, sort: [], page: { offset: 0, limit: 10 } });
-    expect(statements()[0]?.sql).toContain("(JSON_UNQUOTE(JSON_EXTRACT(`sg_colors`.`colors`, ?)) IS NOT NULL AND");
+    expect(statements()[0]?.sql).toContain("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(`sg_colors`.`colors`, ?)) IN ('red'), FALSE)");
   });
 
   it("setCellColors uses the write path's row load and permissions, never the base-table hooks", async () => {
