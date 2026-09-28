@@ -135,6 +135,16 @@ describe("applyRemotePatch — client mode", () => {
   });
 });
 
+describe("applyRemotePatch — cell colors, client mode (v0.4)", () => {
+  it("upserts same-version colorUpdates into the row store", () => {
+    const { stores, fake } = setup([row("a", { name: "A" }, 3)]);
+    const painted = { ...row("a", { name: "A" }, 3), colors: { name: "green" as const } };
+    applyRemotePatch(fake.api, emptyPlan({ colorUpdates: [painted] }), "client", stores);
+    expect(stores.rows.getRow("a")).toEqual(painted);
+    expect(fake.spies.flashCells).not.toHaveBeenCalled();
+  });
+});
+
 describe("applyRemotePatch — server (infinite) mode", () => {
   it("setData on loaded nodes, upserts the row store, flashes immediately, no applyTransaction", () => {
     const { stores, fake } = setup([row("a", { name: "A" }, 1)]);
@@ -158,6 +168,16 @@ describe("applyRemotePatch — server (infinite) mode", () => {
     expect(stores.rows.getRow("a")?.cells.name).toBe("A2");
     expect(fake.spies.applyTransaction).not.toHaveBeenCalled();
     expect(fake.spies.flashCells).toHaveBeenCalledTimes(1);
+  });
+
+  it("v0.4: colorUpdates go to loaded nodes and the row store", () => {
+    const { stores, fake } = setup([row("a", { name: "A" }, 1)]);
+    const node = { id: "a", setData: vi.fn() };
+    (fake.spies.getRowNode as ReturnType<typeof vi.fn>).mockImplementation((id: string) => (id === "a" ? node : undefined));
+    const painted = { ...row("a", { name: "A" }, 1), colors: { name: "red" as const } };
+    applyRemotePatch(fake.api, emptyPlan({ colorUpdates: [painted] }), "server", stores);
+    expect(node.setData).toHaveBeenCalledWith(painted);
+    expect(stores.rows.getRow("a")?.colors).toEqual({ name: "red" });
   });
 
   it("removes deleted rows from the store and refreshes the infinite cache", () => {

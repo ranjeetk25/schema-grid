@@ -252,3 +252,50 @@ describe("mergeDeferred", () => {
     expect(afterAdd.get("r1")).toEqual(r1v2);
   });
 });
+
+describe("planRemotePatch — cell colors (v0.4)", () => {
+  const base = {
+    schema,
+    pendingCells: new Set<string>(),
+    matchesView: () => true,
+    currentSchemaVersion: 1,
+  };
+
+  it("a same-version row whose colors changed becomes a colorUpdate (local cells kept)", () => {
+    const local = { ...row("r1", { name: "local-pending", stage: "new" }, 3), colors: { name: "red" as const } };
+    const remote = { ...row("r1", { name: "A", stage: "new" }, 3), colors: { stage: "blue" as const } };
+    const plan = planRemotePatch({ ...base, entry: feedEntry([remote]), rowStore: makeRowStore([local]) });
+    expect(plan.updates).toEqual([]);
+    expect(plan.colorUpdates).toEqual([{ ...local, colors: { stage: "blue" } }]);
+  });
+
+  it("same version and same colors is still an echo; cleared colors are an update", () => {
+    const local = { ...row("r1", { name: "A" }, 2), colors: { name: "red" as const } };
+    const echo = planRemotePatch({ ...base, entry: feedEntry([{ ...row("r1", { name: "A" }, 2), colors: { name: "red" } }]), rowStore: makeRowStore([local]) });
+    expect(echo.colorUpdates).toEqual([]);
+    const cleared = planRemotePatch({ ...base, entry: feedEntry([row("r1", { name: "A" }, 2)]), rowStore: makeRowStore([local]) });
+    expect(cleared.colorUpdates?.[0]?.colors).toBeUndefined();
+  });
+
+  it("keeps the local color of cells whose paint is in flight", () => {
+    const local = { ...row("r1", { name: "A" }, 2), colors: { name: "red" as const } };
+    const remote = { ...row("r1", { name: "A" }, 2), colors: { stage: "gray" as const } };
+    const newer = { ...row("r2", { name: "B2" }, 5), colors: {} };
+    const localR2 = { ...row("r2", { name: "B" }, 4), colors: { name: "teal" as const } };
+    const plan = planRemotePatch({
+      ...base,
+      entry: feedEntry([remote, newer]),
+      rowStore: makeRowStore([local, localR2]),
+      colorPending: (cell) => cell.columnId === "name",
+    });
+    expect(plan.colorUpdates?.[0]?.colors).toEqual({ name: "red", stage: "gray" });
+    expect(plan.updates[0]?.colors).toEqual({ name: "teal" });
+  });
+
+  it("a color update that leaves the view is flagged notInView", () => {
+    const local = row("r1", { name: "A" }, 1);
+    const remote = { ...row("r1", { name: "A" }, 1), colors: { name: "red" as const } };
+    const plan = planRemotePatch({ ...base, matchesView: () => false, entry: feedEntry([remote]), rowStore: makeRowStore([local]) });
+    expect(plan.notInViewRowIds).toEqual(["r1"]);
+  });
+});
