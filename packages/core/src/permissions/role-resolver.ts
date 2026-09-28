@@ -1,15 +1,5 @@
-import type { RoleRule } from "../schema/types";
-import type { Access, PermissionContext, PermissionResolver, PermissionUser } from "./types";
-
-function matchesRule(rule: RoleRule, user: PermissionUser, superRoles: string[]): boolean {
-  if (superRoles.some((role) => user.roles.includes(role))) {
-    return true;
-  }
-  if (rule === "all") {
-    return true;
-  }
-  return rule.roles.some((role) => user.roles.includes(role));
-}
+import { matchesRoleRule } from "./match-role-rule";
+import type { Access, PermissionContext, PermissionResolver } from "./types";
 
 export interface RolePermissionResolverOptions {
   superRoles?: string[];
@@ -33,12 +23,12 @@ export function createRolePermissionResolver(
       return isFormula ? "read" : "edit";
     }
 
-    const canRead = matchesRule(column.permissions.read, user, superRoles);
+    const canRead = matchesRoleRule(column.permissions.read, user, superRoles);
     if (!canRead) {
       return "hidden";
     }
 
-    const canEdit = !isFormula && matchesRule(column.permissions.edit, user, superRoles);
+    const canEdit = !isFormula && matchesRoleRule(column.permissions.edit, user, superRoles);
     return canEdit ? "edit" : "read";
   };
 }

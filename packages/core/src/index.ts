@@ -79,6 +79,7 @@ export {
   createRolePermissionResolver,
   type RolePermissionResolverOptions,
 } from "./permissions/role-resolver";
+export { matchesRoleRule } from "./permissions/match-role-rule";
 export {
   editableColumnIds,
   readableColumnIds,

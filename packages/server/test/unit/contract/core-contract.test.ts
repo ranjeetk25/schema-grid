@@ -49,7 +49,7 @@ describe("core contract (via src/internal/core.ts)", () => {
     expectTypeOf<GridRow["version"]>().toEqualTypeOf<number>();
     expectTypeOf<{ offset: 0; limit: 10 }>().toMatchTypeOf<GridQuery["page"]>();
     expectTypeOf<{ cursor: "x"; limit: 10 }>().toMatchTypeOf<GridQuery["page"]>();
-    expectTypeOf<ColumnPermissions["read"]>().toEqualTypeOf<"all" | { roles: string[] }>();
+    expectTypeOf<ColumnPermissions["read"]>().toEqualTypeOf<"all" | { roles?: string[]; users?: string[] }>();
     expectTypeOf<Access>().toEqualTypeOf<"hidden" | "read" | "edit">();
     expectTypeOf<RelativeDate>().toMatchTypeOf<FilterValue>();
     expectTypeOf<{ me: true }>().toMatchTypeOf<FilterValue>();

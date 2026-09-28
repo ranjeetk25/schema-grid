@@ -163,7 +163,10 @@ const capabilities = z.object({
     .optional(),
 });
 
-const roleRule = z.union([z.literal("all"), z.object({ roles: z.array(z.string()) })]);
+const roleRule = z.union([
+  z.literal("all"),
+  z.object({ roles: z.array(z.string()).optional(), users: z.array(z.string().min(1)).optional() }),
+]);
 const option = z.object({
   id,
   label: z.string(),
