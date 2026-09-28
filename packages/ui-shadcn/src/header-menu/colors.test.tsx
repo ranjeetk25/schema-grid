@@ -42,7 +42,7 @@ function setup(current: ColumnColorFilter | undefined) {
     />
   );
   const utils = renderUi(
-    current === undefined ? menu : <CellColorFilterProvider value={{ get: () => current, set }}>{menu}</CellColorFilterProvider>,
+    current === undefined ? menu : <CellColorFilterProvider value={{ activeColors: () => current, filterByColor: set }}>{menu}</CellColorFilterProvider>,
   );
   return { ...utils, onClose, set };
 }

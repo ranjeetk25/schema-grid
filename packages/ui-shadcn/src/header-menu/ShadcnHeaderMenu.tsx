@@ -125,7 +125,7 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
   const showInsert = typeof actions.insertColumn === "function";
   // v0.4: "Filter by color" only inside a CellColorFilterProvider (the workbench provides one when the source filters by color).
   const colorFilter = useCellColorFilter();
-  const activeColors = colorFilter?.get(column.colId) ?? null;
+  const activeColors = colorFilter?.activeColors(column.colId) ?? null;
 
   const trigger =
     typeof document === "undefined"
@@ -201,19 +201,19 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
                 <DropdownMenuCheckboxItem
                   key={p.color}
                   checked={Array.isArray(activeColors) && activeColors.includes(p.color)}
-                  onSelect={run(() => colorFilter.set(column.colId, [p.color]))}
+                  onSelect={run(() => colorFilter.filterByColor(column.colId, [p.color]))}
                 >
                   <CellColorSwatch color={p.color} />
                   {p.label}
                 </DropdownMenuCheckboxItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem checked={activeColors === "none"} onSelect={run(() => colorFilter.set(column.colId, "none"))}>
+              <DropdownMenuCheckboxItem checked={activeColors === "none"} onSelect={run(() => colorFilter.filterByColor(column.colId, "none"))}>
                 <CellColorSwatch color={null} />
                 No color
               </DropdownMenuCheckboxItem>
               {activeColors !== null ? (
-                <DropdownMenuItem onSelect={run(() => colorFilter.set(column.colId, null))}>
+                <DropdownMenuItem onSelect={run(() => colorFilter.filterByColor(column.colId, null))}>
                   <XIcon />
                   Clear color filter
                 </DropdownMenuItem>

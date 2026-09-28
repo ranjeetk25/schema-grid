@@ -59,7 +59,7 @@ import { createShadcnUiRegistry } from "../editors";
 import { FilterButton } from "../filter-builder/FilterButton";
 import { FilterChips } from "../filter-builder/FilterChips";
 import { columnColorFilter, setColumnColorFilter } from "../filter-builder/model";
-import { CellColorFilterProvider, type CellColorFilterContextValue } from "../header-menu/cellColorFilter";
+import { CellColorFilterProvider, type CellColorFilterValue } from "../header-menu/cellColorFilter";
 import { ShadcnHeaderMenu } from "../header-menu/ShadcnHeaderMenu";
 import { type CellColorReport, canFilterByColor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
@@ -250,12 +250,12 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
   const filterRef = useRef(wb.filter);
   filterRef.current = wb.filter;
   const applyFilter = wb.applyFilter;
-  const colorFilter = useMemo<CellColorFilterContextValue | null>(
+  const colorFilter = useMemo<CellColorFilterValue | null>(
     () =>
       colorFilterOn
         ? {
-            get: (columnId) => columnColorFilter(filterRef.current, columnId),
-            set: (columnId, next) => applyFilter(setColumnColorFilter(filterRef.current, columnId, next)),
+            activeColors: (columnId) => columnColorFilter(filterRef.current, columnId),
+            filterByColor: (columnId, next) => applyFilter(setColumnColorFilter(filterRef.current, columnId, next)),
           }
         : null,
     [colorFilterOn, applyFilter],

@@ -12,7 +12,7 @@ export * from "./import-export";
 
 // Root-only areas
 export { ShadcnHeaderMenu } from "./header-menu/ShadcnHeaderMenu";
-export { CellColorFilterProvider, useCellColorFilter, type CellColorFilterContextValue } from "./header-menu/cellColorFilter";
+export { CellColorFilterProvider, useCellColorFilter, type CellColorFilterValue } from "./header-menu/cellColorFilter";
 export type {
   HeaderMenuActions,
   HeaderMenuColumn,

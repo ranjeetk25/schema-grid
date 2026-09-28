@@ -10,20 +10,20 @@
 import { type ReactNode, createContext, useContext } from "react";
 import type { ColumnColorFilter } from "../filter-builder/model";
 
-export interface CellColorFilterContextValue {
+export interface CellColorFilterValue {
   /** The column's current color filter (`columnColorFilter(filter, columnId)`). */
-  get(columnId: string): ColumnColorFilter;
+  activeColors(columnId: string): ColumnColorFilter;
   /** Sets (`CellColor[]` → `colorIs`, `"none"` → `colorIsNone`) or clears (`null`) the column's color condition (`setColumnColorFilter`). */
-  set(columnId: string, next: ColumnColorFilter): void;
+  filterByColor(columnId: string, colors: ColumnColorFilter): void;
 }
 
-const CellColorFilterContext = createContext<CellColorFilterContextValue | null>(null);
+const CellColorFilterContext = createContext<CellColorFilterValue | null>(null);
 
-export function CellColorFilterProvider({ value, children }: { value: CellColorFilterContextValue | null; children: ReactNode }) {
+export function CellColorFilterProvider({ value, children }: { value: CellColorFilterValue | null; children: ReactNode }) {
   return <CellColorFilterContext.Provider value={value}>{children}</CellColorFilterContext.Provider>;
 }
 
 /** The nearest provider's callbacks, or `null` (no "Filter by color"). */
-export function useCellColorFilter(): CellColorFilterContextValue | null {
+export function useCellColorFilter(): CellColorFilterValue | null {
   return useContext(CellColorFilterContext);
 }
