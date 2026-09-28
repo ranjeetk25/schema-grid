@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ColDef, Column } from "ag-grid-community";
 import { useGridFilter } from "ag-grid-react";
-import type { FilterCondition, GridRow } from "../internal/core";
+import { CELL_COLORS, type CellColor, type FilterCondition, type GridRow, isCellColor } from "../internal/core";
 import { getSchemaGridContext } from "../grid/gridContext";
+import { CELL_COLOR_TOKENS } from "../theme/cellColorTokens";
+import { canFilterByColor, capabilitiesOf } from "./colorOperators";
 import {
   configOptions,
   type FilterOption,
   INPUT_CLASS,
   resolveFilterColumn,
   type SchemaFilterProps,
+  SELECT_CLASS,
   toFilterOptions,
 } from "./ConditionFilter";
 
@@ -47,6 +50,10 @@ const PASS_ALL_FILTER_METHODS = { doesFilterPass: () => true };
  * (falling back to the column's static `config.options`). Every toggle emits:
  * `isAnyOf` (select/user), `hasAnyOf` (multiSelect), `isTrue`/`isFalse`
  * (boolean, null when both or neither). An empty selection emits null.
+ *
+ * v0.4: with `context.effectiveCapabilities.cellColors.filter`, a "Filter by"
+ * select switches to a Color mode: palette checkboxes emit `colorIs`, the
+ * exclusive "No color" emits `colorIsNone`. A color model opens in that mode.
  */
 export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
@@ -65,6 +72,13 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
   );
   const [loaded, setLoaded] = useState<FilterOption[] | null>(null);
   const [search, setSearch] = useState("");
+  const colorAllowed = canFilterByColor(capabilitiesOf(props.context));
+  const modelIsColor = model?.operator === "colorIs" || model?.operator === "colorIsNone";
+  const [mode, setMode] = useState<"values" | "color">(modelIsColor ? "color" : "values");
+  // A color model set from outside (builder / view / header menu) shows the Color mode.
+  useEffect(() => {
+    if (modelIsColor) setMode("color");
+  }, [modelIsColor]);
 
   const columnId = resolved?.columnId;
   // Load options ONCE per mount (not per model change / re-render).
@@ -89,8 +103,49 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
 
   if (!resolved) return null;
 
+  if (colorAllowed && mode === "color") {
+    const noColor = model?.operator === "colorIsNone";
+    const colors: CellColor[] =
+      model?.operator === "colorIs" && Array.isArray(model.value) ? model.value.filter(isCellColor) : [];
+    const emitColors = (next: CellColor[]) =>
+      onModelChange(next.length > 0 ? { columnId: resolved.columnId, operator: "colorIs", value: next } : null);
+    return (
+      <div className="sg-filter sg-set-filter">
+        <div className="sg-filter-body ag-filter-body-wrapper">
+          <FilterBySelect mode={mode} onChange={setMode} />
+          <fieldset className="sg-filter-options sg-color-options" style={FIELDSET_RESET}>
+            <legend style={SR_ONLY}>{`${resolved.column.label} colors`}</legend>
+            <label className="sg-filter-option">
+              <input
+                className="sg-checkbox"
+                type="checkbox"
+                checked={noColor}
+                onChange={(e) =>
+                  onModelChange(e.target.checked ? { columnId: resolved.columnId, operator: "colorIsNone" } : null)
+                }
+              />
+              No color
+            </label>
+            {CELL_COLORS.map((c) => (
+              <label key={c} className="sg-filter-option">
+                <input
+                  className="sg-checkbox"
+                  type="checkbox"
+                  checked={colors.includes(c)}
+                  onChange={(e) => emitColors(e.target.checked ? [...colors, c] : colors.filter((x) => x !== c))}
+                />
+                <span className="sg-color-swatch" aria-hidden="true" style={{ backgroundColor: CELL_COLOR_TOKENS[c].swatch }} />
+                {CELL_COLOR_TOKENS[c].label}
+              </label>
+            ))}
+          </fieldset>
+        </div>
+      </div>
+    );
+  }
+
   const options = loaded && loaded.length > 0 ? loaded : staticOptions;
-  const selected = selectedFrom(model, isBoolean);
+  const selected = modelIsColor ? [] : selectedFrom(model, isBoolean);
   const needle = search.trim().toLowerCase();
   const visible = needle ? options.filter((o) => o.label.toLowerCase().includes(needle)) : options;
 
@@ -117,6 +172,7 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
   return (
     <div className="sg-filter sg-set-filter">
       <div className="sg-filter-body ag-filter-body-wrapper">
+        {colorAllowed && <FilterBySelect mode={mode} onChange={setMode} />}
         {!isBoolean && (
           <input
             className={INPUT_CLASS}
@@ -127,8 +183,8 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
             onChange={(e) => setSearch(e.target.value)}
           />
         )}
-        <fieldset className="sg-filter-options" style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
-          <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" }}>
+        <fieldset className="sg-filter-options" style={FIELDSET_RESET}>
+          <legend style={SR_ONLY}>
             {`${resolved.column.label} values`}
           </legend>
           {visible.map((o) => (
@@ -146,5 +202,23 @@ export function SetFilter<Row extends GridRow = GridRow>(props: SchemaFilterProp
         </fieldset>
       </div>
     </div>
+  );
+}
+
+const FIELDSET_RESET = { border: 0, margin: 0, padding: 0, minWidth: 0 } as const;
+const SR_ONLY = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" } as const;
+
+/** v0.4: "Filter by: Values | Color" (only rendered when the source can filter by color). */
+function FilterBySelect(props: { mode: "values" | "color"; onChange(mode: "values" | "color"): void }) {
+  return (
+    <select
+      className={SELECT_CLASS}
+      aria-label="Filter by"
+      value={props.mode}
+      onChange={(e) => props.onChange(e.target.value === "color" ? "color" : "values")}
+    >
+      <option value="values">Values</option>
+      <option value="color">Color</option>
+    </select>
   );
 }
