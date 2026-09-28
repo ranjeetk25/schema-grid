@@ -5,6 +5,7 @@ import type { AccessMap } from "../internal/access";
 import type { CellColorCapabilitiesLike } from "../internal/color-contracts";
 import { readableColumnIds } from "../internal/access";
 import {
+  type ColorRule,
   type ColumnDef,
   type DataSource,
   type FieldTypeRegistry,
@@ -36,10 +37,11 @@ import {
   addCondition as addConditionTo,
   addGroup as addGroupTo,
   canAddGroup as canAddGroupTo,
+  colorBlockedReason,
   countConditions,
   filterableColumns,
   fromDraftIndexed,
-  operatorsFor,
+  operatorsInContext,
   removeNode,
   setGroupOp,
   toDraft,
@@ -86,6 +88,18 @@ export interface UseFilterDraftOptions extends ApplyModeInput {
    * swatch picker) and "has no color". Omit it and no color operator shows.
    */
   capabilities?: CellColorCapabilitiesLike;
+  /**
+   * v0.4.1: the view's color rules. A column one of them blocks (an enabled
+   * rule that can color it tests a column the server can't filter on) gets
+   * no color operators; its operator picker says why.
+   */
+  colorRules?: readonly ColorRule[];
+  /**
+   * v0.4.1: offer `filterable: false` columns too, with their own operators
+   * (not only color ones), and apply conditions on them. For a color rule's
+   * condition (the rules dialog): rules render client-side from row values.
+   */
+  allowUnfilterable?: boolean;
 }
 
 export interface FilterDraftApi {
@@ -102,6 +116,11 @@ export interface FilterDraftApi {
   readable?: ReadonlySet<string>;
   maxDepth: number;
   operatorsForColumnId(columnId: string | null): readonly FilterOperatorDef[];
+  /**
+   * v0.4.1: why the column can't be filtered by color although the source
+   * filters by color (`colorRules` block it), or null.
+   */
+  colorBlockedReasonFor?(columnId: string | null): string | null;
   addCondition(groupId: string): void;
   addGroup(groupId: string): void;
   remove(id: string): void;
@@ -159,7 +178,7 @@ const sameStatus = (a: FilterBuilderStatus, b: FilterBuilderStatus) =>
  * `MAX_FILTER_DEPTH`.
  */
 export function useFilterDraft(options: UseFilterDraftOptions & { error?: string | null }): FilterDraftApi {
-  const { schema, registry, access, value, onChange, capabilities } = options;
+  const { schema, registry, access, value, onChange, capabilities, colorRules, allowUnfilterable = false } = options;
   const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
   const mode = resolveApplyMode(options);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
@@ -167,11 +186,20 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
   const ctx: DraftContext = useMemo(
-    () => ({ schema, registry, ...(capabilities ? { capabilities } : {}) }),
-    [schema, registry, capabilities],
+    () => ({
+      schema,
+      registry,
+      ...(capabilities ? { capabilities } : {}),
+      ...(allowUnfilterable ? { allowUnfilterable } : {}),
+      ...(colorRules ? { colorRules: { rules: colorRules, schema } } : {}),
+    }),
+    [schema, registry, capabilities, allowUnfilterable, colorRules],
   );
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
-  const columns = useMemo(() => filterableColumns(schema, access, capabilities), [schema, access, capabilities]);
+  const columns = useMemo(
+    () => filterableColumns(schema, access, capabilities, { allowUnfilterable, ...(ctx.colorRules ? { colorRules: ctx.colorRules } : {}) }),
+    [schema, access, capabilities, allowUnfilterable, ctx.colorRules],
+  );
 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -219,16 +247,25 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
     const { node, idByPath } = fromDraftIndexed(draft, ctx);
     if (!node) return new Map<string, RowErrors>();
     // Missing / mismatched values are "incomplete", not errors: those rows are simply not applied.
-    const found = validateFilter(node, ctx.schema, ctx.registry, readable).filter((e) => e.code !== "valueKindMismatch");
+    const found = validateFilter(node, ctx.schema, ctx.registry, readable).filter(
+      (e) => e.code !== "valueKindMismatch" && !(allowUnfilterable && e.code === "unfilterableColumn"),
+    );
     return errorsToRows(found, idByPath);
-  }, [draft, ctx, readable]);
+  }, [draft, ctx, readable, allowUnfilterable]);
 
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, registry, capabilities) : [];
+      return column ? operatorsInContext(column, ctx) : [];
     },
-    [schema, registry, capabilities],
+    [schema, ctx],
+  );
+  const colorBlockedReasonFor = useCallback(
+    (columnId: string | null) => {
+      const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
+      return column ? colorBlockedReason(column, capabilities, ctx.colorRules) : null;
+    },
+    [schema, capabilities, ctx.colorRules],
   );
 
   const status = toStatus(liveState ?? controller.state, options.error);
@@ -247,6 +284,7 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
     readable,
     maxDepth,
     operatorsForColumnId,
+    colorBlockedReasonFor,
     addCondition: (groupId) => {
       const next = addConditionTo(draftRef.current, groupId);
       const added = findLastCondition(next, groupId);
@@ -321,6 +359,10 @@ export interface FilterBuilderProps extends ApplyModeInput {
   timer?: FilterTimer;
   /** v0.4: the source's capabilities; `cellColors.filter` adds "color is" / "has no color" (see `useFilterDraft`). */
   capabilities?: CellColorCapabilitiesLike;
+  /** v0.4.1: the view's color rules; a column one of them blocks offers no color operators (see `useFilterDraft`). */
+  colorRules?: readonly ColorRule[];
+  /** v0.4.1: offer and apply `filterable: false` columns (a color rule's condition; see `useFilterDraft`). */
+  allowUnfilterable?: boolean;
 }
 
 const numberFormat = new Intl.NumberFormat("en-US");

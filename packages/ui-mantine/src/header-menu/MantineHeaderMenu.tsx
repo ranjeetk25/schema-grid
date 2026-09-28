@@ -1,4 +1,4 @@
-import { Menu, Text } from "@mantine/core";
+import { Menu, Text, Tooltip } from "@mantine/core";
 import {
   IconArrowAutofitContent,
   IconArrowAutofitWidth,
@@ -51,7 +51,9 @@ interface Rect {
  * Sections: sort (only when `actions.canSort`) · filter / filter by color / group · pin · autosize · edit / insert · hide.
  * v0.4 "Filter by color" (palette swatches, "No color", "Clear color filter")
  * shows only inside a `CellColorFilterProvider` (the workbench provides one
- * when the source filters by color).
+ * when the source filters by color). v0.4.1: when the provider's
+ * `blockedReason(colId)` answers (a color rule the server can't evaluate
+ * colors this column), the item is disabled with the reason as a tooltip.
  * Host-only actions (`groupBy`, `editColumn`, `insertColumn`) appear only when
  * the grid got the matching callback. The menu portals to `document.body`
  * (it is not inside an AG Grid popup, so that is safe) and anchors to a fixed
@@ -108,6 +110,8 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
   const canSort = actions.canSort !== false;
   const hasFilterGroup = Boolean(actions.canFilter || colorFilter || (actions.groupBy && actions.canGroup));
   const activeColors = colorFilter?.activeColors(column.colId) ?? null;
+  const blocked = colorFilter?.blockedReason?.(column.colId) ?? null;
+  const blockedHint = blocked ? `Can't filter by color: ${blocked}` : null;
   const pickColor = (colors: Parameters<NonNullable<typeof colorFilter>["filterByColor"]>[1]) => {
     colorFilter?.filterByColor(column.colId, colors);
     onClose();
@@ -158,7 +162,21 @@ export function MantineHeaderMenu({ column, anchor, opened, onClose, actions }: 
             Filter…
           </Menu.Item>
         ) : null}
-        {colorFilter ? (
+        {colorFilter && blockedHint ? (
+          // v0.4.1: blocked by a color rule. `data-disabled` (not `disabled`) keeps hover, so the tooltip shows.
+          <Tooltip label={blockedHint} position="right" multiline w={260} withinPortal={false}>
+            <Menu.Item
+              leftSection={<IconColorSwatch {...ICON} />}
+              data-disabled
+              aria-disabled
+              aria-description={blockedHint}
+              closeMenuOnClick={false}
+              onClick={(e) => e.preventDefault()}
+            >
+              Filter by color
+            </Menu.Item>
+          </Tooltip>
+        ) : colorFilter ? (
           <Menu.Sub position="right-start" offset={4}>
             <Menu.Sub.Target>
               <Menu.Sub.Item leftSection={<IconColorSwatch {...ICON} />}>Filter by color</Menu.Sub.Item>

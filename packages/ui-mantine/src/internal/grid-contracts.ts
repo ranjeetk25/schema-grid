@@ -31,6 +31,7 @@ import {
   type Access,
   type ColumnDef,
   type DataSource,
+  type FieldTypeCapabilitiesLike,
   type FieldTypeId,
   type FieldTypeRegistry,
   type FilterOperatorDef,
@@ -80,6 +81,13 @@ export interface UiEditorProps<TValue = unknown, TConfig = unknown> {
    * field. Undefined when used directly (treated like a form field).
    */
   surface?: "cell" | "popup" | "form";
+  /**
+   * v0.4.1: the source's capabilities (the grid context's
+   * `effectiveCapabilities`). Pickers gate on them instead of on method
+   * presence: no `lookup` → the link picker shows why instead of calling; no
+   * `options` → no people search, no "Create" entry, static options only.
+   */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 export interface UiRendererProps<TValue = unknown, TConfig = unknown> {
@@ -131,6 +139,7 @@ function contextExtras(context: unknown, column: ColumnDef | undefined) {
   const ctx = getSchemaGridContext(context);
   return {
     dataSource: ctx?.dataSource as DataSource | undefined,
+    ...(ctx?.effectiveCapabilities ? { capabilities: ctx.effectiveCapabilities as FieldTypeCapabilitiesLike } : {}),
     ...(ctx?.user ? { user: ctx.user as PermissionUser } : {}),
     onOptionCreate: (option: Option) => {
       if (column) ctx?.events()?.onOptionCreate?.(column.id, option);

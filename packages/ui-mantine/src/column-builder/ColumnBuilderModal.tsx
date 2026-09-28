@@ -1,7 +1,14 @@
 import { Modal } from "@mantine/core";
 import { useRef } from "react";
 import type { AccessMap } from "../internal/access";
-import type { ColumnDef, DataSource, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
+import type {
+  ColumnDef,
+  DataSource,
+  FieldTypeCapabilitiesLike,
+  FieldTypeRegistry,
+  GridRow,
+  GridSchema,
+} from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import type { UserDirectory } from "../internal/people";
 import { ColumnForm, type ColumnInsertPosition } from "./ColumnForm";
@@ -28,6 +35,8 @@ export interface ColumnBuilderModalProps {
   dataSource?: DataSource;
   /** v0.4: People pickers for per-person permissions (see `ColumnFormProps.userDirectory`). */
   userDirectory?: UserDirectory;
+  /** v0.4.1: hide field types the source can't back (see `ColumnFormProps.capabilities`). */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /**

@@ -13,6 +13,9 @@ export {
   canFilterByColor,
   cellColorCssVariables,
   cellColorVar,
+  // v0.4.1: color filtering blocked by a color rule the server can't evaluate.
+  type ColorRulesInput,
+  colorFilterBlockedReason,
   columnOperatorsWithColors,
   withColorOperators,
 } from "@ranjeetk25/schema-grid-ag-grid";

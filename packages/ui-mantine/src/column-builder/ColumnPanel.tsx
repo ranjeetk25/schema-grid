@@ -2,7 +2,14 @@ import { Button, CloseButton, Drawer, Group, Text } from "@mantine/core";
 import { useRef, useState } from "react";
 import { useEditorStyles } from "../editors/EditorCard";
 import type { AccessMap } from "../internal/access";
-import type { ColumnDef, DataSource, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
+import type {
+  ColumnDef,
+  DataSource,
+  FieldTypeCapabilitiesLike,
+  FieldTypeRegistry,
+  GridRow,
+  GridSchema,
+} from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
 import type { UserDirectory } from "../internal/people";
 import { ColumnForm, type ColumnInsertPosition } from "./ColumnForm";
@@ -32,6 +39,8 @@ export interface ColumnPanelProps {
   size?: number | string;
   /** v0.4: People pickers for per-person permissions (see `ColumnFormProps.userDirectory`). */
   userDirectory?: UserDirectory;
+  /** v0.4.1: hide field types the source can't back (see `ColumnFormProps.capabilities`). */
+  capabilities?: FieldTypeCapabilitiesLike;
 }
 
 /**

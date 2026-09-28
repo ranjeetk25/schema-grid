@@ -114,6 +114,16 @@ describe("MantineSetFilter", () => {
     await waitFor(() => expect(screen.getByRole("checkbox", { name: /Asha Rao/ })).toBeInTheDocument());
   });
 
+  it("v0.4.1: without capabilities.options keeps the static options and never calls getOptions", async () => {
+    const dataSource = buildStubDataSource();
+    const { props } = filterProps(FIXTURE_IDS.payment, null, {
+      context: { dataSource, events: () => undefined, effectiveCapabilities: { options: false } },
+    });
+    renderWithMantine(<MantineSetFilter {...props} />);
+    expect(await screen.findByRole("checkbox", { name: /Paid/ })).toBeInTheDocument();
+    expect(dataSource.getOptions).not.toHaveBeenCalled();
+  });
+
   it("setFilterModel: multiSelect → hasAnyOf, boolean → isTrue/isFalse/null", () => {
     expect(setFilterModel("c", { isBoolean: false, isMulti: true }, ["a"])).toEqual({ columnId: "c", operator: "hasAnyOf", value: ["a"] });
     expect(setFilterModel("c", { isBoolean: true, isMulti: false }, ["false"])).toEqual({ columnId: "c", operator: "isFalse" });

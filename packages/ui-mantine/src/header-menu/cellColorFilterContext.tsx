@@ -14,6 +14,13 @@ export interface CellColorFilterValue {
   filterByColor(columnId: string, colors: ColumnColorFilter): void;
   /** The column's current color condition (checks in the submenu, "Clear color filter"). */
   activeColors(columnId: string): ColumnColorFilter;
+  /**
+   * v0.4.1: why the column can't be filtered by color (a color rule that can
+   * color it tests a column the server can't filter on), or null. A blocked
+   * column shows a disabled "Filter by color" item with the reason as a
+   * tooltip instead of the submenu. Omitted = never blocked.
+   */
+  blockedReason?(columnId: string): string | null;
 }
 
 const CellColorFilterContext = createContext<CellColorFilterValue | null>(null);

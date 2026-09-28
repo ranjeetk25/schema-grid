@@ -87,3 +87,63 @@ export const CellColors: StoryObj = {
   name: "Rules, paint and filter by color",
   render: () => <CellColorsDemo />,
 };
+
+/**
+ * v0.4.1: "Notes" is `filterable: false` (like a SQL-view computed column).
+ * The "Has notes" view's rule colors the Name cell when Notes is not empty:
+ * it renders fine, but a server couldn't filter Name by color through it, so
+ * the header menu's "Filter by color" on Name is disabled with the reason, the
+ * filter builder offers no "color is" for Name, and the rules dialog notes
+ * "Can't be used to filter by color". Other columns still filter by color.
+ */
+const UNFILTERABLE_RULES: ColorRule[] = [
+  {
+    id: "has-notes",
+    color: "orange",
+    target: { kind: "cells", columnIds: ["col_name"] },
+    when: { columnId: "col_notes", operator: "isNotEmpty" },
+  },
+];
+
+function UnfilterableRuleDemo() {
+  const schema = useMemo(() => {
+    const base = createStorySchema();
+    return {
+      ...base,
+      columns: base.columns.map((c) =>
+        c.id === "col_notes" ? { ...c, filterable: false } : c,
+      ),
+    };
+  }, []);
+  const memory = useMemo(
+    () => createMemoryDataSource({ schema, rows: createLargeRows(20) }),
+    [schema],
+  );
+  const ds = useMemo(() => instrument(memory), [memory]);
+  return (
+    <Workbench
+      title="Admissions"
+      description="A color rule on a column the server can't filter"
+      dataSource={ds}
+      schema={schema}
+      user={USERS.admin}
+      initialViews={[
+        {
+          ...ALL_ROWS_VIEW,
+          id: "has-notes",
+          name: "Has notes",
+          colorRules: UNFILTERABLE_RULES,
+        },
+      ]}
+      onSchemaChange={(next) => {
+        memory.setSchema(next);
+        return next;
+      }}
+    />
+  );
+}
+
+export const UnfilterableRule: StoryObj = {
+  name: "Rule on an unfilterable column",
+  render: () => <UnfilterableRuleDemo />,
+};

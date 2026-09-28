@@ -28,6 +28,7 @@ import {
   type SchemaGridHandle,
   type SchemaGridPollOptions,
   canFilterByColor,
+  colorFilterBlockedReason,
 } from "@ranjeetk25/schema-grid-ag-grid";
 import {
   type Access,
@@ -470,6 +471,9 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
   const filterRef = useRef(filter);
   filterRef.current = filter;
   const canFilterColors = canFilterByColor(effectiveCapabilities);
+  // v0.4.1: a color rule the server can't evaluate blocks filtering the columns it colors by color.
+  const colorBlockRef = useRef({ rules: colorRules, schema: effectiveSchema, capabilities: effectiveCapabilities });
+  colorBlockRef.current = { rules: colorRules, schema: effectiveSchema, capabilities: effectiveCapabilities };
   const colorFilter = useMemo(
     () =>
       canFilterColors
@@ -477,6 +481,11 @@ export function useWorkbench({ props, onConflict }: UseWorkbenchOptions) {
             filterByColor: (columnId: string, colors: ColumnColorFilter) =>
               applyFilter(setColumnColorFilter(filterRef.current, columnId, colors)),
             activeColors: (columnId: string) => columnColorFilter(filterRef.current, columnId),
+            blockedReason: (columnId: string) => {
+              const { rules, schema: s, capabilities: caps } = colorBlockRef.current;
+              const column = s?.columns.find((c) => c.id === columnId);
+              return column && s ? colorFilterBlockedReason(column, rules, s, caps) : null;
+            },
           }
         : null,
     [canFilterColors, applyFilter],

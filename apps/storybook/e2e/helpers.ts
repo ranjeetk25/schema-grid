@@ -16,6 +16,8 @@ export const STORIES = {
   polling: "7-polling-sync--polling-highlight",
   saveErrors: "8-workbench-states--save-errors",
   cellColors: "9-cell-colors--cell-colors",
+  unfilterableRule: "9-cell-colors--unfilterable-rule",
+  noLookup: "1-field-types--no-lookup",
 } as const;
 
 export async function openStory(
