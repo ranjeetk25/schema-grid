@@ -19,7 +19,7 @@ import {
   type RelativeDateKind,
 } from "../internal/core";
 import { CELL_COLOR_TOKENS } from "../theme/cellColorTokens";
-import { capabilitiesOf, withColorOperators } from "./colorOperators";
+import { capabilitiesOf, colorFilterBlockedReasonOf, withColorOperators } from "./colorOperators";
 
 /** Props our filter components accept: AG Grid's, plus the optional `filterParams` spread (`schemaColumn`/`fieldType`). */
 export type SchemaFilterProps<Row extends GridRow = GridRow> = CustomFilterProps<Row, unknown, FilterCondition> & {
@@ -273,7 +273,8 @@ const FIELDSET_RESET = { border: 0, margin: 0, padding: 0, minWidth: 0 } as cons
  * emits null. `doesFilterPass` always passes — rows arrive pre-filtered by core.
  *
  * v0.4: when `context.effectiveCapabilities.cellColors.filter` is true the
- * list ends with "color is" (palette checkboxes) and "has no color".
+ * list ends with "color is" (palette checkboxes) and "has no color" —
+ * except on a column a color rule blocks (v0.4.1, `colorFilterBlockedReason`).
  */
 export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilterProps<Row>) {
   const { model, onModelChange } = props;
@@ -285,7 +286,11 @@ export function ConditionFilter<Row extends GridRow = GridRow>(props: SchemaFilt
     colDef: props.colDef as ColDef<GridRow> | undefined,
     column: props.column as Column | undefined,
   });
-  const operators = withColorOperators(resolved?.operators ?? [], capabilitiesOf(props.context));
+  // v0.4.1: no color operators on a column a view color rule blocks (see `colorFilterBlockedReason`).
+  const colorBlocked = resolved ? colorFilterBlockedReasonOf(props.context, resolved.column) !== null : false;
+  const operators = colorBlocked
+    ? (resolved?.operators ?? [])
+    : withColorOperators(resolved?.operators ?? [], capabilitiesOf(props.context));
   const [draft, setDraft] = useState<Draft>(() => draftFrom(model, operators));
   const [error, setError] = useState<string | null>(null);
 

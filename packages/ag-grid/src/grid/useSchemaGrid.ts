@@ -926,6 +926,7 @@ export function useSchemaGrid<Row extends GridRow = GridRow>(
     mode,
     effectiveCapabilities,
     cellColors,
+    colorRules: activeColorRules,
   };
   const [context] = useState<SchemaGridHookContext<Row>>(() => ({ ...contextFields }));
   useLayoutEffect(() => {

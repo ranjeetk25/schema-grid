@@ -1,6 +1,7 @@
 import type { CellColorResolver } from "../colors/cellColors";
 import type {
   Access,
+  ColorRule,
   DataSource,
   EffectiveCapabilities,
   FieldTypeRegistry,
@@ -68,6 +69,8 @@ export interface SchemaGridContext<Row extends GridRow = GridRow> {
   effectiveCapabilities?: EffectiveCapabilities;
   /** v0.4: shown color per cell / row, read by the color class rules. */
   cellColors?: CellColorResolver;
+  /** v0.4.1: the current view's usable color rules (column filters hide color options a rule blocks). */
+  colorRules?: () => readonly ColorRule[];
   [key: string]: unknown;
 }
 
