@@ -103,3 +103,40 @@ package together as usual.
   columns; rows without colors carry no `colors` key.
 - **Cursors** of queries with a `colorIs` / `colorIsNone` condition include the
   color rules in their fingerprint; other cursors are unchanged.
+
+## 0.4.0 → 0.4.1
+
+Patch release: fixes from the first 0.4 integration. No wire changes.
+
+### Server
+
+- **Colors table optional at runtime.** With `colors` passed and the colors
+  table missing, both data sources now behave as if no store were passed
+  (fetch works, no `colors`, `capabilities.cellColors` read / write false,
+  `setCellColors` → 501) instead of failing every `fetch` with
+  `MISSING_TABLE`. `CellColorStore.reset()` forgets the cached probe.
+  **Type change:** with `colors`, `createSqlViewDataSource` returns a
+  `SqlViewColorDataSource` whose `capabilities()` returns a Promise; code
+  that read `ds.capabilities().x` synchronously on such a source must
+  `await` it. Without `colors` nothing changes.
+- **Color filters through unfilterable rules** answer `FILTER_INVALID` 400
+  `Can't filter "<label>" by color: a color rule on it uses "<label>", which
+  can't be filtered on the server` (was `Column "…" cannot be filtered`, or
+  `Unsupported operator "source"` for SQL-view computed columns).
+- **Refusal messages.** Edits refused by `permissions.edit` now say
+  `"Only specific people can edit this column"` (was `"Column is read-only"`);
+  paint refusals use the same messages as edits (was `"Read-only"`). Code
+  matching on the old strings must be updated. `createRows` refuses a hidden
+  column as `"Unknown column"` (was `"Column is read-only"`).
+- **`capabilities.options`** is `false` unless the source can search people
+  or create options (`userDirectory` / `onCreateOption` on
+  `createDrizzleDataSource`, `userDirectory` on `createSqlViewDataSource`).
+  Pass `defaultCapabilities: { options: true }` to a SQL view to keep the old
+  answer. Clients then hide user columns in the column builder and the
+  "create option" entry.
+- **`updateSchema`** refuses adding / retyping a link column without
+  `lookup` or a user column without `options` (400 `SCHEMA_INVALID`).
+  Existing columns are unaffected.
+- **`defineGrid`** warns once per grid (outside production) when
+  `redactPermissionUsers` runs without a `{ id, roles }` user; pass
+  `defineGrid({ user })`.
