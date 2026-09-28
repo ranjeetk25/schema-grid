@@ -5,6 +5,7 @@ import { applyChanges, loadRowsForUpdate } from "../changes/apply-changes";
 import { insertChangeLog } from "../changes/change-log";
 import type { GridDb, WriteDeps } from "../changes/db";
 import type { CellColorStore } from "../colors/color-store";
+import { gateColorStore } from "../colors/gate";
 import { colorQueryScope } from "../colors/query-rules";
 import { withCellColors } from "../colors/rows";
 import {
@@ -101,7 +102,9 @@ export interface DrizzleDataSourceOptions {
    * carry `colors` (unreadable columns dropped), `setCellColors` is available,
    * color writes reach the change feed (change_log kind `color`) and deleted
    * rows lose their colors. Without it only rule colors exist (`colorIs` still
-   * filters on them).
+   * filters on them). v0.4.1: while `colors.available()` is false (table not
+   * created yet) the source behaves as if no store were passed (probed once
+   * per data source, lazily; see `gateColorStore`).
    */
   colors?: CellColorStore;
 }
@@ -112,6 +115,12 @@ export interface DrizzleDataSourceOptions {
  * every call through the permission-checked query/write paths.
  */
 export function createDrizzleDataSource(options: DrizzleDataSourceOptions): DataSource<GridRow> {
+  const full = buildDrizzleDataSource(options);
+  const { colors, ...withoutColors } = options;
+  return colors ? gateColorStore(colors, full, () => buildDrizzleDataSource(withoutColors)) : full;
+}
+
+function buildDrizzleDataSource(options: DrizzleDataSourceOptions): DataSource<GridRow> {
   const tables = options.tables ?? defineGridTables({ rowsTable: "grid_rows", changeLogTable: "grid_change_log" });
   assertValidSchema(options.schema, options.registry, {
     physicalColumns: options.physicalColumns ?? Object.keys(tables.physical),
@@ -199,6 +208,8 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
   const guarded = <T>(fn: () => Promise<T>): Promise<T> => guardMissingTable(known, fn);
   const caps: DataSourceCapabilities = {
     ...DEFAULT_CAPABILITIES,
+    // v0.4.1: `options` = people search or option creation is wired (select options are served from the schema either way).
+    options: Boolean(options.userDirectory || options.onCreateOption),
     lookup: Boolean(options.linkLookup),
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
   };
@@ -222,7 +233,7 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     fetch: (input) =>
       guarded(async () => {
         const query = withDefaultSort(input);
-        const qScope = colorQueryScope(query, scope, access);
+        const qScope = colorQueryScope(query, scope, access, caps);
         if (query.groupBy && query.groupBy.length > 0) {
           return executeGroupQuery(buildGroupQuery(query, qScope, options.db, access), qScope);
         }

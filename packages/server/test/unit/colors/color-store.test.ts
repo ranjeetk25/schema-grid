@@ -33,6 +33,22 @@ describe("createCellColorStore", () => {
     expect(fake.calls[0]?.sql).toBe("select 1 from `grid_cell_colors` limit 0");
   });
 
+  it("reset() drops the cached probe (v0.4.1)", async () => {
+    let exists = true;
+    const fake = createFakeMysql(() => {
+      if (!exists) throw Object.assign(new Error("Table 'db.grid_cell_colors' doesn't exist"), { errno: 1146 });
+      return [];
+    });
+    const store = createCellColorStore({ db: fake.db as unknown as GridDb, table: "grid_cell_colors" });
+    await expect(store.available()).resolves.toBe(true);
+    exists = false;
+    await expect(store.available()).resolves.toBe(true);
+    expect(fake.calls).toHaveLength(1);
+    store.reset();
+    await expect(store.available()).resolves.toBe(false);
+    expect(fake.calls).toHaveLength(2);
+  });
+
   it("available(): other errors reject", async () => {
     const fake = createFakeMysql(() => {
       throw new Error("connection lost");

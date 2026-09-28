@@ -74,8 +74,9 @@ describe("planChanges", () => {
     );
     expect(p.rowPlans).toEqual([]);
     const msgs = Object.fromEntries(p.errors.map((e) => [`${e.rowId}.${e.columnId}`, e.message]));
-    expect(msgs["r1.balance"]).toMatch(/read-only/);
-    expect(msgs["r1.ro"]).toMatch(/read-only/);
+    expect(msgs["r1.balance"]).toBe("Column is read-only (formula)");
+    // v0.4.1: refused by permissions.edit → the per-person message, never ids or roles.
+    expect(msgs["r1.ro"]).toBe("Only specific people can edit this column");
     expect(msgs["r1.email"]).toBeTruthy();
     expect(msgs["r1.fee"]).toBeTruthy();
     expect(msgs["r1.status"]).toMatch(/option/i);

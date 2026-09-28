@@ -64,8 +64,28 @@ describe("createRows", () => {
     expect(err.details).toMatchObject({ rowIndex: 1, columnId: "fee" });
     await expect(createRows([{ cells: { balance: 3 } }], ctx, deps)).rejects.toBeInstanceOf(RowValidationError);
     await expect(createRows([{ cells: { nope: 3 } }], ctx, deps)).rejects.toBeInstanceOf(RowValidationError);
-    await expect(createRows([{ cells: { secret: "x" } }], ctx, deps)).rejects.toThrow(/read-only/);
+    // v0.4.1: a hidden column is refused like a missing one (never detectable).
+    const hidden = await createRows([{ cells: { secret: "x" } }], ctx, deps).catch((e) => e);
+    expect(hidden).toBeInstanceOf(RowValidationError);
+    expect(hidden.details).toMatchObject({ rowIndex: 0, columnId: "secret" });
+    expect(hidden.message).toContain("Unknown column");
+    await expect(createRows([{ cells: { balance: 3 } }], ctx, deps)).rejects.toThrow("Column is read-only (formula)");
     expect(calls).toHaveLength(0);
+  });
+
+  it("v0.4.1 refusals: permissions.edit → the per-person message (no ids / roles); settable:false → read-only", async () => {
+    const readOnly = {
+      ...schema,
+      columns: [
+        ...schema.columns.map((c) => (c.id === "secret" ? { ...c, permissions: { read: "all" as const, edit: { roles: ["admin"], users: ["priya"] } } } : c)),
+        col("locked", "text", { settable: false }),
+      ],
+    };
+    const rctx = makeCtx(readOnly, { user: { id: "u1", roles: ["counsellor"] }, now: NOW });
+    const { db } = createFakeMysql();
+    const deps = { db, tables, gridId: "grid1" };
+    await expect(createRows([{ cells: { secret: "x" } }], rctx, deps)).rejects.toThrow("Only specific people can edit this column");
+    await expect(createRows([{ cells: { locked: "x" } }], rctx, deps)).rejects.toThrow(/: Column is read-only$/);
   });
 
   it("v0.4 per-user rules: a listed editor may set the cell, an unlisted one is refused, superRoles bypass", async () => {
@@ -80,7 +100,7 @@ describe("createRows", () => {
       return createRows([{ id: "n1", cells: { secret: "x" } }], as(user, superRoles), { db, tables, gridId: "grid1" });
     };
     expect((await create({ id: "priya", roles: [] }))[0]?.cells).toMatchObject({ secret: "x" });
-    await expect(create({ id: "rahul", roles: ["admin"] })).rejects.toThrow(/read-only/);
+    await expect(create({ id: "rahul", roles: ["admin"] })).rejects.toThrow("Unknown column");
     expect((await create({ id: "boss", roles: ["super"] }, ["super"]))[0]?.cells).toMatchObject({ secret: "x" });
   });
 });

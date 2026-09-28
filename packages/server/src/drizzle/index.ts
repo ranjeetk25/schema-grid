@@ -56,6 +56,7 @@ export {
   type SqlViewCommitOutcome,
   type SqlViewCreateError,
   type SqlViewCreateResult,
+  type SqlViewColorDataSource,
   type SqlViewDataSource,
   type SqlViewDataSourceOptions,
   isComputedColumn,

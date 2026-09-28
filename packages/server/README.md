@@ -112,7 +112,7 @@ Declare each grid once and serve all of them from one endpoint. `defineGrid` tak
 | `schemaStore` | `{ get(gridId), put(gridId, schema) }`. A stored schema wins over `schema`. Without one, `updateSchema` → `UNSUPPORTED_OPERATION` 501. `createMemorySchemaStore()` is the in-process default. |
 | `onSchemaChange(ctx, prev, next)` | runs after validation and **before** the new schema is persisted (DDL diff for generated / extension columns); throwing aborts the update. |
 | `registry`, `validation` | field types and `assertValidSchema` options (e.g. `isFormulaTranslatable: formulaTranslatability()` from `./drizzle`). |
-| `redactPermissionUsers`, `user(ctx)` | v0.4 per-person permissions: `getSchema` for a caller without schema-write permission reduces every `RoleRule.users` list to `[caller.id]` or `[]` (default on; `false` opts out). The caller is `user(ctx)`, default `ctx.user` when it is a `{ id, roles }` object. See `docs/consuming.md`. |
+| `redactPermissionUsers`, `user(ctx)` | v0.4 per-person permissions: `getSchema` for a caller without schema-write permission reduces every `RoleRule.users` list to `[caller.id]` or `[]` (default on; `false` opts out). The caller is `user(ctx)`, default `ctx.user` when it is a `{ id, roles }` object. v0.4.1: when redaction runs and no user with a `roles` array is resolved, the registry logs a one-time `console.warn` per grid id (not when `NODE_ENV=production`), since every list is then emptied. See `docs/consuming.md`. |
 
 ```ts
 import {
@@ -203,7 +203,7 @@ const source = createSqlViewDataSource({
   the search participation. DATE / DATETIME handling is described under "Dates and time
   zones" below.
 - **Writes.** `applyChanges` validates, permission-checks (row-aware) and rejects
-  `settable: false` columns ("Read-only"), compares the client's base version with the
+  `settable: false` columns ("Column is read-only"; a view without `write.update` answers "Read-only"), compares the client's base version with the
   current row version, then calls `write.update` inside a transaction (`ctx.db` is the
   transaction). Return `{ conflict }` when your guarded UPDATE matched no row; per-cell
   outcomes are described under "Per-cell write outcomes" below.
@@ -557,6 +557,27 @@ type CommitOutcome =
 
 <!-- v0.3.1: further subsections go here -->
 
+## v0.4.1 changes
+
+- **Color store availability.** See "Cell colors" below: a missing colors table no longer breaks `fetch`.
+- **Unfilterable color rules.** `colorIs` / `colorIsNone` through a rule the server can't compile → a clear
+  `FILTER_INVALID` 400 (see "Filter" below) instead of `Column "…" cannot be filtered` / `Unsupported operator`.
+- **Refusal messages.** Every write path (`applyChanges`, `createRows`, `setCellColors`, on both sources) uses
+  core's `cellEditDenial`: `"Column is read-only (formula)"`, `"Column is read-only"` (`settable: false`, computed
+  columns, a custom resolver) and `"Only specific people can edit this column"` when `permissions.edit` refuses the
+  caller (ids and roles are never listed). `createRows` now refuses a column hidden from the caller as
+  `"Unknown column"`, like `applyChanges`.
+- **Capability-gated field types.** `updateSchema` refuses a column it adds or retypes when the grid's source can't
+  back its type (core `fieldTypeAvailability`: link needs `capabilities.lookup`, user needs `capabilities.options`,
+  custom types their `FieldType.requires`): `SCHEMA_INVALID` 400, e.g. `"Student" can't be a link column: this grid
+  has no records to link to`. Unchanged columns are never re-checked; the source (built for the current schema) is
+  only consulted when a column was added or retyped.
+- **`capabilities.options`** is now truthful: `createDrizzleDataSource` reports it when `userDirectory` or
+  `onCreateOption` is given, `createSqlViewDataSource` when `userDirectory` is (`defaultCapabilities` still wins).
+  `getOptions` keeps serving a select column's static options either way; clients gate people search and
+  "create option" on it.
+- **Missing-user warning** for `redactPermissionUsers` (see the `defineGrid` table).
+
 ## v0.4 additions
 
 ### Cell colors
@@ -577,8 +598,14 @@ createSqlViewDataSource({ …, colors });
 
 The table is `(grid_id, row_id)`-keyed with a `colors` JSON map (column id → palette color), `updated_at`,
 `updated_by` and an index on `(grid_id, updated_at)`. `colors.available()` probes it like the schema store (false
-while missing, `true` cached); a missing table otherwise surfaces as `MISSING_TABLE` naming
-`createCellColorsTableDDL`. `createCellColorsTableDDL` is exported from `./ddl` and, for convenience, `./drizzle`.
+while missing, `true` cached; `colors.reset()` forgets the cached answer, v0.4.1). Both data sources call it once,
+lazily, per data source (v0.4.1): while the table is missing they behave exactly as if no store were passed (no
+join / lookup, no `colors` on rows, `cellColors` read / write false, `setCellColors` → `UNSUPPORTED_OPERATION` 501),
+so a grid keeps working before the DDL has run. A probe that rejects (connection error) fails the call and is
+retried on the next one; a table dropped after the probe said yes still surfaces as `MISSING_TABLE` naming
+`createCellColorsTableDDL`. With `colors`, `createSqlViewDataSource` returns a `SqlViewColorDataSource` whose
+`capabilities()` is async (it waits for the probe); without it the type is unchanged. `createCellColorsTableDDL`
+is exported from `./ddl` and, for convenience, `./drizzle`.
 
 - **Read.** Rows carry `colors` (absent when none). The SQL view LEFT JOINs the table (alias `sg_colors`,
   `SQL_VIEW_COLORS_ALIAS`) on the row id like the extension store; the JSON-cells source reads it with a keyed
@@ -590,14 +617,22 @@ while missing, `true` cached); a missing table otherwise surfaces as `MISSING_TA
   checked with core's `canColorCell` (row-aware resolver says `edit`, not a formula, not `settable: false`), then
   each row's document is upserted — ``INSERT … ON DUPLICATE KEY UPDATE colors = JSON_REMOVE(JSON_SET(colors, '$."c"', 'red', …), '$."d"', …)``,
   `updated_at` / `updated_by` set. Refusals are data: `"Row not found"`, `"Column not found"` (unknown or
-  unreadable), `"Read-only"`, `"Invalid color"`. Rows' `version` / `updatedAt` never change and the SQL view's
+  unreadable), core's `cellEditDenial` message (v0.4.1: `"Column is read-only (formula)"`, `"Column is read-only"`,
+  or `"Only specific people can edit this column"` when `permissions.edit` refuses the caller; 0.4.0 said
+  `"Read-only"`), `"Invalid color"`. Rows' `version` / `updatedAt` never change and the SQL view's
   `write` hooks are not called. The op exists when the store is set and cells are writable (SQL view: `write.update`).
 - **Filter.** `colorIs [..]` / `colorIsNone` on column `c` compile to the SHOWN color:
   `COALESCE(JSON_UNQUOTE(JSON_EXTRACT(colors, '$."c"')), CASE WHEN <rule 1 when> THEN 'green' … END /* enabled cells
   rules targeting c, in order */, CASE … END /* enabled row rules */) IN ('red', …)` (`IS NULL` for `colorIsNone`).
   Every rule's `when` is compiled by `translateFilter` itself; JSON paths are bound parameters. Rules come from
   `query.colorRules` and are validated with core `validateColorRules` only when the filter has a color condition —
-  failures are `FilterValidationError` (`INVALID_FILTER`, wire `FILTER_INVALID` 400), before any SQL. Without a
+  failures are `FilterValidationError` (`INVALID_FILTER`, wire `FILTER_INVALID` 400), before any SQL. A rule's
+  `when` may test a `filterable: false` column (it still renders client-side), but such a rule can't be compiled:
+  v0.4.1 answers a color condition on a column one of whose enabled rules (`cells` rules targeting it, every `row`
+  rule) tests a column the server can't filter on — `filterable: false`, SQL-view computed columns, columns outside
+  `capabilities.filter` (core `colorFilterBlockers`) — with `FILTER_INVALID` 400 `Can't filter "<label>" by color:
+  a color rule on it uses "<label>", which can't be filtered on the server`. Rules that can't color the filtered
+  column are ignored. Without a
   store the manual part is left out (rule colors still filter). The rules are part of the cursor fingerprint for
   such queries. Custom translators can reuse `SqlScope.colors` (`manual`, `rules`).
 - **Change feed.** SQL view: the feed orders on `GREATEST(<updated_at>, COALESCE(sg_colors.updated_at, …))`, so
@@ -606,7 +641,8 @@ while missing, `true` cached); a missing table otherwise surfaces as `MISSING_TA
   `column_id`, `next` = the color or NULL, the batch id), so the integer cursor keeps working and each row comes
   back once.
 - **Delete.** `deleteRows` removes the rows' color entries in the same transaction.
-- **Capabilities.** `cellColors: { read: !!colors, write: !!colors && capabilities.write.cells, filter: true }`.
+- **Capabilities.** `cellColors: { read: !!colors, write: !!colors && capabilities.write.cells, filter: true }`
+  (`read` / `write` false while `colors.available()` is, v0.4.1).
 - **Wire.** `setCellColors` is routed by `defineGrid` / `createGridRegistry` and every adapter like any other
   op (501 when the source lacks it); see [`docs/wire-contract.md`](../../docs/wire-contract.md#cell-colors-v04).
 

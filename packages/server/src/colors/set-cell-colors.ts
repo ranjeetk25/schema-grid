@@ -8,8 +8,10 @@ import {
   type CellColorBatch,
   type CellColorChange,
   type CellColorResult,
+  COLUMN_READ_ONLY_MESSAGE,
   type GridRow,
   canColorCell,
+  cellEditDenial,
   isCellColor,
 } from "../internal/core";
 import { ident } from "../sql/column-expr";
@@ -46,7 +48,9 @@ export function cellColorRowIds(batch: CellColorBatch): string[] {
  * deleted row → "Row not found"; an unknown column, or one the caller cannot
  * read → "Column not found"; a cell the caller may not edit (`canColorCell`:
  * row-aware resolver says edit, not a formula, not `settable: false`, and
- * edit in the row-independent access map) → "Read-only"; anything but a
+ * edit in the row-independent access map) → core's `cellEditDenial` message
+ * (v0.4.1: "Column is read-only (formula)", "Column is read-only" or, for a
+ * `permissions.edit` refusal, "Only specific people can edit this column"); anything but a
  * palette color or null → "Invalid color". The last applied change of a cell wins.
  * `rows` are the LIVE rows (hydrated with every cell, hidden ones included).
  */
@@ -68,7 +72,9 @@ export function planCellColors(
     const a = column ? access.get(column.id) : undefined;
     if (!row) reject("Row not found");
     else if (!column || (a !== "read" && a !== "edit")) reject("Column not found");
-    else if (a !== "edit" || !canColorCell(row, column, ctx.user, ctx.resolver)) reject("Read-only");
+    else if (a !== "edit" || !canColorCell(row, column, ctx.user, ctx.resolver)) {
+      reject(cellEditDenial(column, "read")?.message ?? COLUMN_READ_ONLY_MESSAGE);
+    }
     else if (color !== null && !isCellColor(color)) reject("Invalid color");
     else {
       let cells = writes.get(rowId);

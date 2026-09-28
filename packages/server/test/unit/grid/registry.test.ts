@@ -365,6 +365,74 @@ describe("createGridRegistry", () => {
   });
 });
 
+describe("updateSchema: capability-gated field types (v0.4.1)", () => {
+  const at = "2026-01-01T00:00:00.000Z";
+  const column = (key: string, type: string, config: unknown, label = key) => ({
+    id: `col_${key}`,
+    key,
+    label,
+    type,
+    config,
+    order: 99,
+    createdAt: at,
+    updatedAt: at,
+  });
+  const LINK = { target: "students", multiple: false };
+  function registryWith(caps: { lookup: boolean; options: boolean }, base: GridSchema = createFixtureSchema()) {
+    const store = createMemorySchemaStore({ a: base });
+    const source = vi.fn(() =>
+      createInMemoryDataSource({ schema: base, rows: [], now: () => new Date(FIXTURE_NOW), capabilities: caps }),
+    );
+    return { registry: createGridRegistry([defineGrid({ id: "a", schema: base, schemaStore: store, source })]), store, source };
+  }
+  const add = (schema: GridSchema, ...columns: ReturnType<typeof column>[]): GridSchema => ({
+    ...schema,
+    columns: [...schema.columns, ...columns],
+  });
+
+  it("adding a link column without lookup → 400 SCHEMA_INVALID with core's message; nothing is stored", async () => {
+    const { registry, store } = registryWith({ lookup: false, options: true });
+    const res = await registry.handle("a", "updateSchema", add(createFixtureSchema(), column("student", "link", LINK, "Student")));
+    expect(res).toMatchObject({
+      ok: false,
+      status: 400,
+      error: { code: "SCHEMA_INVALID", message: `"Student" can't be a link column: this grid has no records to link to` },
+    });
+    expect(await store.get("a")).toEqual(createFixtureSchema());
+  });
+
+  it("retyping a column to user without options → 400 naming the column", async () => {
+    const { registry } = registryWith({ lookup: true, options: false });
+    const base = createFixtureSchema();
+    const next = { ...base, columns: base.columns.map((c) => (c.key === "notes" ? { ...c, type: "user", config: {} } : c)) };
+    const res = await registry.handle("a", "updateSchema", next);
+    const label = base.columns.find((c) => c.key === "notes")?.label;
+    expect(res).toMatchObject({
+      ok: false,
+      status: 400,
+      error: { code: "SCHEMA_INVALID", message: `"${label}" can't be a user column: this grid has no people to pick from` },
+    });
+  });
+
+  it("existing unchanged link / user columns stay allowed; with the capability new ones are accepted", async () => {
+    const withLinks = add(createFixtureSchema(), column("student", "link", LINK, "Student"), column("assignee", "user", {}, "Assignee"));
+    const off = registryWith({ lookup: false, options: false }, withLinks);
+    const renamed = { ...withLinks, columns: withLinks.columns.map((c) => (c.key === "student" ? { ...c, label: "Pupil" } : c)) };
+    expect(await off.registry.handle("a", "updateSchema", renamed)).toMatchObject({ ok: true });
+
+    const on = registryWith({ lookup: true, options: true });
+    expect(await on.registry.handle("a", "updateSchema", withLinks)).toMatchObject({ ok: true });
+  });
+
+  it("the source is only consulted when a column is added or retyped", async () => {
+    const { registry, source } = registryWith({ lookup: false, options: false });
+    const base = createFixtureSchema();
+    const relabelled = { ...base, columns: base.columns.map((c, i) => (i === 0 ? { ...c, label: "Renamed" } : c)) };
+    expect(await registry.handle("a", "updateSchema", relabelled)).toMatchObject({ ok: true });
+    expect(source).not.toHaveBeenCalled();
+  });
+});
+
 describe("createMemorySchemaStore", () => {
   it("stores deep copies per grid id", async () => {
     const store = createMemorySchemaStore();
@@ -685,6 +753,74 @@ describe("per-user permission redaction (v0.4)", () => {
     expect(mine.ok && col(mine.data, "notes")?.permissions).toEqual({ read: { users: ["u9"] }, edit: { users: ["u9"] } });
     const anonymous = await registry.handle("a", "getSchema", null, {});
     expect(anonymous.ok && col(anonymous.data, "fee")?.permissions).toEqual({ read: "all", edit: { roles: ["admin"], users: [] } });
+  });
+
+  describe("v0.4.1: a one-time dev warning when redaction runs without a user", () => {
+    interface UserCtx {
+      user?: { id: string; roles?: unknown };
+    }
+    const grid = (id: string, extra: Partial<Parameters<typeof defineGrid<UserCtx>>[0]> = {}) =>
+      defineGrid<UserCtx>({
+        id,
+        schema: withPeople(),
+        schemaStore: createMemorySchemaStore(),
+        permission: (_ctx, op) => op !== "updateSchema",
+        source: () => memory("admin"),
+        ...extra,
+      });
+    const withWarnSpy = async (fn: (warn: ReturnType<typeof vi.spyOn>) => Promise<void>, env = "test") => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("NODE_ENV", env);
+      try {
+        await fn(warn);
+      } finally {
+        vi.unstubAllEnvs();
+        warn.mockRestore();
+      }
+    };
+
+    it("no user, or a ctx.user without roles → one warning per grid id, naming defineGrid({ user })", () =>
+      withWarnSpy(async (warn) => {
+        const registry = createGridRegistry<UserCtx>([grid("a"), grid("b")]);
+        await registry.handle("a", "getSchema", null, {});
+        await registry.handle("a", "getSchema", null, {});
+        await registry.handle("a", "getSchema", null, { user: { id: "u9" } });
+        expect(warn).toHaveBeenCalledTimes(1);
+        const message = String(warn.mock.calls[0]?.[0]);
+        expect(message).toContain('Grid "a"');
+        expect(message).toContain("per-person");
+        expect(message).toContain("defineGrid({ user");
+        await registry.handle("b", "getSchema", null, { user: { id: "u9" } });
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(String(warn.mock.calls[1]?.[0])).toContain('Grid "b"');
+      }));
+
+    it("an explicit user resolver yielding no user or no roles array warns too", () =>
+      withWarnSpy(async (warn) => {
+        const noRoles = createGridRegistry<UserCtx>([grid("a", { user: () => ({ id: "u9" }) as never })]);
+        await noRoles.handle("a", "getSchema", null, {});
+        const none = createGridRegistry<UserCtx>([grid("a", { user: async () => undefined })]);
+        await none.handle("a", "getSchema", null, {});
+        expect(warn).toHaveBeenCalledTimes(2);
+      }));
+
+    it("no warning with a user, with redaction off, for schema writers, or in production", async () => {
+      await withWarnSpy(async (warn) => {
+        const registry = createGridRegistry<UserCtx>([
+          grid("a"),
+          grid("off", { redactPermissionUsers: false }),
+          grid("writer", { permission: () => true }),
+        ]);
+        await registry.handle("a", "getSchema", null, { user: { id: "u9", roles: [] } });
+        await registry.handle("off", "getSchema", null, {});
+        await registry.handle("writer", "getSchema", null, {});
+        expect(warn).not.toHaveBeenCalled();
+      });
+      await withWarnSpy(async (warn) => {
+        await createGridRegistry<UserCtx>([grid("a")]).handle("a", "getSchema", null, {});
+        expect(warn).not.toHaveBeenCalled();
+      }, "production");
+    });
   });
 
   it("redactPermissionUsers: false serves the full lists to everyone", async () => {

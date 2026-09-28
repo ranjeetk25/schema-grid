@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { GridDb } from "../../../src/changes/db";
-import { createCellColorStore } from "../../../src/colors/color-store";
+import { type CellColorStore, createCellColorStore } from "../../../src/colors/color-store";
 import { createDrizzleDataSource, type DrizzleDataSourceOptions } from "../../../src/datasource/create-drizzle-data-source";
 import { FilterValidationError, SchemaGridServerError } from "../../../src/errors";
-import { type ColorRule, createDefaultRegistry, createRolePermissionResolver } from "../../../src/internal/core";
+import {
+  type ColorRule,
+  createDataSourceHandler,
+  createDefaultRegistry,
+  createRolePermissionResolver,
+} from "../../../src/internal/core";
 import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
 import { tables } from "../../helpers/schemas";
 import { FIXTURE_COLUMN_IDS, FIXTURE_NOW, serverFixtureSchema } from "../../fixtures/admissions";
@@ -56,11 +61,19 @@ const script = (state: State) => (c: FakeCall) => {
   return asRows(ids.map((id) => state.rows[id] as Record<string, unknown>), ROW_ORDER);
 };
 
-function make(extra: Partial<DrizzleDataSourceOptions> = {}, roles = ["counsellor"], withStore = true) {
+function make(extra: Partial<DrizzleDataSourceOptions> = {}, roles = ["counsellor"], withStore = true, available = true) {
   const state = freshState();
   const fake = createFakeMysql(script(state));
   const db = fake.db as unknown as GridDb;
-  const colors = createCellColorStore({ db, table: "grid_cell_colors" });
+  const probes = { count: 0 };
+  // `available()` stubbed (no probe SQL in the statement log), counting its calls.
+  const colors: CellColorStore = {
+    ...createCellColorStore({ db, table: "grid_cell_colors" }),
+    available: async () => {
+      probes.count++;
+      return available;
+    },
+  };
   const ds = createDrizzleDataSource({
     db,
     gridId: "admissions",
@@ -73,7 +86,7 @@ function make(extra: Partial<DrizzleDataSourceOptions> = {}, roles = ["counsello
     ...(withStore ? { colors } : {}),
     ...extra,
   });
-  return { ds, state, ...fake };
+  return { ds, state, probes, ...fake };
 }
 
 describe("createDrizzleDataSource: cell colors (v0.4)", () => {
@@ -84,6 +97,30 @@ describe("createDrizzleDataSource: cell colors (v0.4)", () => {
     const { ds } = make();
     expect(await ds.capabilities?.()).toMatchObject({ cellColors: { read: true, write: true, filter: true } });
     expect(typeof ds.setCellColors).toBe("function");
+  });
+
+  it("v0.4.1: an unavailable store behaves like no store (no lookup, no colors, capabilities false, setCellColors unsupported)", async () => {
+    const { ds, statements, probes } = make({}, ["admin"], true, false);
+    expect(probes.count).toBe(0); // lazy
+    expect(await ds.capabilities?.()).toMatchObject({ cellColors: { read: false, write: false, filter: true } });
+    const res = await ds.fetch({ filter: null, sort: [], page: { offset: 0, limit: 10 } });
+    expect(statements()[0]?.sql).not.toContain("grid_cell_colors");
+    expect(res.rows.every((r) => !("colors" in r))).toBe(true);
+    await ds.getRows?.(["r1"]);
+    const err = await ds.setCellColors?.({ id: "p", changes: [{ rowId: "r1", columnId: C.name, color: "red" }] }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "UNSUPPORTED_OPERATION", message: 'This data source does not support "setCellColors"' });
+    await ds.deleteRows(["r1"]);
+    expect(statements().some((s) => s.sql.includes("grid_cell_colors"))).toBe(false);
+    expect(probes.count).toBe(1);
+  });
+
+  it("v0.4.1: through the wire handler an unavailable store answers capabilities false and setCellColors 501", async () => {
+    const { ds } = make({}, ["admin"], true, false);
+    const handle = createDataSourceHandler(ds);
+    const caps = await handle("capabilities", null);
+    expect(caps.ok && (caps.data as { cellColors?: unknown }).cellColors).toEqual({ read: false, write: false, filter: true });
+    const paint = await handle("setCellColors", { id: "p", changes: [{ rowId: "r1", columnId: C.name, color: "red" }] });
+    expect(paint).toMatchObject({ ok: false, status: 501, error: { code: "UNSUPPORTED_OPERATION" } });
   });
 
   it("fetch reads colors through a correlated lookup and hydrates readable, valid ones only", async () => {
@@ -132,6 +169,31 @@ describe("createDrizzleDataSource: cell colors (v0.4)", () => {
     expect(statements()).toHaveLength(before);
   });
 
+  it("v0.4.1: colorIs through a rule testing a filterable:false column → FilterValidationError naming both labels, no SQL", async () => {
+    const schema = {
+      ...serverFixtureSchema,
+      columns: serverFixtureSchema.columns.map((c) => (c.id === C.status ? { ...c, filterable: false } : c)),
+    };
+    const { ds, statements } = make({ schema });
+    const label = (id: string) => schema.columns.find((c) => c.id === id)?.label;
+    const rules: ColorRule[] = [
+      { id: "r1", color: "green", target: { kind: "cells", columnIds: [C.name] }, when: { columnId: C.status, operator: "is", value: "paid" } },
+    ];
+    const err = await ds
+      .fetch({ filter: { columnId: C.name, operator: "colorIs", value: ["green"] }, sort: [], page: { offset: 0, limit: 10 }, colorRules: rules })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(FilterValidationError);
+    expect((err as FilterValidationError).message).toBe(
+      `Can't filter "${label(C.name)}" by color: a color rule on it uses "${label(C.status)}", which can't be filtered on the server`,
+    );
+    expect((err as FilterValidationError).errors[0]).toMatchObject({ code: "unfilterableColumn", columnId: C.status, ruleIndex: 0, ruleId: "r1" });
+    expect(statements().filter((s) => s.sql.startsWith("select") && s.sql.includes("grid_rows"))).toHaveLength(0);
+    // The rule doesn't color `fee`: filtering fee by color compiles.
+    await expect(
+      ds.fetch({ filter: { columnId: C.fee, operator: "colorIsNone" }, sort: [], page: { offset: 0, limit: 10 }, colorRules: rules }),
+    ).resolves.toBeDefined();
+  });
+
   it("setCellColors: per-change checks like the in-memory source, one upsert per row, one transaction", async () => {
     const { ds, calls, statements } = make();
     const res = await ds.setCellColors?.({
@@ -153,8 +215,8 @@ describe("createDrizzleDataSource: cell colors (v0.4)", () => {
       { rowId: "r1", columnId: C.phone, color: null },
     ]);
     expect(res?.rejected).toEqual([
-      { rowId: "r1", columnId: C.fee, message: "Read-only" },
-      { rowId: "r1", columnId: C.balance, message: "Read-only" },
+      { rowId: "r1", columnId: C.fee, message: "Only specific people can edit this column" },
+      { rowId: "r1", columnId: C.balance, message: "Column is read-only (formula)" },
       { rowId: "r1", columnId: C.notes, message: "Column not found" },
       { rowId: "r1", columnId: "nope", message: "Column not found" },
       { rowId: "r2", columnId: C.name, message: "Invalid color" },

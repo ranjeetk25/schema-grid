@@ -150,10 +150,46 @@ describe("#1 per-cell outcomes from write.update", () => {
   });
 });
 
+describe("v0.4.1 refusal messages (core cellEditDenial)", () => {
+  const perPerson = {
+    ...schema,
+    columns: schema.columns.map((c) =>
+      c.id === "fee" ? { ...c, permissions: { read: "all" as const, edit: { roles: ["admin"], users: ["priya"] } } } : c,
+    ),
+  };
+  const hooks = {
+    update: async (_c: unknown, i: SqlViewUpdateInput) => ({ applied: i.changes, version: 4 }),
+    create: async () => [{ id: "8" }],
+  };
+
+  it("applyChanges: permissions.edit → per-person message; computed → read-only", async () => {
+    const { ds } = make({ schema: perPerson, user: { id: "u2", roles: ["counsellor"] }, write: hooks });
+    const res = await ds.applyChanges({
+      id: "b1",
+      source: "edit",
+      changes: [change("fee", 1500, 1), change("url", null, "x")],
+      baseVersions: { "7": 3 },
+    });
+    expect(res.errors).toEqual([
+      { rowId: "7", columnId: "fee", message: "Only specific people can edit this column" },
+      { rowId: "7", columnId: "url", message: "Column is read-only" },
+    ]);
+  });
+
+  it("createRows: hidden → Unknown column (like a missing one); permissions.edit → per-person message", async () => {
+    const { ds } = make({ schema: perPerson, user: { id: "u2", roles: ["counsellor"] }, write: hooks });
+    const hidden = await ds.createRows([{ cells: { fileKey: "x" } }]).catch((e: unknown) => e);
+    expect(hidden).toBeInstanceOf(RowValidationError);
+    expect(hidden).toMatchObject({ details: { rowIndex: 0, columnId: "fileKey" }, message: expect.stringContaining("Unknown column") });
+    await expect(ds.createRows([{ cells: { fee: 1 } }])).rejects.toThrow("Only specific people can edit this column");
+    await expect(ds.createRows([{ cells: { url: "x" } }])).rejects.toThrow(/: Column is read-only$/);
+  });
+});
+
 describe("#2 computed columns, mapRows and defaultSort", () => {
   it("compute fills the cell from hidden cells before projection; capabilities exclude it from sort/filter", async () => {
     const { ds, statements } = make();
-    const caps = ds.capabilities();
+    const caps = await ds.capabilities();
     expect(caps.sort).toEqual({ columnIds: ["name", "fee", "callDate", "calledAt", "fileKey"] });
     expect(caps.filter).toEqual(caps.sort);
     const res = await ds.fetch({ filter: null, sort: [], page });
@@ -213,7 +249,7 @@ describe("#2 computed columns, mapRows and defaultSort", () => {
 
   it("defaultSort applies to sort: [] (SQL + keyset), is reported in capabilities, and is validated", async () => {
     const { ds, statements } = make({ defaultSort: [{ columnId: "fee", dir: "desc" }] });
-    expect(ds.capabilities().defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
+    expect((await ds.capabilities()).defaultSort).toEqual([{ columnId: "fee", dir: "desc" }]);
     await ds.fetch({ filter: null, sort: [], page: { cursor: "", limit: 10 } });
     const q = statements()[0]?.sql ?? "";
     expect(q).toMatch(/order by .*`sg_base`\.`fee`[^,]*\) DESC, `sg_base`\.`id` ASC/);
@@ -224,7 +260,7 @@ describe("#2 computed columns, mapRows and defaultSort", () => {
     expect(() => make({ defaultSort: [{ columnId: "nope", dir: "asc" }] })).toThrow(SchemaGridServerError);
     expect(() => make({ defaultSort: [{ columnId: "url", dir: "asc" }] })).toThrow(/not sortable/);
     const counsellor = make({ user: { id: "u2", roles: ["counsellor"] }, defaultSort: [{ columnId: "fileKey", dir: "asc" }] });
-    expect(counsellor.ds.capabilities().defaultSort).toBeUndefined();
+    expect((await counsellor.ds.capabilities()).defaultSort).toBeUndefined();
     await expect(counsellor.ds.fetch({ filter: null, sort: [], page })).resolves.toBeTruthy();
   });
 
