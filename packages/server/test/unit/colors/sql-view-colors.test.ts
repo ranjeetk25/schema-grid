@@ -111,7 +111,7 @@ describe("createSqlViewDataSource: cell colors (v0.4)", () => {
     });
     expect(res?.applied).toEqual([{ rowId: "7", columnId: "name", color: "purple" }]);
     expect(res?.rejected).toEqual([
-      { rowId: "7", columnId: "fee", message: "Read-only" },
+      { rowId: "7", columnId: "fee", message: "Only specific people can edit this column" },
       { rowId: "7", columnId: "secret", message: "Column not found" },
       { rowId: "9", columnId: "name", message: "Row not found" },
     ]);

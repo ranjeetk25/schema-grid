@@ -150,6 +150,42 @@ describe("#1 per-cell outcomes from write.update", () => {
   });
 });
 
+describe("v0.4.1 refusal messages (core cellEditDenial)", () => {
+  const perPerson = {
+    ...schema,
+    columns: schema.columns.map((c) =>
+      c.id === "fee" ? { ...c, permissions: { read: "all" as const, edit: { roles: ["admin"], users: ["priya"] } } } : c,
+    ),
+  };
+  const hooks = {
+    update: async (_c: unknown, i: SqlViewUpdateInput) => ({ applied: i.changes, version: 4 }),
+    create: async () => [{ id: "8" }],
+  };
+
+  it("applyChanges: permissions.edit → per-person message; computed → read-only", async () => {
+    const { ds } = make({ schema: perPerson, user: { id: "u2", roles: ["counsellor"] }, write: hooks });
+    const res = await ds.applyChanges({
+      id: "b1",
+      source: "edit",
+      changes: [change("fee", 1500, 1), change("url", null, "x")],
+      baseVersions: { "7": 3 },
+    });
+    expect(res.errors).toEqual([
+      { rowId: "7", columnId: "fee", message: "Only specific people can edit this column" },
+      { rowId: "7", columnId: "url", message: "Column is read-only" },
+    ]);
+  });
+
+  it("createRows: hidden → Unknown column (like a missing one); permissions.edit → per-person message", async () => {
+    const { ds } = make({ schema: perPerson, user: { id: "u2", roles: ["counsellor"] }, write: hooks });
+    const hidden = await ds.createRows([{ cells: { fileKey: "x" } }]).catch((e: unknown) => e);
+    expect(hidden).toBeInstanceOf(RowValidationError);
+    expect(hidden).toMatchObject({ details: { rowIndex: 0, columnId: "fileKey" }, message: expect.stringContaining("Unknown column") });
+    await expect(ds.createRows([{ cells: { fee: 1 } }])).rejects.toThrow("Only specific people can edit this column");
+    await expect(ds.createRows([{ cells: { url: "x" } }])).rejects.toThrow(/: Column is read-only$/);
+  });
+});
+
 describe("#2 computed columns, mapRows and defaultSort", () => {
   it("compute fills the cell from hidden cells before projection; capabilities exclude it from sort/filter", async () => {
     const { ds, statements } = make();

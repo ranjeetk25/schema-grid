@@ -5,6 +5,7 @@ import { MAX_BATCH_ID_LENGTH, appliedChange, cellsUpdateExpr, conflictsFor } fro
 import { type AfterCommitHook, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
 import { type GridDb, affectedRowsOf } from "../changes/db";
 import { type CurrentRow, type PlannedSet, planChanges, validateCellValue } from "../changes/plan-changes";
+import { UNKNOWN_COLUMN, createDenial } from "../changes/rows-crud";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
 import {
   PermissionError,
@@ -880,10 +881,8 @@ export function createSqlViewDataSource(options: SqlViewDataSourceOptions): SqlV
       for (const [key, value] of Object.entries(given)) {
         const column = byKey.get(key);
         if (!column) throw new RowValidationError(rowIndex, key, "Unknown column");
-        if (column.type === "formula") throw new RowValidationError(rowIndex, column.id, "Column is read-only (formula)");
-        if (ctx.resolver({ user: ctx.user, column }) !== "edit" || !settable(column)) {
-          throw new RowValidationError(rowIndex, column.id, "Column is read-only");
-        }
+        const denial = createDenial(column, ctx);
+        if (denial) throw new RowValidationError(rowIndex, denial === UNKNOWN_COLUMN ? key : column.id, denial);
         const v = validateCellValue(column, value, ctx);
         if (!v.ok) throw new RowValidationError(rowIndex, column.id, v.message);
         if (mappedKeys.has(key)) {

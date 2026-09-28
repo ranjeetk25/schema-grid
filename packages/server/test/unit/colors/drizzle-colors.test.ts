@@ -178,8 +178,8 @@ describe("createDrizzleDataSource: cell colors (v0.4)", () => {
       { rowId: "r1", columnId: C.phone, color: null },
     ]);
     expect(res?.rejected).toEqual([
-      { rowId: "r1", columnId: C.fee, message: "Read-only" },
-      { rowId: "r1", columnId: C.balance, message: "Read-only" },
+      { rowId: "r1", columnId: C.fee, message: "Only specific people can edit this column" },
+      { rowId: "r1", columnId: C.balance, message: "Column is read-only (formula)" },
       { rowId: "r1", columnId: C.notes, message: "Column not found" },
       { rowId: "r1", columnId: "nope", message: "Column not found" },
       { rowId: "r2", columnId: C.name, message: "Invalid color" },
