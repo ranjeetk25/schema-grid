@@ -235,6 +235,52 @@ describe("createSqlViewDataSource v0.3: rejected, meta, computed columns, missin
     expect(called).toBe(0);
   });
 
+  it("v0.4 per-user rules: a listed editor writes, an unlisted one is rejected before write.update, superRoles bypass", async () => {
+    const perPerson: GridSchema = {
+      ...schema,
+      columns: schema.columns.map((c) =>
+        c.id === "fee"
+          ? { ...c, permissions: { read: "all", edit: { roles: ["finance"], users: ["priya"] } } }
+          : c.id === "paymentStatus"
+            ? { ...c, config: { options: [{ id: "paid", label: "Paid", settableBy: { users: ["priya"] } }, { id: "pending", label: "Pending" }] } }
+            : c,
+      ),
+    };
+    const run = async (user: { id: string; roles: string[] }, superRoles: string[] = []) => {
+      let called = 0;
+      const { ds } = make(
+        {
+          schema: perPerson,
+          resolver: createRolePermissionResolver({ superRoles }),
+          user,
+          write: {
+            update: async (_c, i) => {
+              called++;
+              return { applied: i.changes, version: 0 };
+            },
+          },
+        },
+        () => [ROW(1, "A")],
+      );
+      const res = await ds.applyChanges(batch([change("fee", 5), change("paymentStatus", "paid")]));
+      return { res, called };
+    };
+    const priya = await run({ id: "priya", roles: [] });
+    expect(priya.res.errors).toEqual([]);
+    expect(priya.res.applied.map((a) => a.columnId)).toEqual(["fee", "paymentStatus"]);
+    expect(priya.called).toBe(1);
+
+    const rahul = await run({ id: "rahul", roles: ["counsellor"] });
+    expect(rahul.res.applied).toEqual([]);
+    expect(rahul.res.errors.map((e) => e.columnId)).toEqual(["fee", "paymentStatus"]);
+    expect(rahul.res.errors[1]?.message).toBe("Option “Paid” can only be set by specific people");
+    expect(rahul.called).toBe(0);
+
+    const boss = await run({ id: "boss", roles: ["super"] }, ["super"]);
+    expect(boss.res.errors.map((e) => e.columnId)).toEqual(["paymentStatus"]); // superRoles bypass column rules, not option rules
+    expect(boss.res.applied.map((a) => a.columnId)).toEqual(["fee"]);
+  });
+
   describe("computed columns", () => {
     const withLabel: GridSchema = { ...schema, columns: [...schema.columns, col("label", "text")] };
     const computedColumns = {

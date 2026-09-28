@@ -35,6 +35,9 @@ export function deriveWorkbenchFeatures({ capabilities: c, features = {}, canCha
     addColumn: canChangeSchema,
     undo: c?.write.cells ?? false,
     polling: c ? c.changeFeed !== false : false,
+    // v0.4: manual colors need the source to read + write them; rules render client-side.
+    paint: c?.cellColors ? c.cellColors.read && c.cellColors.write : false,
+    colorRules: true,
   };
   const out = { ...allowed };
   for (const key of Object.keys(out) as (keyof WorkbenchFeatures)[]) {

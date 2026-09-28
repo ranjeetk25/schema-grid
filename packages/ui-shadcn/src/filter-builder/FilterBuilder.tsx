@@ -15,7 +15,7 @@ import {
   validateFilter,
   valueMatchesKind,
 } from "../internal/core-contracts";
-import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
+import { type CellColorCapabilitiesLike, type UiFieldTypeRegistry, canFilterByColor } from "../internal/grid-contracts";
 import { SG_ROOT, cn } from "../lib/cn";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
@@ -57,13 +57,15 @@ export interface UseFilterDraftOptions {
   value: FilterNode | null;
   onChange(node: FilterNode | null): void;
   maxDepth?: number;
+  /** v0.4: `cellColors.filter` adds the color operators (`colorIs` / `colorIsNone`). */
+  capabilities?: CellColorCapabilitiesLike;
 }
 
 export interface FilterDraftApi {
   draft: FilterDraft;
   /** Draft node id → inline errors. */
   errors: ReadonlyMap<string, RowErrors>;
-  /** Columns offered by the column picker (readable, not `filterable: false`). */
+  /** Columns offered by the column picker (readable; `filterable: false` only when colors filter). */
   columns: ColumnDef[];
   /**
    * Readable column ids. An existing condition on a readable column the
@@ -81,6 +83,8 @@ export interface FilterDraftApi {
   setGroupOp(groupId: string, op: "and" | "or"): void;
   canAddGroup(groupId: string): boolean;
 }
+
+const COLORS_ON = { cellColors: { filter: true } } as const;
 
 const serialize = (node: FilterNode | null | undefined) => JSON.stringify(node ?? null);
 
@@ -135,7 +139,7 @@ function draftErrors(node: FilterNode, ctx: DraftContext, readable: ReadonlySet<
  * `maxDepth` is capped at core's `MAX_FILTER_DEPTH`.
  */
 export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
-  const { schema, registry, access, value, onChange } = options;
+  const { schema, registry, access, value, onChange, capabilities } = options;
   const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
   const draftRef = useRef(draft);
@@ -143,9 +147,14 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
-  const ctx: DraftContext = useMemo(() => ({ schema, registry }), [schema, registry]);
+  // Only the flag matters: a new capabilities object with the same answer keeps the context.
+  const colors = canFilterByColor(capabilities);
+  const ctx: DraftContext = useMemo(
+    () => ({ schema, registry, ...(colors ? { capabilities: COLORS_ON } : {}) }),
+    [schema, registry, colors],
+  );
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
-  const columns = useMemo(() => filterableColumns(schema, access), [schema, access]);
+  const columns = useMemo(() => filterableColumns(schema, access, ctx.capabilities), [schema, access, ctx]);
 
   useEffect(() => {
     const incoming = serialize(value);
@@ -182,9 +191,9 @@ export function useFilterDraft(options: UseFilterDraftOptions): FilterDraftApi {
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, registry) : [];
+      return column ? operatorsFor(column, registry, ctx.capabilities) : [];
     },
-    [schema, registry],
+    [schema, registry, ctx],
   );
 
   const addGroup = (groupId: string) => {
@@ -229,6 +238,11 @@ export interface FilterBuilderProps extends FilterApplyOptions {
   error?: string | null;
   /** Reports the working draft (last valid) and whether it differs from `value`. */
   onDraftChange?(draft: FilterNode | null, dirty: boolean): void;
+  /**
+   * v0.4: the source's capabilities (`handle.effectiveCapabilities`). With
+   * `cellColors.filter`, every column offers "color is" / "has no color".
+   */
+  capabilities?: CellColorCapabilitiesLike;
 }
 
 /** Calls `onDraftChange` whenever the apply state's draft/dirty change (not on mount). */
@@ -264,8 +278,9 @@ export function FilterBuilderPanel({
   apply,
   variant = "inline",
   className,
+  capabilities,
 }: FilterBuilderPanelProps) {
-  const api = useFilterDraft({ schema, registry, access, value: apply.draft, onChange: apply.setDraft, maxDepth });
+  const api = useFilterDraft({ schema, registry, access, value: apply.draft, onChange: apply.setDraft, maxDepth, capabilities });
   const popover = variant === "popover";
   const pending = apply.pendingChanges;
 

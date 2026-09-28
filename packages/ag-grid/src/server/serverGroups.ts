@@ -404,6 +404,8 @@ export interface UseServerGroupsOptions<Row extends GridRow = GridRow> {
   rowStore: RowStore<Row>;
   /** Effective query (readable-pruned groupBy included); `groupBy` non-empty activates grouping. */
   getQuery(): ServerGroupsQuery;
+  /** v0.4: what a query change is compared by (default: its JSON); `useSchemaGrid` ignores color rules without a color condition. */
+  queryKey?(query: ServerGroupsQuery): string;
   /** Stable getter for the latest data source. */
   getDataSource(): Pick<DataSource<Row>, "fetch">;
   /** Changing it reloads the groups. */
@@ -480,7 +482,8 @@ export function useServerGroups<Row extends GridRow = GridRow>(options: UseServe
     let lastKey: string | undefined;
     const reloadIfChanged = () => {
       if (latest.current.canFetch && !latest.current.canFetch()) return;
-      const key = json(latest.current.getQuery());
+      const query = latest.current.getQuery();
+      const key = latest.current.queryKey ? latest.current.queryKey(query) : json(query);
       if (key === lastKey) return;
       lastKey = key;
       void controller.load();

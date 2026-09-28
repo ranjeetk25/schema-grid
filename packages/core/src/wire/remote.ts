@@ -1,3 +1,4 @@
+import type { CellColorBatch, CellColorResult } from "../colors/types";
 import type { LinkRef, Option } from "../common/types";
 import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { DataSource, RowPartial } from "../datasource/types";
@@ -95,6 +96,9 @@ export function createRemoteDataSource(
   }
   if (supports("getRows")) {
     ds.getRows = (ids: string[]): Promise<GridRow[]> => call("getRows", { ids });
+  }
+  if (supports("setCellColors")) {
+    ds.setCellColors = (batch: CellColorBatch): Promise<CellColorResult> => call("setCellColors", batch);
   }
   if (supports("capabilities")) {
     ds.capabilities = (): Promise<DataSourceCapabilities> => call("capabilities", null);

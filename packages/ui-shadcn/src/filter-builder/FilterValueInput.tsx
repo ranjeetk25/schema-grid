@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import {
+  type CellColor,
   type ColumnDef,
   type DataSource,
   type FieldTypeId,
@@ -15,6 +16,7 @@ import {
 import { type UiFieldTypeRegistry, filterInputFor } from "../internal/grid-contracts";
 import { getSelectOptions, optionToneStyle } from "../internal/options";
 import { cn } from "../lib/cn";
+import { ColorSwatchMultiSelect } from "../colors/ColorSwatchMultiSelect";
 import { Input } from "../ui/input";
 import { ErrorText, MultiPicker, NumberField, type PickerItem, SelectField, TagsInput, ToneDot } from "./pickers";
 
@@ -187,6 +189,14 @@ export function FilterValueInput(props: FilterValueInputProps) {
 
     case "multi": {
       const current = Array.isArray(value) ? value.map((v) => String(v)) : [];
+      // v0.4 `colorIs`: the palette, one swatch per color.
+      if (operator.id === "colorIs") {
+        return (
+          <Stack error={error} errorId={errorId}>
+            <ColorSwatchMultiSelect value={current as CellColor[]} onChange={(v) => onChange(v)} invalid={invalid} describedBy={describedBy} />
+          </Stack>
+        );
+      }
       if (isOptionType || type === "user") {
         return (
           <Stack error={error} errorId={errorId}>

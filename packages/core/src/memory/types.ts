@@ -1,3 +1,4 @@
+import type { CellColorBatch, CellColorResult } from "../colors/types";
 import type { ActorRef, LinkRef } from "../common/types";
 import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { DataSource } from "../datasource/types";
@@ -28,7 +29,8 @@ export interface InMemoryDataSourceOptions<Row extends GridRow = GridRow> {
   /** Link targets for `lookup`, keyed by column id. */
   linkTargets?: Record<string, LinkRef[]>;
   /**
-   * Reported by `capabilities()` (filled from `DEFAULT_CAPABILITIES`).
+   * Reported by `capabilities()` (filled from `DEFAULT_CAPABILITIES`, except
+   * `cellColors`, which defaults to all true here).
    * `maxPageSize` is enforced: larger `page.limit`s are clamped.
    */
   capabilities?: Partial<DataSourceCapabilities>;
@@ -41,6 +43,8 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends DataS
   snapshot(): Row[];
   /** Always implemented here (v0.3.1). */
   getRows(ids: string[]): Promise<Row[]>;
+  /** Always implemented here (v0.4). */
+  setCellColors(batch: CellColorBatch): Promise<CellColorResult>;
 }
 
 export type InMemoryQueryErrorCode =

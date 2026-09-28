@@ -1,6 +1,7 @@
 node_modules
 dist
 .worktrees
+.claude/worktrees
 coverage
 .env
 .env.*

@@ -45,11 +45,14 @@ describe("public entry points", () => {
       [
         "MAX_PAGE_LIMIT",
         "SQL_VIEW_BASE_ALIAS",
+        "SQL_VIEW_COLORS_ALIAS",
         "SQL_VIEW_EXTENSION_ALIAS",
         "applyChanges",
         "buildGroupQuery",
         "buildQuery",
         "buildRowUpdate",
+        "createCellColorStore",
+        "createCellColorsTableDDL",
         "createDrizzleDataSource",
         "createDrizzleSchemaStore",
         "createExtensionCellStore",
@@ -93,6 +96,7 @@ describe("public entry points", () => {
       [
         "alterChangeLogTableMetaDDL",
         "alterRowsTableIdCollationDDL",
+        "createCellColorsTableDDL",
         "createChangeLogTableDDL",
         "createExtensionCellsTableDDL",
         "createGridSchemasTableDDL",

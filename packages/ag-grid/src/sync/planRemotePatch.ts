@@ -20,8 +20,15 @@
  *    `updates` (its data changed) and its id is also listed in
  *    `notInViewRowIds` so the caller can style it instead of removing it.
  *  - a deleted id is only reported in `removes` if it exists locally.
+ *  - v0.4 cell colors: writing manual colors never bumps `version`, so a
+ *    row at the SAME version whose `colors` differ from the local copy is a
+ *    `colorUpdates` entry: the LOCAL row (its cells may hold pending values)
+ *    with the remote colors. In every applied row, cells whose paint is in
+ *    flight (`colorPending`) keep their local color. A color update that no
+ *    longer matches the view (color filters) is flagged `notInView` too.
  */
 import type { ChangeFeedEntry, GridRow, GridSchema } from "../internal/core";
+import { keepPendingColors } from "../colors/colorController";
 import type { CellRef } from "../state/cellStatusStore";
 import { cellKey } from "../state/cellStatusStore";
 import type { RowStore } from "../state/rowStore";
@@ -34,6 +41,8 @@ export interface PlanRemotePatchOptions<Row extends GridRow> {
   pendingCells: ReadonlySet<string> | ((cell: CellRef) => boolean);
   matchesView(row: Row): boolean;
   currentSchemaVersion: number;
+  /** v0.4: cells whose manual-color write is in flight keep their local color. */
+  colorPending?: (cell: CellRef) => boolean;
 }
 
 export interface RemotePatchPlan<Row extends GridRow> {
@@ -64,6 +73,11 @@ export interface RemotePatchPlan<Row extends GridRow> {
   notInViewRowIds: string[];
   /** True when the feed reports a different schemaVersion than the caller's. */
   schemaChanged: boolean;
+  /**
+   * v0.4: same-version rows whose manual `colors` changed: the local row with
+   * the remote colors (pending paints kept). Always set by `planRemotePatch`.
+   */
+  colorUpdates?: Row[];
 }
 
 function isPendingCell(pendingCells: ReadonlySet<string> | ((cell: CellRef) => boolean), cell: CellRef): boolean {
@@ -97,7 +111,12 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 export function planRemotePatch<Row extends GridRow>(options: PlanRemotePatchOptions<Row>): RemotePatchPlan<Row> {
-  const { entry, rowStore, schema, editingCell, pendingCells, matchesView, currentSchemaVersion } = options;
+  const { entry, rowStore, schema, editingCell, pendingCells, matchesView, currentSchemaVersion, colorPending } = options;
+  const colorColumnIds = schema.columns.map((c) => c.id);
+  const withPendingColors = (incoming: Row, local: Row): Row =>
+    colorPending
+      ? keepPendingColors(incoming, local, colorColumnIds, (rowId, columnId) => colorPending({ rowId, columnId }))
+      : incoming;
 
   const updates: Row[] = [];
   const adds: Row[] = [];
@@ -105,6 +124,7 @@ export function planRemotePatch<Row extends GridRow>(options: PlanRemotePatchOpt
   const remoteChangedCells: CellRef[] = [];
   const deferred: Row[] = [];
   const notInViewRowIds: string[] = [];
+  const colorUpdates: Row[] = [];
 
   for (const remoteRow of entry.rows) {
     const localRow = rowStore.getRow(remoteRow.id);
@@ -114,6 +134,19 @@ export function planRemotePatch<Row extends GridRow>(options: PlanRemotePatchOpt
       continue;
     }
 
+    if (remoteRow.version === localRow.version && !deepEqual(localRow.colors ?? {}, remoteRow.colors ?? {})) {
+      // v0.4: a color-only change (colors never bump the version).
+      const { colors: _local, ...rest } = localRow;
+      const recolored = withPendingColors(
+        (remoteRow.colors && Object.keys(remoteRow.colors).length > 0 ? { ...rest, colors: remoteRow.colors } : rest) as Row,
+        localRow,
+      );
+      if (!deepEqual(recolored.colors ?? {}, localRow.colors ?? {})) {
+        colorUpdates.push(recolored);
+        if (!matchesView(recolored)) notInViewRowIds.push(remoteRow.id);
+      }
+      continue;
+    }
     if (remoteRow.version <= localRow.version) continue; // our own echo
 
     const rowChangedCells: CellRef[] = [];
@@ -135,9 +168,10 @@ export function planRemotePatch<Row extends GridRow>(options: PlanRemotePatchOpt
       continue;
     }
 
-    updates.push(remoteRow);
+    const applied = withPendingColors(remoteRow, localRow);
+    updates.push(applied);
     changedCells.push(...rowChangedCells);
-    if (!matchesView(remoteRow)) notInViewRowIds.push(remoteRow.id);
+    if (!matchesView(applied)) notInViewRowIds.push(remoteRow.id);
   }
 
   const removes = entry.deletedRowIds.filter((id) => rowStore.getRow(id) !== undefined);
@@ -151,6 +185,7 @@ export function planRemotePatch<Row extends GridRow>(options: PlanRemotePatchOpt
     deferred,
     notInViewRowIds,
     schemaChanged: entry.schemaVersion !== currentSchemaVersion,
+    colorUpdates,
   };
 }
 

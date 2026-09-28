@@ -1,5 +1,7 @@
 import { isEmptyValue } from "../field-types/empty";
-import { matchesFilter } from "../filter/match";
+import { validateColorRules } from "../colors/validate";
+import { type FilterMatchContext, matchesFilter } from "../filter/match";
+import { hasColorCondition } from "../filter/operators";
 import { validateFilter } from "../filter/validate";
 import type { GridQuery, QueryResult, SortSpec } from "../query/types";
 import type { GridRow } from "../rows/types";
@@ -103,16 +105,27 @@ export function runQuery<Row extends GridRow>(
   if (firstError) {
     throw new InMemoryQueryError(firstError.code, "Invalid filter", filterErrors);
   }
+  // Color rules only matter to (and are only validated for) a color condition.
+  let colorRules: FilterMatchContext["colorRules"];
+  if (hasColorCondition(query.filter ?? null)) {
+    const checked = validateColorRules(query.colorRules, ctx.schema, ctx.registry, readableIds);
+    if (!checked.ok) {
+      const first = checked.issues[0];
+      throw new InMemoryQueryError(first?.code ?? "invalidColorRule", "Invalid color rules", checked.issues);
+    }
+    colorRules = checked.rules;
+  }
   const { offset, limit } = resolvePage(query);
   // Validate grouping/aggregations before doing any work.
   if (query.groupBy?.length) groupRows([], query.groupBy, ctx);
 
-  const matchCtx = {
+  const matchCtx: FilterMatchContext = {
     schema: ctx.schema,
     registry: ctx.registry,
     now: ctx.now,
     tz: ctx.tz,
     ...(ctx.userId !== undefined ? { userId: ctx.userId } : {}),
+    ...(colorRules ? { colorRules } : {}),
   };
   let result = rows.filter((row) => matchesFilter(query.filter ?? null, row, matchCtx));
 
@@ -126,7 +139,7 @@ export function runQuery<Row extends GridRow>(
   const total = result.length;
   const pageRows = result.slice(offset, offset + limit);
   const readableKeys = new Set(readable.map((c) => c.key));
-  const out: QueryResult<Row> = { rows: pageRows.map((r) => projectRow(r, readableKeys)) };
+  const out: QueryResult<Row> = { rows: pageRows.map((r) => projectRow(r, readableKeys, readableIds)) };
   if (query.includeTotal) out.total = total;
   if (groups) out.groups = groups;
   if (offset + limit < total) out.nextCursor = encodeOffsetCursor(offset + limit);

@@ -112,6 +112,7 @@ Declare each grid once and serve all of them from one endpoint. `defineGrid` tak
 | `schemaStore` | `{ get(gridId), put(gridId, schema) }`. A stored schema wins over `schema`. Without one, `updateSchema` → `UNSUPPORTED_OPERATION` 501. `createMemorySchemaStore()` is the in-process default. |
 | `onSchemaChange(ctx, prev, next)` | runs after validation and **before** the new schema is persisted (DDL diff for generated / extension columns); throwing aborts the update. |
 | `registry`, `validation` | field types and `assertValidSchema` options (e.g. `isFormulaTranslatable: formulaTranslatability()` from `./drizzle`). |
+| `redactPermissionUsers`, `user(ctx)` | v0.4 per-person permissions: `getSchema` for a caller without schema-write permission reduces every `RoleRule.users` list to `[caller.id]` or `[]` (default on; `false` opts out). The caller is `user(ctx)`, default `ctx.user` when it is a `{ id, roles }` object. See `docs/consuming.md`. |
 
 ```ts
 import {
@@ -555,4 +556,57 @@ type CommitOutcome =
   in the storage layer, which run inside the transaction.
 
 <!-- v0.3.1: further subsections go here -->
+
+## v0.4 additions
+
+### Cell colors
+
+Manual (painted) cell colors, shared by every user, live in one table per database (any number of grids, keyed by
+grid id). Create it once and pass the store to either data source:
+
+```ts
+import { createCellColorsTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
+import { createCellColorStore } from "@ranjeetk25/schema-grid-server/drizzle";
+
+await db.execute(sql.raw(createCellColorsTableDDL({ table: "grid_cell_colors" }).sql)); // CREATE TABLE IF NOT EXISTS
+const colors = createCellColorStore({ db, table: "grid_cell_colors" });
+
+createDrizzleDataSource({ …, colors });
+createSqlViewDataSource({ …, colors });
+```
+
+The table is `(grid_id, row_id)`-keyed with a `colors` JSON map (column id → palette color), `updated_at`,
+`updated_by` and an index on `(grid_id, updated_at)`. `colors.available()` probes it like the schema store (false
+while missing, `true` cached); a missing table otherwise surfaces as `MISSING_TABLE` naming
+`createCellColorsTableDDL`. `createCellColorsTableDDL` is exported from `./ddl` and, for convenience, `./drizzle`.
+
+- **Read.** Rows carry `colors` (absent when none). The SQL view LEFT JOINs the table (alias `sg_colors`,
+  `SQL_VIEW_COLORS_ALIAS`) on the row id like the extension store; the JSON-cells source reads it with a keyed
+  correlated lookup (its projection's unqualified columns rule out a join), and `getRows` / the feed /
+  `ChangeResult.rows` with one extra `WHERE row_id IN (…)` query. `projectRow` drops the colors of columns the
+  caller cannot read.
+- **Write: `setCellColors(batch)`.** One transaction per batch: the rows are loaded through the same path as
+  `applyChanges` (the JSON-cells source locks them `FOR UPDATE`; the SQL view reads every column), each change is
+  checked with core's `canColorCell` (row-aware resolver says `edit`, not a formula, not `settable: false`), then
+  each row's document is upserted — ``INSERT … ON DUPLICATE KEY UPDATE colors = JSON_REMOVE(JSON_SET(colors, '$."c"', 'red', …), '$."d"', …)``,
+  `updated_at` / `updated_by` set. Refusals are data: `"Row not found"`, `"Column not found"` (unknown or
+  unreadable), `"Read-only"`, `"Invalid color"`. Rows' `version` / `updatedAt` never change and the SQL view's
+  `write` hooks are not called. The op exists when the store is set and cells are writable (SQL view: `write.update`).
+- **Filter.** `colorIs [..]` / `colorIsNone` on column `c` compile to the SHOWN color:
+  `COALESCE(JSON_UNQUOTE(JSON_EXTRACT(colors, '$."c"')), CASE WHEN <rule 1 when> THEN 'green' … END /* enabled cells
+  rules targeting c, in order */, CASE … END /* enabled row rules */) IN ('red', …)` (`IS NULL` for `colorIsNone`).
+  Every rule's `when` is compiled by `translateFilter` itself; JSON paths are bound parameters. Rules come from
+  `query.colorRules` and are validated with core `validateColorRules` only when the filter has a color condition —
+  failures are `FilterValidationError` (`INVALID_FILTER`, wire `FILTER_INVALID` 400), before any SQL. Without a
+  store the manual part is left out (rule colors still filter). The rules are part of the cursor fingerprint for
+  such queries. Custom translators can reuse `SqlScope.colors` (`manual`, `rules`).
+- **Change feed.** SQL view: the feed orders on `GREATEST(<updated_at>, COALESCE(sg_colors.updated_at, …))`, so
+  a color-only write moves the row past the cursor (the row's own `updatedAt` is unchanged; cursor format
+  unchanged). JSON-cells source: `setCellColors` writes one `change_log` entry per painted cell (`kind = "color"`,
+  `column_id`, `next` = the color or NULL, the batch id), so the integer cursor keeps working and each row comes
+  back once.
+- **Delete.** `deleteRows` removes the rows' color entries in the same transaction.
+- **Capabilities.** `cellColors: { read: !!colors, write: !!colors && capabilities.write.cells, filter: true }`.
+- **Wire.** `setCellColors` is routed by `defineGrid` / `createGridRegistry` and every adapter like any other
+  op (501 when the source lacks it); see [`docs/wire-contract.md`](../../docs/wire-contract.md#cell-colors-v04).
 

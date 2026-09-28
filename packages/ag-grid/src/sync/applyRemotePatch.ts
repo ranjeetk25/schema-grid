@@ -11,6 +11,9 @@
  *    upserted. Infinite blocks can't insert rows, so `adds` are ignored (the
  *    next refetch shows them); `removes` leave the store and trigger
  *    `refreshInfiniteCache()`.
+ *  - v0.4: `colorUpdates` (same-version color changes) are applied like
+ *    updates (row store in client mode, `setData` + row store in server
+ *    mode) but never flashed.
  *  - `notInViewRowIds` get the row store's `notInView` flag (the row keeps
  *    its place and gets `sg-row-not-in-view` via `rowClassRules`); updated
  *    rows that match the view again lose a stale flag. All flags are cleared
@@ -47,6 +50,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { deriveClientRows } from "../client/deriveClientRows";
 import {
   type ChangeFeedEntry,
+  type ColorRule,
   type ColumnDef,
   type DataSource,
   type FieldTypeRegistry,
@@ -119,18 +123,21 @@ export function applyRemotePatch<Row extends GridRow>(
   }
   for (const cell of plan.remoteChangedCells) cellStatus.markRemoteChanged(cell);
 
+  const colorUpdates = plan.colorUpdates ?? [];
   const notInView = new Set(plan.notInViewRowIds);
-  const backInView = plan.updates.filter((r) => !notInView.has(r.id) && rows.isNotInView(r.id)).map((r) => r.id);
+  const backInView = [...plan.updates, ...colorUpdates]
+    .filter((r) => !notInView.has(r.id) && rows.isNotInView(r.id))
+    .map((r) => r.id);
 
   if (mode === "client") {
-    rows.upsert([...plan.updates, ...plan.adds]);
+    rows.upsert([...plan.updates, ...plan.adds, ...colorUpdates]);
     rows.remove(plan.removes);
   } else {
-    for (const r of plan.updates) {
+    for (const r of [...plan.updates, ...colorUpdates]) {
       const node: IRowNode<Row> | undefined = api?.getRowNode(r.id);
       node?.setData(r);
     }
-    rows.upsert(plan.updates);
+    rows.upsert([...plan.updates, ...colorUpdates]);
     if (plan.removes.length > 0) {
       rows.remove(plan.removes);
       api?.refreshInfiniteCache();
@@ -206,6 +213,8 @@ export interface ViewMatchConfig {
   getCellValue(row: GridRow, column: ColumnDef): unknown;
   tz: string;
   stableUser: { id: string };
+  /** v0.4: the active (sanitised) color rules, for `colorIs` / `colorIsNone`. */
+  colorRules?: readonly ColorRule[];
 }
 
 /**
@@ -221,13 +230,28 @@ export function rowMatchesView<Row extends GridRow>(
   if (c.externalErrors.length > 0) return false;
   const user = { id: c.stableUser.id };
   if (c.externalFilter) {
-    const ctx = { schema: c.schema, registry: c.registry, user, tz: c.tz, getCellValue: c.getCellValue };
+    const ctx = {
+      schema: c.schema,
+      registry: c.registry,
+      user,
+      tz: c.tz,
+      getCellValue: c.getCellValue,
+      ...(c.colorRules ? { colorRules: c.colorRules } : {}),
+    };
     if (!matchesFilter(row, c.externalFilter, ctx)) return false;
   }
   const derived = deriveClientRows(
     [row],
     { filter: query.filter, sort: [], search: query.search },
-    { schema: c.schema, registry: c.registry, readableColumnIds: c.readable, user, tz: c.tz, getCellValue: c.getCellValue },
+    {
+      schema: c.schema,
+      registry: c.registry,
+      readableColumnIds: c.readable,
+      user,
+      tz: c.tz,
+      getCellValue: c.getCellValue,
+      ...(c.colorRules ? { colorRules: c.colorRules } : {}),
+    },
   );
   return derived.rows.length === 1;
 }
@@ -243,6 +267,8 @@ export interface UseRemoteSyncOptions<Row extends GridRow = GridRow> {
   schema: GridSchema;
   events(): SchemaGridEvents<Row> | undefined;
   matchesView(row: Row): boolean;
+  /** v0.4: cells whose manual-color write is in flight (their local color is kept). */
+  colorPending?(rowId: string, columnId: string): boolean;
 }
 
 export interface UseRemoteSyncResult {
@@ -289,6 +315,7 @@ export function useRemoteSync<Row extends GridRow>(options: UseRemoteSyncOptions
     (c: CellRef) => latest.current.stores.cellStatus.get(c.rowId, c.columnId).pending,
     [],
   );
+  const colorPending = useCallback((c: CellRef) => latest.current.colorPending?.(c.rowId, c.columnId) === true, []);
 
   const onEntry = useCallback(
     (entry: ChangeFeedEntry<Row>) => {
@@ -302,6 +329,7 @@ export function useRemoteSync<Row extends GridRow>(options: UseRemoteSyncOptions
         pendingCells,
         matchesView: o.matchesView,
         currentSchemaVersion: schemaVersion.current,
+        colorPending,
       });
       if (plan.schemaChanged) schemaVersion.current = entry.schemaVersion;
       applyRemotePatch(api, plan, o.mode, o.stores, {
@@ -311,7 +339,7 @@ export function useRemoteSync<Row extends GridRow>(options: UseRemoteSyncOptions
         afterGridUpdate,
       });
     },
-    [pendingCells, afterGridUpdate],
+    [pendingCells, colorPending, afterGridUpdate],
   );
 
   const flushScheduled = useRef(false);

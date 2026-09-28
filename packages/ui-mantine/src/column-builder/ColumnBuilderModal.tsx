@@ -3,6 +3,7 @@ import { useRef } from "react";
 import type { AccessMap } from "../internal/access";
 import type { ColumnDef, DataSource, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
 import type { UiFieldTypeRegistry } from "../internal/grid-contracts";
+import type { UserDirectory } from "../internal/people";
 import { ColumnForm, type ColumnInsertPosition } from "./ColumnForm";
 
 export interface ColumnBuilderModalProps {
@@ -25,6 +26,8 @@ export interface ColumnBuilderModalProps {
   now?: () => Date | string;
   generateId?: () => string;
   dataSource?: DataSource;
+  /** v0.4: People pickers for per-person permissions (see `ColumnFormProps.userDirectory`). */
+  userDirectory?: UserDirectory;
 }
 
 /**

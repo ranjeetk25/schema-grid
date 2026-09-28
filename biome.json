@@ -12,6 +12,7 @@
       "**/node_modules/**",
       "**/coverage/**",
       "**/.worktrees/**",
+      "**/.claude/worktrees/**",
       "**/storybook-static/**",
       "**/test-results/**",
       "**/playwright-report/**",

@@ -1,6 +1,8 @@
+import type { CellColorResolver } from "../colors/cellColors";
 import type {
   Access,
   DataSource,
+  EffectiveCapabilities,
   FieldTypeRegistry,
   GridRow,
   GridSchema,
@@ -62,6 +64,10 @@ export interface SchemaGridContext<Row extends GridRow = GridRow> {
   headerMenu?: HeaderMenuContext;
   /** Fill handle (T25): `CellShell` calls it from the handle's native pointerdown. */
   onFillHandlePointerDown?(event: FillHandlePointerEvent, pos: CellPos): void;
+  /** Column options ∩ source capabilities (v0.4: filters read `cellColors.filter`). */
+  effectiveCapabilities?: EffectiveCapabilities;
+  /** v0.4: shown color per cell / row, read by the color class rules. */
+  cellColors?: CellColorResolver;
   [key: string]: unknown;
 }
 

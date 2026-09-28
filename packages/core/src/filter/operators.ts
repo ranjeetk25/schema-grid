@@ -1,3 +1,6 @@
+import { isFilterGroup } from "./guards";
+import type { FilterNode } from "./types";
+
 export type FilterValueKind = "none" | "single" | "multi" | "range" | "relativeDate" | "me";
 
 export interface FilterOperatorDef {
@@ -92,6 +95,34 @@ export const LINK_OPERATORS: readonly FilterOperatorDef[] = Object.freeze([
   op("isEmpty", "is empty", "none"),
   op("isNotEmpty", "is not empty", "none"),
 ]);
+
+/**
+ * v0.4: filter by the color a cell SHOWS (manual color > cells rule > row
+ * rule, see `resolveCellColor`). Available on every readable column, including
+ * `filterable: false` ones (they filter the annotation, not the value), so they
+ * are not part of any field type's operator list.
+ */
+export const COLOR_OPERATORS: readonly FilterOperatorDef[] = Object.freeze([
+  op("colorIs", "color is", "multi"),
+  op("colorIsNone", "has no color", "none"),
+]);
+
+const COLOR_OPERATOR_IDS: ReadonlySet<string> = new Set(COLOR_OPERATORS.map((def) => def.id));
+
+/** True for `colorIs` / `colorIsNone`. */
+export function isColorOperator(id: unknown): boolean {
+  return typeof id === "string" && COLOR_OPERATOR_IDS.has(id);
+}
+
+/**
+ * True when any condition of `node` uses a color operator (the only case in
+ * which `GridQuery.colorRules` matter to a data source). Safe on untrusted input.
+ */
+export function hasColorCondition(node: FilterNode | null | undefined): boolean {
+  if (typeof node !== "object" || node === null) return false;
+  if (isFilterGroup(node)) return node.children.some((child) => hasColorCondition(child));
+  return isColorOperator((node as { operator?: unknown }).operator);
+}
 
 export function findOperator(
   operators: readonly FilterOperatorDef[],

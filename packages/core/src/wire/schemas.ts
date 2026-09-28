@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CELL_COLORS, type CellColor, type ColorRule } from "../colors/types";
 import type { FilterNode, FilterValue } from "../filter/types";
 import type { GroupResult } from "../query/types";
 import type { GridSchema } from "../schema/types";
@@ -60,6 +61,21 @@ export const filterNodeSchema: WireSchema<FilterNode> = z.lazy(() =>
   ]),
 );
 
+/** v0.4: a palette color name. */
+const cellColor = z.enum(CELL_COLORS as [CellColor, ...CellColor[]]);
+
+/** v0.4: one color rule (structure only; `validateColorRules` checks columns and access). */
+const colorRule: WireSchema<ColorRule> = z.object({
+  id,
+  color: cellColor,
+  target: z.union([
+    z.object({ kind: z.literal("cells"), columnIds: z.array(id) }),
+    z.object({ kind: z.literal("row") }),
+  ]),
+  when: filterNodeSchema.nullable(),
+  enabled: z.boolean().optional(),
+});
+
 const aggregationId = z.enum(["count", "sum", "avg", "min", "max", "countEmpty", "countFilled"]);
 const pageRequest = z.union([
   z.object({ offset: z.number().int().nonnegative(), limit: z.number().int().positive() }).strict(),
@@ -80,6 +96,7 @@ export const gridQuerySchema = z.object({
     .optional(),
   page: pageRequest,
   includeTotal: z.boolean().optional(),
+  colorRules: z.array(colorRule).optional(),
 });
 
 const actorRef = z.object({ id, name: z.string().optional() });
@@ -90,6 +107,7 @@ export const gridRowSchema = z.object({
   updatedAt: z.string(),
   updatedBy: actorRef.optional(),
   cells,
+  colors: z.record(z.string(), cellColor).optional(),
 });
 
 const groupResult: WireSchema<GroupResult> = z.lazy(() =>
@@ -161,9 +179,16 @@ const capabilities = z.object({
       reason: z.enum(["forbidden", "no-store", "store-unavailable"]).optional(),
     })
     .optional(),
+  // v0.4: optional on the wire (older servers omit it; normalised to all-false).
+  cellColors: z.object({ read: z.boolean(), write: z.boolean(), filter: z.boolean() }).optional(),
 });
 
-const roleRule = z.union([z.literal("all"), z.object({ roles: z.array(z.string()) })]);
+const cellColorChange = z.object({ rowId: id, columnId: id, color: cellColor.nullable() });
+
+const roleRule = z.union([
+  z.literal("all"),
+  z.object({ roles: z.array(z.string()).optional(), users: z.array(z.string().min(1)).optional() }),
+]);
 const option = z.object({
   id,
   label: z.string(),
@@ -249,6 +274,14 @@ export const wireSchemas: WireSchemas = {
   getRows: {
     input: z.object({ ids: z.array(id) }),
     output: z.array(gridRowSchema),
+  },
+  setCellColors: {
+    input: z.object({ id, changes: z.array(cellColorChange) }),
+    output: z.object({
+      applied: z.array(cellColorChange),
+      rejected: z.array(z.object({ rowId: id, columnId: id, message: z.string() })),
+      rows: z.array(gridRowSchema).optional(),
+    }),
   },
   capabilities: {
     input: z.null(),

@@ -11,6 +11,7 @@ import {
   GroupIcon,
   ListFilterIcon,
   MoveHorizontalIcon,
+  PaletteIcon,
   PencilIcon,
   PinOffIcon,
   XIcon,
@@ -18,8 +19,21 @@ import {
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SG_ROOT, cn } from "../lib/cn";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { CELL_COLOR_PALETTE, CellColorSwatch } from "../theme/cellColors";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { useCellColorFilter } from "./cellColorFilter";
 import type { HeaderMenuComponent, HeaderMenuProps } from "./contract";
+
 
 interface Rect {
   left: number;
@@ -109,6 +123,9 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
   const canSort = actions.canSort !== false;
   const showEdit = typeof actions.editColumn === "function";
   const showInsert = typeof actions.insertColumn === "function";
+  // v0.4: "Filter by color" only inside a CellColorFilterProvider (the workbench provides one when the source filters by color).
+  const colorFilter = useCellColorFilter();
+  const activeColors = colorFilter?.activeColors(column.colId) ?? null;
 
   const trigger =
     typeof document === "undefined"
@@ -171,6 +188,39 @@ export const ShadcnHeaderMenu: HeaderMenuComponent = function ShadcnHeaderMenu({
         <Item icon={<ChevronsLeftRightIcon />} label="Autosize all columns" onSelect={run(() => actions.autosizeAll())} />
         <DropdownMenuSeparator />
         <Item icon={<ListFilterIcon />} label="Filter…" hint="⌘↵" disabled={!canFilter} onSelect={run(() => actions.openFilter())} />
+        {colorFilter ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <PaletteIcon />
+              <span data-slot="header-menu-label" className="sg:flex-1 sg:truncate">
+                Filter by color
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent aria-label="Filter by color" className="sg:w-48">
+              {CELL_COLOR_PALETTE.map((p) => (
+                <DropdownMenuCheckboxItem
+                  key={p.color}
+                  checked={Array.isArray(activeColors) && activeColors.includes(p.color)}
+                  onSelect={run(() => colorFilter.filterByColor(column.colId, [p.color]))}
+                >
+                  <CellColorSwatch color={p.color} />
+                  {p.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem checked={activeColors === "none"} onSelect={run(() => colorFilter.filterByColor(column.colId, "none"))}>
+                <CellColorSwatch color={null} />
+                No color
+              </DropdownMenuCheckboxItem>
+              {activeColors !== null ? (
+                <DropdownMenuItem onSelect={run(() => colorFilter.filterByColor(column.colId, null))}>
+                  <XIcon />
+                  Clear color filter
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         {showGroup ? <Item icon={<GroupIcon />} label="Group by" onSelect={run(() => actions.groupBy?.())} /> : null}
         {showEdit || showInsert ? <DropdownMenuSeparator /> : null}
         {showEdit ? <Item icon={<PencilIcon />} label="Edit column…" onSelect={run(() => actions.editColumn?.())} /> : null}

@@ -6,6 +6,7 @@
 import type {
   ChangeFeedEntry,
   ChangeResult,
+  ColorRule,
   ColumnDef,
   DataSourceCapabilities,
   FilterNode,
@@ -46,6 +47,13 @@ function expectedSection8(now: Date): string[] {
   return ids;
 }
 
+/** Seeded leads whose status is paid. */
+function expectedPaidCount(): number {
+  let n = 0;
+  for (let i = 1; i <= LEADS_SEED_COUNT; i++) if (leadSeed(i, NOW, TZ).paymentStatus === "paid") n++;
+  return n;
+}
+
 describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint over MySQL (JSON-cells + SQL view)", () => {
   let database: Database;
   let created: CreatedApp;
@@ -59,7 +67,12 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
       store: new SchemaStore(null, createFixtureSchema),
       tz: TZ,
       clock: FIXTURE_NOW,
-      leads: { tableName: "it_leads", schemasTable: "it_grid_schemas", extensionTable: "it_grid_extension_cells" },
+      leads: {
+        tableName: "it_leads",
+        schemasTable: "it_grid_schemas",
+        extensionTable: "it_grid_extension_cells",
+        colorsTable: "it_grid_cell_colors",
+      },
     });
 
   const op = async <T>(gridId: string, name: string, body: unknown, headers: Headers = {}): Promise<Wire<T>> => {
@@ -84,6 +97,38 @@ describe.skipIf(process.env.SCHEMA_GRID_MYSQL_IT !== "1")("multi-grid endpoint o
 
   afterAll(async () => {
     await database?.close();
+  });
+
+  it("v0.4 cell colors on both grids: paint, read back, filter by the shown color", async () => {
+    const leadsCaps = await op<DataSourceCapabilities>("leads", "capabilities", null);
+    expect(leadsCaps.data.cellColors).toEqual({ read: true, write: true, filter: true });
+    const painted = await op<{ applied: unknown[]; rejected: unknown[] }>("leads", "setCellColors", {
+      id: "paint-1",
+      changes: [
+        { rowId: "3", columnId: "name", color: "red" },
+        { rowId: "3", columnId: "aiVerified", color: "red" }, // settable: false → not paintable
+      ],
+    });
+    expect(painted.data.applied).toEqual([{ rowId: "3", columnId: "name", color: "red" }]);
+    expect(painted.data.rejected).toEqual([{ rowId: "3", columnId: "aiVerified", message: "Read-only" }]);
+    const red = await fetchLeads({ filter: { columnId: "name", operator: "colorIs", value: ["red"] } });
+    expect(red.data.rows.map((r) => [r.id, r.colors])).toEqual([["3", { name: "red" }]]);
+    // A row rule (whole row yellow when paid) under the manual color.
+    const rules: ColorRule[] = [{ id: "paid", color: "yellow", target: { kind: "row" }, when: { columnId: "paymentStatus", operator: "is", value: "paid" } }];
+    const yellow = await fetchLeads({ filter: { columnId: "email", operator: "colorIs", value: ["yellow"] }, colorRules: rules, includeTotal: true });
+    expect(yellow.data.total).toBe(expectedPaidCount());
+
+    const admissions = await op<{ applied: unknown[] }>("admissions", "setCellColors", {
+      id: "paint-2",
+      changes: [{ rowId: "r2", columnId: "col_name", color: "teal" }],
+    });
+    expect(admissions.data.applied).toHaveLength(1);
+    const teal = await op<QueryResult<GridRow>>("admissions", "fetch", {
+      filter: { columnId: "col_name", operator: "colorIs", value: ["teal"] },
+      sort: [],
+      page: { offset: 0, limit: 100 },
+    });
+    expect(teal.data.rows.map((r) => r.id)).toEqual(["r2"]);
   });
 
   it("seeds 1,200 rows into a plain table with no cells JSON", async () => {

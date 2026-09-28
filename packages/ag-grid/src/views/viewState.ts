@@ -5,10 +5,14 @@
  * Sort lives in the query store (AG's own sort is display-only in our
  * design), but we still push `sort`/`sortIndex` into the AG column state on
  * apply so the header sort indicators match the view.
+ *
+ * v0.4: `colorRules` ride along (query store ↔ `ViewDef.colorRules`, omitted
+ * when empty); apply prunes their unknown / hidden targets and conditions.
  */
 import type { ColumnState, GridApi } from "ag-grid-community";
 import type { Access, ColumnDef, FilterNode, GridRow, Pinned, SortSpec, ViewColumnState, ViewDef } from "../internal/core";
 import { isFilterGroup } from "../internal/core";
+import { pruneColorRules } from "../colors/cellColors";
 import { isSyntheticColumnId } from "../compile/syntheticColumns";
 import type { ExpansionStore } from "../state/expansionStore";
 import type { QueryStore } from "../state/queryStore";
@@ -81,6 +85,7 @@ export function captureViewState<Row extends GridRow>(
     columnState,
     ...(query.search !== undefined ? { search: query.search } : {}),
     ...(collapsed.length > 0 ? { collapsedGroups: collapsed } : {}),
+    ...(query.colorRules && query.colorRules.length > 0 ? { colorRules: query.colorRules } : {}),
   };
 }
 
@@ -141,6 +146,8 @@ export function applyViewState<Row extends GridRow>(
   stores.query.setSort(filteredSort);
   stores.query.setSearch(view.search);
   stores.query.setGroupBy(groupBy);
+  // v0.4: rules lose unknown / hidden targets and conditions (a rule left without targets is dropped).
+  stores.query.setColorRules(pruneColorRules(view.colorRules ?? [], isKnown));
   if (stores.expansion) {
     stores.expansion.expandAll(true);
     for (const id of view.collapsedGroups ?? []) stores.expansion.setExpanded(id, false);

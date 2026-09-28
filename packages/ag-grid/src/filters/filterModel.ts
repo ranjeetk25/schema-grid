@@ -20,8 +20,17 @@ export interface AstToFilterModelResult {
  * else (a second condition on the same column, anything under a nested group,
  * and the whole tree when the root itself is an OR) goes to `residual`, and
  * those columns are listed in `advancedColumnIds`.
+ *
+ * `opts.isModelColumn` (v0.4): conditions on columns it rejects — columns
+ * without a column filter, e.g. a `colorIs` on a `filterable: false` column —
+ * also go to `residual` (AG Grid would drop them from its filter model), but
+ * are not flagged as advanced. Default: every column is a model column.
  */
-export function astToFilterModel(ast: FilterNode | null): AstToFilterModelResult {
+export interface AstToFilterModelOptions {
+  isModelColumn?(columnId: string): boolean;
+}
+
+export function astToFilterModel(ast: FilterNode | null, opts: AstToFilterModelOptions = {}): AstToFilterModelResult {
   if (!ast) return { model: {}, residual: null, advancedColumnIds: [] };
 
   // A bare condition is a flat AND of one.
@@ -49,6 +58,10 @@ export function astToFilterModel(ast: FilterNode | null): AstToFilterModelResult
       for (const id of columnIdsIn(child)) {
         if (!advancedColumnIds.includes(id)) advancedColumnIds.push(id);
       }
+      continue;
+    }
+    if (opts.isModelColumn && !opts.isModelColumn(child.columnId)) {
+      residualChildren.push(child);
       continue;
     }
     if (countByColumn.get(child.columnId) === 1) {

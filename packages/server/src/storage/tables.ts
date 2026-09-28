@@ -21,7 +21,7 @@ const changeLogColumns = {
   gridId: varchar("grid_id", { length: 64 }).notNull(),
   rowId: varchar("row_id", { length: 36 }).notNull(),
   columnId: varchar("column_id", { length: 64 }),
-  kind: varchar("kind", { length: 16, enum: ["cell", "create", "delete"] }).notNull(),
+  kind: varchar("kind", { length: 16, enum: ["cell", "create", "delete", "color"] }).notNull(),
   prev: json("prev"),
   next: json("next"),
   actor: varchar("actor", { length: 64 }).notNull(),

@@ -6,6 +6,8 @@ import { createInMemoryDataSource as createCoreInMemory } from "@ranjeetk25/sche
 import { vi } from "vitest";
 import { normalizeCapabilities } from "../../src/internal/core";
 import type {
+  CellColorBatch,
+  CellColorResult,
   ChangeBatch,
   ChangeFeedEntry,
   ChangeResult,
@@ -53,6 +55,8 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<
   remoteDelete(rowId: string): Promise<void>;
   /** Next applyChanges rejects with this error. */
   failNextApply(error: Error): void;
+  /** v0.4: next setCellColors rejects with this error. */
+  failNextColors(error: Error): void;
   /** Next applyChanges reports a per-cell error for this cell (instead of applying it). */
   errorOn(rowId: string, columnId: string, message: string): void;
   /** Bump schemaVersion as reported in the change feed. */
@@ -65,6 +69,7 @@ export interface InMemoryDataSource<Row extends GridRow = GridRow> extends Omit<
     createOption: ReturnType<typeof vi.fn>;
     lookup: ReturnType<typeof vi.fn>;
     capabilities: ReturnType<typeof vi.fn>;
+    setCellColors: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -89,6 +94,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     ...(opts.capabilities && typeof opts.capabilities === "object" ? { capabilities: opts.capabilities } : {}),
   });
   let failNext: Error | null = null;
+  let failNextColors: Error | null = null;
   const scriptedErrors: { rowId: string; columnId: string; message: string }[] = [];
   const wait = () => (opts.delayMs ? new Promise((r) => setTimeout(r, opts.delayMs)) : Promise.resolve());
 
@@ -141,7 +147,18 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     return inner.lookup ? inner.lookup(columnId, search) : [];
   }
 
+  async function setCellColors(batch: CellColorBatch): Promise<CellColorResult> {
+    await wait();
+    if (failNextColors) {
+      const e = failNextColors;
+      failNextColors = null;
+      throw e;
+    }
+    return inner.setCellColors(batch);
+  }
+
   const calls = {
+    setCellColors: vi.fn(setCellColors),
     fetch: vi.fn(fetch),
     applyChanges: vi.fn(applyChanges),
     getChanges: vi.fn(getChanges),
@@ -163,6 +180,8 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     deleteRows: (ids: string[]) => inner.deleteRows(ids),
     // v0.3.1: core's in-memory source answers `getRows` (rows as `fetch` would serve them).
     getRows: (ids: string[]) => inner.getRows(ids),
+    // v0.4: core's in-memory source stores manual cell colors.
+    setCellColors: calls.setCellColors,
     getChanges: calls.getChanges,
     getOptions: calls.getOptions,
     createOption: calls.createOption,
@@ -194,6 +213,9 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     },
     failNextApply(error) {
       failNext = error;
+    },
+    failNextColors(error) {
+      failNextColors = error;
     },
     errorOn(rowId, columnId, message) {
       scriptedErrors.push({ rowId, columnId, message });

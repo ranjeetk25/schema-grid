@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { applyChanges, buildRowUpdate } from "../../../src/changes/apply-changes";
 import { resetChangeLogLegacyDetection } from "../../../src/changes/change-log";
 import type { RowWritePlan } from "../../../src/changes/plan-changes";
-import type { ChangeBatch } from "../../../src/internal/core";
+import { createServerContext } from "../../../src/context";
+import { type ChangeBatch, createDefaultRegistry, createRolePermissionResolver } from "../../../src/internal/core";
 import { type FakeCall, asRows, createFakeMysql } from "../../helpers/fake-mysql";
 import { col, makeCtx, tables } from "../../helpers/schemas";
 import { mockDb, renderQuery } from "../../helpers/sql";
@@ -180,6 +181,29 @@ describe("applyChanges", () => {
     expect(res.errors).toHaveLength(1);
     // the locking read, then the v0.3.1 re-read of the batch's rows — no UPDATE, no INSERT
     expect(calls.map((c) => c.sql.split(" ")[0])).toEqual(["begin", "select", "select", "commit"]);
+  });
+
+  it("v0.4 per-user rules: a listed editor writes, an unlisted one gets an error, superRoles bypass", async () => {
+    const perPerson = {
+      ...schema,
+      columns: schema.columns.map((c) =>
+        c.id === "fee" ? { ...c, permissions: { read: "all" as const, edit: { roles: ["finance"], users: ["priya"] } } } : c,
+      ),
+    };
+    const run = async (user: { id: string; roles: string[] }, superRoles: string[] = []) => {
+      const userCtx = createServerContext({
+        schema: perPerson,
+        registry: createDefaultRegistry(),
+        resolver: createRolePermissionResolver({ superRoles }),
+        user,
+        now: () => NOW,
+      });
+      const { db } = createFakeMysql(script({ r1: dbRow("r1", 1, { fee: 1 }) }, new Set()));
+      return applyChanges(batch([ch("r1", "fee", 5)], { r1: 1 }), userCtx, { db, tables, gridId: "grid1" });
+    };
+    expect(await run({ id: "priya", roles: [] })).toMatchObject({ applied: [{ rowId: "r1", columnId: "fee", next: 5 }], errors: [] });
+    expect(await run({ id: "rahul", roles: ["counsellor"] })).toMatchObject({ applied: [], errors: [{ rowId: "r1", columnId: "fee" }] });
+    expect(await run({ id: "boss", roles: ["super"] }, ["super"])).toMatchObject({ applied: [{ columnId: "fee" }], errors: [] });
   });
 });
 

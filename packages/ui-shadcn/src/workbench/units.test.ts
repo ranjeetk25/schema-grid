@@ -14,7 +14,7 @@ import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { classifyError, tapDataSource } from "./errors";
 import { collectRows } from "./exportRows";
 import { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
-import { ALL_ROWS_VIEW, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
+import { ALL_ROWS_VIEW, comparableView, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
 
 /** The grid's effective matrix for the fixture schema under `over` (real core capability objects). */
 const effective = (over: Partial<DataSourceCapabilities> = {}, schema: GridSchema = createFixtureSchema()) =>
@@ -26,7 +26,8 @@ const derive = (
 
 describe("deriveWorkbenchFeatures", () => {
   it("turns everything on for a fully capable source", () => {
-    expect(deriveWorkbenchFeatures({ capabilities: effective(DEFAULT_CAPABILITIES), canChangeSchema: true })).toEqual({
+    const colors = { ...DEFAULT_CAPABILITIES, cellColors: { read: true, write: true, filter: true } };
+    expect(deriveWorkbenchFeatures({ capabilities: effective(colors), canChangeSchema: true })).toEqual({
       filter: true,
       group: true,
       search: true,
@@ -36,7 +37,17 @@ describe("deriveWorkbenchFeatures", () => {
       addColumn: true,
       undo: true,
       polling: true,
+      paint: true,
+      colorRules: true,
     });
+  });
+
+  it("v0.4: paint needs cellColors read + write; color rules need nothing (client-rendered)", () => {
+    expect(derive({ cellColors: { read: true, write: false, filter: true } }).paint).toBe(false);
+    expect(derive({ cellColors: { read: false, write: true, filter: false } }).paint).toBe(false);
+    expect(derive({}).colorRules).toBe(true);
+    const off = derive({ cellColors: { read: true, write: true, filter: true } }, { features: { paint: false, colorRules: false } });
+    expect(off).toMatchObject({ paint: false, colorRules: false });
   });
 
   it("derives each feature from the effective matrix", () => {
@@ -62,7 +73,7 @@ describe("deriveWorkbenchFeatures", () => {
 
   it("keeps capability-gated features off until the capabilities load", () => {
     const f = deriveWorkbenchFeatures({ capabilities: null, canChangeSchema: true });
-    expect(f).toMatchObject({ group: false, search: false, filter: false, import: false, undo: false, polling: false, export: false });
+    expect(f).toMatchObject({ group: false, search: false, filter: false, import: false, undo: false, polling: false, export: false, paint: false });
     expect(f.views).toBe(true);
     expect(f.addColumn).toBe(true);
   });
@@ -149,6 +160,16 @@ describe("tapDataSource", () => {
     await expect(tapped.applyChanges({ changes: [] } as never)).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "permission-denied", op: "applyChanges" }));
   });
+
+  it("taps setCellColors (v0.4) so painting reaches the source", async () => {
+    const onError = vi.fn();
+    const setCellColors = vi.fn().mockRejectedValue({ status: 503, message: "down" });
+    const src = { fetch: vi.fn(), applyChanges: vi.fn(), createRows: vi.fn(), deleteRows: vi.fn(), setCellColors } as unknown as DataSource;
+    const tapped = tapDataSource(src, { onError, onReadOk: vi.fn() });
+    await expect(tapped.setCellColors?.({ id: "b", changes: [] })).rejects.toMatchObject({ status: 503 });
+    expect(setCellColors).toHaveBeenCalledWith({ id: "b", changes: [] });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "network", op: "setCellColors", message: "Couldn't reach the server to color cells." }));
+  });
 });
 
 describe("collectRows", () => {
@@ -188,5 +209,17 @@ describe("schema ops", () => {
       columns: [{ ...col("a", 0), permissions: { read: "all", edit: { roles: ["admin", "counsellor"] } } }],
     };
     expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["admin", "counsellor", "viewer"]);
+  });
+  it("skips users-only rules (v0.4 per-person permissions)", () => {
+    const s: GridSchema = { ...schema, columns: [{ ...col("a", 0), permissions: { read: { users: ["u9"] }, edit: {} } }] };
+    expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["viewer"]);
+  });
+});
+
+describe("comparableView (v0.4)", () => {
+  it("counts color rules as a view change; no rules equals an empty list", () => {
+    const rule = { id: "r", color: "red" as const, target: { kind: "row" as const }, when: null };
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [rule] })).not.toBe(comparableView(ALL_ROWS_VIEW));
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [] })).toBe(comparableView(ALL_ROWS_VIEW));
   });
 });

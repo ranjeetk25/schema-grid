@@ -22,6 +22,7 @@ import { useEditorStyles } from "../editors/EditorCard";
 import type { AccessMap } from "../internal/access";
 import type { ColumnDef, DataSource, FieldTypeId, FieldTypeRegistry, GridRow, GridSchema } from "../internal/core-contracts";
 import { type UiFieldTypeRegistry, resolveEditorComponent } from "../internal/grid-contracts";
+import { type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 import { draftAsColumn } from "./CommonFields";
 import { fieldTypeMeta, sortFieldTypes } from "./fieldTypeMeta";
 import { FormulaEditor } from "./FormulaEditor";
@@ -57,6 +58,8 @@ export interface ColumnFormProps {
   dataSource?: DataSource;
   /** "panel": fills its container with a scrolling body and a sticky footer. */
   layout?: "panel" | "modal";
+  /** v0.4: People pickers in "Who can access" and option "Who can set" (per-person permissions). */
+  userDirectory?: UserDirectory;
 }
 
 const defaultId = () =>
@@ -133,6 +136,7 @@ export function ColumnForm({
   generateId = defaultId,
   dataSource,
   layout = "panel",
+  userDirectory,
 }: ColumnFormProps) {
   useEditorStyles();
   const editing = !!column;
@@ -154,6 +158,10 @@ export function ColumnForm({
 
   const errors = useMemo(() => validateColumnDraft(draft, { schema, registry }), [draft, schema, registry]);
   const accessError = permissionsError(draft.permissions);
+  const peopleNames = usePeopleNames(
+    userDirectory,
+    [draft.permissions.read, draft.permissions.edit].flatMap((rule) => (rule === "all" ? [] : (rule.users ?? []))),
+  );
   const isFormula = draft.type === "formula";
 
   // What still blocks saving, in plain words (the primary button's tooltip).
@@ -217,14 +225,16 @@ export function ColumnForm({
       ? errors.configFields[""]
       : undefined;
   const configForm = fieldType ? (
-    <ZodForm
-      schema={fieldType.configSchema}
-      value={draft.config}
-      onChange={(config) => dispatch({ type: "setConfig", config })}
-      errors={visibleConfigErrors}
-      onFieldBlur={(path) => setConfigTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
-      roles={roles}
-    />
+    <UserDirectoryProvider value={userDirectory}>
+      <ZodForm
+        schema={fieldType.configSchema}
+        value={draft.config}
+        onChange={(config) => dispatch({ type: "setConfig", config })}
+        errors={visibleConfigErrors}
+        onFieldBlur={(path) => setConfigTouched((prev) => (prev.has(path) ? prev : new Set(prev).add(path)))}
+        roles={roles}
+      />
+    </UserDirectoryProvider>
   ) : null;
   const labelError = touched.label && errors.label ? "Give the column a name" : undefined;
   const keyError = (touched.key || editingKey) && draft.label.trim() ? errors.key : undefined;
@@ -388,7 +398,7 @@ export function ColumnForm({
         {/* 5 · Who can access */}
         <Section
           title="Who can access"
-          summary={accessSummary(draft.permissions, isFormula)}
+          summary={accessSummary(draft.permissions, isFormula, peopleNames)}
           opened={accessOpen || !!accessError}
           onToggle={() => setAccessOpen((o) => !o)}
         >
@@ -397,6 +407,7 @@ export function ColumnForm({
               value={draft.permissions}
               roles={roles}
               computed={isFormula}
+              {...(userDirectory ? { userDirectory } : {})}
               onChange={(permissions) => dispatch({ type: "setPermissions", permissions })}
             />
           </Box>

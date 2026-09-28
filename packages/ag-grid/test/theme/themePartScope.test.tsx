@@ -68,7 +68,8 @@ describe("schemaGrid theme part CSS scope", () => {
       const target = /\.(sg-[a-z-]+)\s*$/.exec(selector)?.[1];
       if (!target || !decorationTargets.has(target)) continue;
       const probe = document.createElement("span");
-      probe.className = target;
+      // Every class of the selector's last compound (`.ag-row.sg-row-colored` → both).
+      probe.className = (/((?:\.[a-z][a-z0-9-]*)+)\s*$/.exec(selector)?.[1] ?? `.${target}`).split(".").join(" ").trim();
       (cell as HTMLElement).append(probe);
       // AG Grid emits the part as `:where(.<scope>) { & <selector> }`.
       expect(

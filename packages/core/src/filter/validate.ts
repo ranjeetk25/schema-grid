@@ -2,7 +2,8 @@ import { getColumnOperators } from "../field-types/column-operators";
 import type { FieldTypeRegistry } from "../field-types/registry";
 import { getColumnById } from "../schema/lookup";
 import type { GridSchema } from "../schema/types";
-import { type FilterValueKind, findOperator } from "./operators";
+import { isCellColor } from "../colors/types";
+import { type FilterValueKind, findOperator, isColorOperator } from "./operators";
 import { RELATIVE_DATE_PRESETS } from "./relative-date";
 import type { FilterCondition, FilterGroup, FilterNode, RelativeDateKind } from "./types";
 
@@ -15,7 +16,11 @@ export type FilterValidationErrorCode =
   | "unfilterableColumn"
   | "unknownOperator"
   | "depthExceeded"
-  | "valueKindMismatch";
+  | "valueKindMismatch"
+  /** v0.4: a color operator inside a color rule's own `when` (see `validateColorRules`). */
+  | "colorInRule"
+  /** v0.4: a structurally invalid color rule (see `validateColorRules`). */
+  | "invalidColorRule";
 
 export interface FilterValidationError {
   code: FilterValidationErrorCode;
@@ -84,14 +89,29 @@ function valueKindProblem(kind: FilterValueKind, value: unknown, operator: strin
   }
 }
 
+/** Internal walk options. */
+interface WalkOptions {
+  schema: GridSchema;
+  registry: FieldTypeRegistry;
+  readable: ReadonlySet<string>;
+  /** false inside a color rule's `when` (no recursion through colors). */
+  allowColor: boolean;
+}
+
+function colorValueProblem(operator: string, value: unknown): string | null {
+  if (operator === "colorIsNone") return value === undefined ? null : "This operator takes no value";
+  return Array.isArray(value) && value.length > 0 && value.every(isCellColor)
+    ? null
+    : "Expected a non-empty list of colors";
+}
+
 function validateCondition(
   cond: FilterCondition,
   path: number[],
-  schema: GridSchema,
-  registry: FieldTypeRegistry,
-  readable: ReadonlySet<string>,
+  opts: WalkOptions,
   errors: FilterValidationError[],
 ): void {
+  const { schema, registry, readable } = opts;
   const { columnId, operator } = cond;
   const column = typeof columnId === "string" ? getColumnById(schema, columnId) : undefined;
   if (!column) {
@@ -107,6 +127,23 @@ function validateCondition(
       operator,
       message: "You do not have access to this column",
     });
+    return;
+  }
+  // Color operators filter the annotation, not the value: any readable column,
+  // `filterable: false` included.
+  if (isColorOperator(operator)) {
+    if (!opts.allowColor) {
+      errors.push({
+        code: "colorInRule",
+        path,
+        columnId,
+        operator,
+        message: "A color rule's condition cannot test colors",
+      });
+      return;
+    }
+    const problem = colorValueProblem(operator, cond.value);
+    if (problem) errors.push({ code: "valueKindMismatch", path, columnId, operator, message: problem });
     return;
   }
   if (column.filterable === false) {
@@ -140,9 +177,7 @@ function walk(
   node: FilterNode,
   path: number[],
   depth: number,
-  schema: GridSchema,
-  registry: FieldTypeRegistry,
-  readable: ReadonlySet<string>,
+  opts: WalkOptions,
   errors: FilterValidationError[],
 ): void {
   if (!isObject(node)) {
@@ -160,16 +195,18 @@ function walk(
     }
     const children = Array.isArray(node.children) ? node.children : [];
     children.forEach((child, i) => {
-      walk(child, [...path, i], depth + 1, schema, registry, readable, errors);
+      walk(child, [...path, i], depth + 1, opts, errors);
     });
     return;
   }
-  validateCondition(node, path, schema, registry, readable, errors);
+  validateCondition(node, path, opts, errors);
 }
 
 /**
  * Validates a filter against the schema and the caller's readable columns.
  * Returns every problem found (empty array = valid). A null filter is valid.
+ * The color operators (`COLOR_OPERATORS`) are accepted on every readable
+ * column, including `filterable: false` ones, with palette color values.
  */
 export function validateFilter(
   node: FilterNode | null,
@@ -177,8 +214,19 @@ export function validateFilter(
   registry: FieldTypeRegistry,
   readableColumnIds: ReadonlySet<string>,
 ): FilterValidationError[] {
+  return collectFilterErrors(node, schema, registry, readableColumnIds, true);
+}
+
+/** `validateFilter` with color operators allowed or (in a color rule's `when`) rejected as `colorInRule`. */
+export function collectFilterErrors(
+  node: FilterNode | null,
+  schema: GridSchema,
+  registry: FieldTypeRegistry,
+  readableColumnIds: ReadonlySet<string>,
+  allowColor: boolean,
+): FilterValidationError[] {
   if (node === null || node === undefined) return [];
   const errors: FilterValidationError[] = [];
-  walk(node, [], 1, schema, registry, readableColumnIds, errors);
+  walk(node, [], 1, { schema, registry, readable: readableColumnIds, allowColor }, errors);
   return errors;
 }

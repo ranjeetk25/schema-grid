@@ -2,6 +2,7 @@ import { Alert, Box, Button, Group, Stack, Text } from "@mantine/core";
 import { IconAlertCircle } from "../internal/icons";
 import { type KeyboardEvent, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { AccessMap } from "../internal/access";
+import type { CellColorCapabilitiesLike } from "../internal/color-contracts";
 import { readableColumnIds } from "../internal/access";
 import {
   type ColumnDef,
@@ -79,6 +80,12 @@ export interface UseFilterDraftOptions extends ApplyModeInput {
   /** Injectable timer (tests). */
   timer?: FilterTimer;
   onStatusChange?(status: FilterBuilderStatus): void;
+  /**
+   * v0.4: the data source's capabilities (e.g. `handle.effectiveCapabilities`).
+   * With `cellColors.filter`, every readable column offers "color is" (a
+   * swatch picker) and "has no color". Omit it and no color operator shows.
+   */
+  capabilities?: CellColorCapabilitiesLike;
 }
 
 export interface FilterDraftApi {
@@ -152,16 +159,19 @@ const sameStatus = (a: FilterBuilderStatus, b: FilterBuilderStatus) =>
  * `MAX_FILTER_DEPTH`.
  */
 export function useFilterDraft(options: UseFilterDraftOptions & { error?: string | null }): FilterDraftApi {
-  const { schema, registry, access, value, onChange } = options;
+  const { schema, registry, access, value, onChange, capabilities } = options;
   const maxDepth = Math.min(options.maxDepth ?? DEFAULT_MAX_DEPTH, MAX_FILTER_DEPTH);
   const mode = resolveApplyMode(options);
   const [draft, setDraft] = useState<FilterDraft>(() => toDraft(value));
   const draftRef = useRef(draft);
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
-  const ctx: DraftContext = useMemo(() => ({ schema, registry }), [schema, registry]);
+  const ctx: DraftContext = useMemo(
+    () => ({ schema, registry, ...(capabilities ? { capabilities } : {}) }),
+    [schema, registry, capabilities],
+  );
   const readable = useMemo(() => readableColumnIds(schema, access), [schema, access]);
-  const columns = useMemo(() => filterableColumns(schema, access), [schema, access]);
+  const columns = useMemo(() => filterableColumns(schema, access, capabilities), [schema, access, capabilities]);
 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -216,9 +226,9 @@ export function useFilterDraft(options: UseFilterDraftOptions & { error?: string
   const operatorsForColumnId = useCallback(
     (columnId: string | null) => {
       const column = columnId ? schema.columns.find((c) => c.id === columnId) : undefined;
-      return column ? operatorsFor(column, registry) : [];
+      return column ? operatorsFor(column, registry, capabilities) : [];
     },
-    [schema, registry],
+    [schema, registry, capabilities],
   );
 
   const status = toStatus(liveState ?? controller.state, options.error);
@@ -309,6 +319,8 @@ export interface FilterBuilderProps extends ApplyModeInput {
   autoFocus?: boolean;
   /** Injectable timer (tests). */
   timer?: FilterTimer;
+  /** v0.4: the source's capabilities; `cellColors.filter` adds "color is" / "has no color" (see `useFilterDraft`). */
+  capabilities?: CellColorCapabilitiesLike;
 }
 
 const numberFormat = new Intl.NumberFormat("en-US");

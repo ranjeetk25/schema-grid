@@ -1,10 +1,19 @@
 import { type SQL, sql } from "drizzle-orm";
+import { translateColorCondition } from "../colors/color-sql";
 import { UnsupportedOperatorError } from "../errors";
-import { type FilterCondition, type FilterNode, getColumnOperators, isNegativeOperator } from "../internal/core";
+import {
+  COLOR_OPERATORS,
+  type FilterCondition,
+  type FilterNode,
+  getColumnOperators,
+  isNegativeOperator,
+} from "../internal/core";
 import { resolveColumnExpr } from "../sql/column-expr";
 import type { SqlScope } from "../sql/scope";
 import { getOperatorTranslator } from "./operator-table";
 import { UnusableFilterValue } from "./values";
+
+const COLOR_OPERATOR_IDS: ReadonlySet<string> = new Set(COLOR_OPERATORS.map((o) => o.id));
 
 function isGroup(node: FilterNode): node is Extract<FilterNode, { op: "and" | "or" }> {
   return "op" in node && "children" in node;
@@ -13,6 +22,8 @@ function isGroup(node: FilterNode): node is Extract<FilterNode, { op: "and" | "o
 function translateCondition(cond: FilterCondition, scope: SqlScope): SQL {
   const column = scope.ctx.schema.columns.find((c) => c.id === cond.columnId);
   if (!column) throw new UnsupportedOperatorError(cond.operator, { columnId: cond.columnId, kind: "unknown column" });
+  // v0.4: color operators filter the SHOWN color (any column, whatever its type), not the value.
+  if (COLOR_OPERATOR_IDS.has(cond.operator)) return translateColorCondition(cond, scope, translateFilter);
   const operator = getColumnOperators(column, scope.ctx.registry).find((o) => o.id === cond.operator);
   if (!operator) throw new UnsupportedOperatorError(cond.operator, { columnId: column.id, kind: column.type });
 

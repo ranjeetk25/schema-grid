@@ -1,3 +1,5 @@
+import { canColorCell } from "../colors/access";
+import { type CellColorBatch, type CellColorChange, type CellColorResult, isCellColor } from "../colors/types";
 import { normalizeCapabilities } from "../datasource/capabilities";
 import { createDefaultRegistry } from "../field-types/default-registry";
 import { DEFAULT_TIME_ZONE } from "../time/zoned";
@@ -11,7 +13,7 @@ import type { ColumnDef } from "../schema/types";
 import { ChangeLog } from "./feed";
 import type { RowPartial } from "../datasource/types";
 import type { GridSchema } from "../schema/types";
-import { materialized, projectRow, stripFormulas } from "./materialize";
+import { cleanColors, materialized, projectRow, stripFormulas, withColors } from "./materialize";
 import { applyChangeBatch, createStoreRows, deleteStoreRows, type MutationDeps } from "./mutations";
 import { type MemoryQueryContext, resolveMemoryAccess } from "./context";
 import { runQuery } from "./query";
@@ -34,11 +36,15 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
   const log = new ChangeLog();
 
   const env = () => ({ now: now(), tz });
-  const caps = normalizeCapabilities(options.capabilities);
+  // Cell colors (v0.4) are fully supported unless the caller says otherwise.
+  const caps = normalizeCapabilities({
+    ...options.capabilities,
+    cellColors: { read: true, write: true, filter: true, ...options.capabilities?.cellColors },
+  });
 
   for (const row of options.rows ?? []) {
     if (store.has(row.id)) throw new Error(`Duplicate initial row id "${row.id}"`);
-    const copy = structuredClone(row);
+    const copy = withColors(structuredClone(row), cleanColors(row.colors));
     if (!Number.isInteger(copy.version) || copy.version < 1) copy.version = 1;
     if (typeof copy.cells !== "object" || copy.cells === null) copy.cells = {};
     stripFormulas(copy, schema);
@@ -77,13 +83,11 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     };
   }
 
-  function readableKeys(): Set<string> {
+  /** Readable column keys (cells) and ids (colors) for projecting rows. */
+  function readable(): { keys: Set<string>; ids: Set<string> } {
     const access = accessMap();
-    return new Set(
-      schema.columns
-        .filter((c) => access.get(c.id) === "read" || access.get(c.id) === "edit")
-        .map((c) => c.key),
-    );
+    const columns = schema.columns.filter((c) => access.get(c.id) === "read" || access.get(c.id) === "edit");
+    return { keys: new Set(columns.map((c) => c.key)), ids: new Set(columns.map((c) => c.id)) };
   }
 
   function requireColumn(columnId: string, need: "read" | "edit"): ColumnDef {
@@ -111,12 +115,44 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
 
   /** The current state of `ids` (existing ones, in order), formulas materialised and projected for the user. */
   function readRows(ids: string[]): Row[] {
-    const keys = readableKeys();
+    const r = readable();
     const e = env();
     return ids.flatMap((id) => {
       const stored = store.get(id);
-      return stored ? [projectRow(materialized(stored, schema, e), keys)] : [];
+      return stored ? [projectRow(materialized(stored, schema, e), r.keys, r.ids)] : [];
     });
+  }
+
+  /**
+   * Manual colors (v0.4): last write wins, no version / updatedAt bump, one
+   * feed entry per changed row. A cell is paintable when `canColorCell` says
+   * so; hidden columns answer like unknown ones.
+   */
+  function applyCellColors(batch: CellColorBatch): CellColorResult {
+    const applied: CellColorChange[] = [];
+    const rejected: CellColorResult["rejected"] = [];
+    const access = accessMap();
+    const changedRows = new Set<string>();
+    for (const change of Array.isArray(batch?.changes) ? batch.changes : []) {
+      const { rowId, columnId, color } = change;
+      const reject = (message: string) => rejected.push({ rowId, columnId, message });
+      const row = store.get(rowId);
+      const column = getColumnById(schema, columnId);
+      const a = column ? access.get(column.id) : undefined;
+      if (!row) reject("Row not found");
+      else if (!column || (a !== "read" && a !== "edit")) reject("Column not found");
+      else if (!canColorCell(row, column, options.user, resolver) || a !== "edit") reject("Read-only");
+      else if (color !== null && !isCellColor(color)) reject("Invalid color");
+      else {
+        const colors = cleanColors(row.colors, (id) => id !== column.id) ?? {};
+        if (color !== null) colors[column.id] = color;
+        store.set(rowId, withColors(row, Object.keys(colors).length > 0 ? colors : undefined));
+        applied.push({ rowId, columnId, color });
+        changedRows.add(rowId);
+      }
+    }
+    for (const rowId of changedRows) log.recordRow(rowId, false);
+    return { applied, rejected, rows: readRows([...changedRows]) };
   }
 
   return {
@@ -137,10 +173,13 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     async getRows(ids: string[]): Promise<Row[]> {
       return readRows(ids);
     },
+    async setCellColors(batch: CellColorBatch): Promise<CellColorResult> {
+      return applyCellColors(batch);
+    },
     async createRows(partials: RowPartial<Row>[]): Promise<Row[]> {
-      const keys = readableKeys();
+      const r = readable();
       const e = env();
-      return createStoreRows(partials, mutationDeps()).map((r) => projectRow(materialized(r, schema, e), keys));
+      return createStoreRows(partials, mutationDeps()).map((row) => projectRow(materialized(row, schema, e), r.keys, r.ids));
     },
     async deleteRows(ids: string[]): Promise<void> {
       deleteStoreRows(ids, mutationDeps());
@@ -148,12 +187,7 @@ export function createInMemoryDataSource<Row extends GridRow = GridRow>(
     async getChanges(since: string): Promise<ChangeFeedEntry<Row>> {
       const from = log.parse(since);
       const { changedIds, deletedIds } = log.since(from);
-      const keys = readableKeys();
-      const e = env();
-      const rows = changedIds.flatMap((id) => {
-        const stored = store.get(id);
-        return stored ? [projectRow(materialized(stored, schema, e), keys)] : [];
-      });
+      const rows = readRows(changedIds);
       return { cursor: log.cursor, rows, deletedRowIds: deletedIds, schemaVersion: schema.schemaVersion };
     },
     async getOptions(columnId: string, search?: string): Promise<Option[]> {

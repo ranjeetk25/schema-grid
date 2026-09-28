@@ -7,6 +7,7 @@
 import type { Option } from "../common/types";
 import { safeOptions } from "../field-types/builtins/options-shared";
 import type { ColumnDef } from "../schema/types";
+import { matchesRoleRule } from "./match-role-rule";
 import type { PermissionUser } from "./types";
 
 /** Column types whose config carries `options` with `settableBy` rules. */
@@ -15,8 +16,8 @@ export const OPTION_COLUMN_TYPES: ReadonlySet<string> = new Set(["select", "mult
 /** True when `user` may set `option` (`settableBy` absent or `"all"` = everyone). */
 export function canSetOption(option: Option, user: PermissionUser | undefined): boolean {
   const rule = option.settableBy;
-  if (!user || rule === undefined || rule === "all") return true;
-  return rule.roles.some((role) => user.roles.includes(role));
+  if (!user || rule === undefined) return true;
+  return matchesRoleRule(rule, user);
 }
 
 /** The options of an option-typed column (all of them), `[]` for other types. */
@@ -37,13 +38,16 @@ function roleLabel(role: string): string {
 }
 
 /**
- * `Option “Verified” can only be set by Admin` (roles joined with "or");
- * `Option “X” can’t be set manually` for an empty role list; `settableMessage`
+ * `Option “Verified” can only be set by Admin` (roles joined with "or", plus
+ * "specific people" when the rule lists users — never the ids themselves);
+ * `Option “X” can’t be set manually` for an empty rule; `settableMessage`
  * (v0.3.1) replaces either when the option carries one.
  */
 export function optionNotSettableMessage(option: Option): string {
   if (typeof option.settableMessage === "string" && option.settableMessage.trim() !== "") return option.settableMessage;
-  const roles = option.settableBy && option.settableBy !== "all" ? option.settableBy.roles.map(roleLabel) : [];
+  const rule = option.settableBy && option.settableBy !== "all" ? option.settableBy : {};
+  const roles = (rule.roles ?? []).map(roleLabel);
+  if (rule.users?.length) roles.push("specific people");
   if (roles.length === 0) return `Option “${option.label}” can’t be set manually`;
   const who = roles.length === 1 ? roles[0] : `${roles.slice(0, -1).join(", ")} or ${roles[roles.length - 1]}`;
   return `Option “${option.label}” can only be set by ${who}`;

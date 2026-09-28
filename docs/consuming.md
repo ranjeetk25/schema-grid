@@ -150,11 +150,12 @@ A grid over a table you already have is one `defineGrid()` call. This is the dem
 verbatim ([`apps/demo-api/src/leads/grid.ts`](../apps/demo-api/src/leads/grid.ts) — a test keeps the two in
 sync): a plain `leads(id, name, email, payment_status ENUM, call_date DATE, ai_verified BOOL, updated_at)`
 table, no `cells` JSON, no version column. Columns added from the grid's "+" header are saved in a schema store and
-their values in an extension cells table beside `leads` (both created once, see below).
+their values in an extension cells table beside `leads`; painted (manual) cell colors live in a cell colors table
+(all three created once, see below).
 
 ```ts
 import { type ColumnDef, createRolePermissionResolver, type GridSchema } from "@ranjeetk25/schema-grid-core";
-import { createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
+import { type CellColorStore, createSqlViewDataSource, type ExtensionCellStore, type GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { defineGrid, type SchemaStore } from "@ranjeetk25/schema-grid-server/http";
 import { eq, sql } from "drizzle-orm";
 import type { GridRequestContext } from "../context";
@@ -174,14 +175,14 @@ export const leadsSchema: GridSchema = { id: "leads", schemaVersion: 1, columns:
   col(5, "contact", "Contact", "text", { settable: false, sortable: false }), // computed below: read-only, unfilterable
 ] };
 
-type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore };
+type Deps = { db: GridDb; table: LeadsTable; tz: string; schemaStore: SchemaStore; extension: ExtensionCellStore; colors: CellColorStore };
 
-/** The existing `leads` table as a grid; "+" columns live in `extension`. Only admins may change the schema. */
-export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) => defineGrid<GridRequestContext>({
+/** The existing `leads` table as a grid; "+" columns live in `extension`, painted cells in `colors`. Only admins may change the schema. */
+export const leadsGrid = ({ db, table: t, tz, schemaStore, extension, colors }: Deps) => defineGrid<GridRequestContext>({
   id: "leads", schema: leadsSchema, schemaStore,
   permission: (ctx, op) => op !== "updateSchema" || ctx.user.roles.includes("admin"),
   source: (ctx, { schema }) => createSqlViewDataSource({
-    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension,
+    db, schema, resolver: createRolePermissionResolver(), user: ctx.user, tz, now: ctx.now, extension, colors,
     baseQuery: () => sql`select * from ${t}`, rowId: t.id, updatedAt: t.updatedAt,
     columns: { name: { expr: t.name, searchable: true }, email: { expr: t.email, searchable: true },
       paymentStatus: { expr: t.paymentStatus }, callDate: { expr: t.callDate }, aiVerified: { expr: t.aiVerified },
@@ -198,23 +199,41 @@ export const leadsGrid = ({ db, table: t, tz, schemaStore, extension }: Deps) =>
 Serve every grid from one endpoint (`POST /grid/:gridId/:op` — the schema is the `getSchema` op — and `GET /grid` to list grids):
 
 ```ts
-import { createExtensionCellsTableDDL, createGridSchemasTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
-import { createDrizzleSchemaStore, createExtensionCellStore } from "@ranjeetk25/schema-grid-server/drizzle";
+import {
+  createCellColorsTableDDL,
+  createExtensionCellsTableDDL,
+  createGridSchemasTableDDL,
+} from "@ranjeetk25/schema-grid-server/ddl";
+import {
+  createCellColorStore,
+  createDrizzleSchemaStore,
+  createExtensionCellStore,
+} from "@ranjeetk25/schema-grid-server/drizzle";
 import { createGridRegistry, toFetchHandler } from "@ranjeetk25/schema-grid-server/http";
 
 // On boot (idempotent `CREATE TABLE IF NOT EXISTS`):
 await db.execute(sql.raw(createGridSchemasTableDDL({ table: "grid_schemas" }).sql));
 await db.execute(sql.raw(createExtensionCellsTableDDL({ table: "grid_extension_cells" }).sql));
+await db.execute(sql.raw(createCellColorsTableDDL({ table: "grid_cell_colors" }).sql));
 
 const schemaStore = createDrizzleSchemaStore({ db, table: "grid_schemas" });
 const extension = createExtensionCellStore({ db, table: "grid_extension_cells" });
+const colors = createCellColorStore({ db, table: "grid_cell_colors" }); // one table for every grid (keyed by grid id)
 const grids = createGridRegistry([
-  admissionsGrid(deps),
-  leadsGrid({ db, table: leads, tz: "Asia/Kolkata", schemaStore, extension }),
+  admissionsGrid({ ...deps, colors }), // createDrizzleDataSource({ …, colors })
+  leadsGrid({ db, table: leads, tz: "Asia/Kolkata", schemaStore, extension, colors }),
 ]);
 const endpoint = toFetchHandler(grids, { basePath: "/grid", context: (request) => contextFrom(request.headers) });
 app.all("/grid/*", (c) => endpoint(c.req.raw)); // Hono; Bun.serve / Next.js route handlers take `endpoint` as is
 ```
+
+**Cell colors (v0.4).** The `colors` store is optional: color rules saved on a view render and filter
+(`colorIs` / `colorIsNone`) without it, while painting cells ("Cell color", shared by every user) needs it — pass
+the same store to every data source (`createDrizzleDataSource({ …, colors })`, `createSqlViewDataSource({ …,
+colors })`); it is keyed by grid id, so one table serves every grid. Anyone who can edit a cell can paint it.
+Painting never bumps a row's version, and painted rows reach other users through the change feed. Details:
+[server README, "Cell colors"](../packages/server/README.md#cell-colors), wire format in
+[`wire-contract.md`](./wire-contract.md#cell-colors-v04).
 
 `toExpressRouter(grids, { context })` (mount with `app.use("/grid", express.json({ strict: false }), …)` — before
 the global `express.json()`, see "Server (Express)") and
@@ -281,7 +300,7 @@ workbench's built-in handlers rather than replacing them:
 - **Columns picker.** The toolbar's "Columns" button shows/hides and reorders columns; the result is the current
   view's `columnState`, so "Save view" persists it and switching views undoes it. Columns the user cannot read are
   never listed.
-- **Per-option rules.** `Option.settableBy: "all" | { roles }` restricts who may SET a select option (existing
+- **Per-option rules.** `Option.settableBy: "all" | { roles?, users? }` restricts who may SET a select option (existing
   values stay readable). Editors hide such options, paste/fill count them as errors, and both the in-memory source
   and the server reject them with `Option “Verified” can only be set by Admin`. Set it from the column panel's
   Options editor ("Who can set") or in the schema.
@@ -296,6 +315,47 @@ workbench's built-in handlers rather than replacing them:
   (string or function) overrides it. Export failures reach `onError` and an inline banner with Retry.
 - **Bundle.** io, the Import wizard and the Export dialog load on first use; exceljs sits in its own chunk
   (`docs/bundle.md`).
+
+### Per-person permissions (v0.4)
+
+Column permissions (`permissions.read` / `permissions.edit`) and `Option.settableBy` take a `RoleRule`:
+`"all" | { roles?: string[]; users?: string[] }`. A user matches when any of their roles is in `roles` **or** their
+`PermissionUser.id` is in `users`; `superRoles` still bypass; `{}` (or empty lists) means nobody.
+
+```ts
+// Finance can edit the fee, and so can Priya (an exception, by user id).
+{ key: "fee", permissions: { read: "all", edit: { roles: ["finance_team"], users: ["u_priya"] } } }
+```
+
+> **Per-person lists are for exceptions; use host roles for teams.** Ids stay in the schema when people leave or
+> change teams (they show as "unknown user" in the column panel until someone removes them); a role in your auth
+> system is revoked in one place.
+
+- **Identity is the server's.** Rules match the `PermissionUser.id` your `defineGrid({ source: ctx => … })` builds
+  from the authenticated session, never anything the client sends. Enforcement (`applyChanges`, `createRows`, the
+  SQL-view write path, option rules) is the same shared matcher (`matchesRoleRule`) as for roles.
+- **Redaction.** `getSchema` sent to a caller **without** schema-write permission (`permission(ctx, "updateSchema")`
+  and `schemaWritable`) replaces every `users` list with `[caller.id]` when the caller is listed, else `[]` — the
+  client still computes the caller's own access, and nobody else's id is disclosed. Callers who may change the
+  schema get the full lists. The caller comes from `defineGrid({ user: ctx => ctx.user })`; by default `ctx.user`
+  is used when it is a `{ id, roles }` object (no user → every list is emptied). Opt out with
+  `defineGrid({ redactPermissionUsers: false })`. `updateSchema` dedupes the lists; redaction never reaches storage.
+- **Editing the lists.** Pass a `userDirectory` to `<SchemaGridWorkbench>` (or to `ColumnPanel` / the column form)
+  and "Who can access" and option "Who can set" get a People picker beside the roles picker:
+
+  ```tsx
+  const userDirectory = {
+    // async search for the picker ("" = a first page)
+    search: (query: string) => api.get<ActorRef[]>(`/people?q=${encodeURIComponent(query)}`),
+    // names for stored ids; ids it does not return show as the raw id, marked "unknown user"
+    resolve: (ids: string[]) => api.post<ActorRef[]>("/people/lookup", { ids }),
+  };
+  <SchemaGridWorkbench client={leads} user={user} userDirectory={userDirectory} />
+  ```
+
+  Summaries read "Only Finance team and Priya, Rahul can edit" ("N people" beyond 3); giving a person edit also
+  gives them view (with a note). Without `userDirectory` the People pickers are hidden and any stored `users` are
+  kept untouched on save.
 
 ## CI / AWS CodePipeline + CodeBuild
 

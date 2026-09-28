@@ -50,6 +50,16 @@ describe("subpath exports", () => {
       "LiveFilterController",
       "shouldApplyLive",
       "ColumnTypeIcon",
+      // v0.4 cell colors
+      "CellColorButton",
+      "CellColorPicker",
+      "ColorSwatchMultiSelect",
+      "ColorRulesDialog",
+      "setColumnColorFilter",
+      "CellColorFilterProvider",
+      "CELL_COLOR_PALETTE",
+      "CellColorSwatch",
+      "notifyCellColorReport",
     ]) {
       expect(m, name).toHaveProperty(name);
     }

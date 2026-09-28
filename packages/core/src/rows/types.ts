@@ -1,3 +1,4 @@
+import type { CellColor } from "../colors/types";
 import type { ActorRef, ISODateTimeString } from "../common/types";
 
 export interface GridRow {
@@ -7,6 +8,12 @@ export interface GridRow {
   updatedBy?: ActorRef;
   /** Keyed by ColumnDef.key. */
   cells: Record<string, unknown>;
+  /**
+   * v0.4: MANUAL cell colors keyed by column id (never rule colors). Absent or
+   * `{}` = none. Shared by every user; writing them (`setCellColors`) does not
+   * bump `version` / `updatedAt`. Sources drop entries for unreadable columns.
+   */
+  colors?: Record<string, CellColor>;
 }
 
 /** JSON-serialisable side data travelling with a change (never a cell value). */

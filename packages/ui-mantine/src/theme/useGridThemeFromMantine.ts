@@ -6,6 +6,7 @@ import {
   useMantineTheme,
 } from "@mantine/core";
 import { useMemo } from "react";
+import { cellColorCssVariables } from "../internal/color-contracts";
 import { schemaGridMantineVariables } from "./schemaGridMantineTheme";
 
 export type GridCssVariables = Record<`--ag-${string}`, string>;
@@ -149,13 +150,17 @@ export function useGridThemeFromMantine(): GridThemeFromMantine {
  *
  * Emits (1) `schemaGridMantineVariables` (zinc retune of Mantine's own
  * defaults + popup shadows), (2) the `--sg-*` grid contract per scheme with
- * the accent = Mantine primary colour, and (3) the legacy `--ag-*` mappings.
+ * the accent = Mantine primary colour, (3) the legacy `--ag-*` mappings, and
+ * (4) v0.4: the cell color palette per scheme (`cellColorCssVariables`), so
+ * painted cells and rule colors switch with dark mode.
  */
 export const mantineGridCssVariablesResolver: CSSVariablesResolver = (theme) => {
   const light = resolveGridThemeParams(theme, "light");
   const dark = resolveGridThemeParams(theme, "dark");
   const perScheme = (p: GridThemeParams, scheme: "light" | "dark") => ({
     ...schemaGridCssVariables(p, scheme),
+    // v0.4: the cell color palette (`--sg-color-<name>`), light / dark variants.
+    ...cellColorCssVariables(scheme),
     "--ag-header-background-color": p.headerBackgroundColor,
     "--ag-row-hover-color": p.rowHoverColor,
     "--ag-selected-row-background-color": p.selectedRowBackgroundColor,

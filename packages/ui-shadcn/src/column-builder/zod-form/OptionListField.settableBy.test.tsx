@@ -1,5 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { UserDirectoryProvider } from "../../internal/people";
 import { renderUi } from "../../test/render";
 import { OptionListField, settableBySummary } from "./OptionListField";
 
@@ -41,5 +42,37 @@ describe("OptionListField: Who can set (v0.3)", () => {
     const last = onChange.mock.calls.at(-1)?.[0] as Record<string, unknown>[];
     expect(last[1]).toEqual({ id: "verified", label: "Verified" });
     expect("settableBy" in (last[1] as object)).toBe(false);
+  });
+});
+
+describe("OptionListField: Who can set, per person (v0.4)", () => {
+  const directory = {
+    search: vi.fn(async () => [{ id: "u-priya", name: "Priya" }]),
+    resolve: vi.fn(async (ids: string[]) => (ids.includes("u-priya") ? [{ id: "u-priya", name: "Priya" }] : [])),
+  };
+
+  it("summaries count people; a users-only rule is kept when read back", () => {
+    expect(settableBySummary({ roles: ["admin"], users: ["u-priya"] }, new Map([["u-priya", "Priya"]]))).toBe("Only Admin and Priya");
+    expect(settableBySummary({ users: ["a", "b", "c", "d"] })).toBe("Only 4 people");
+    expect(settableBySummary({})).toBe("Nobody yet");
+    renderUi(
+      <OptionListField label="Options" value={[{ id: "w", label: "Waived", settableBy: { users: ["u-priya"] } }]} onChange={() => {}} hasColor valueKey="id" roles={["admin"]} />,
+    );
+    expect(screen.getByTestId("option-settable-by")).toHaveTextContent("Only u-priya");
+  });
+
+  it("the popover gets a People picker when a userDirectory is given (prop or context)", async () => {
+    const onChange = vi.fn();
+    const { user } = renderUi(
+      <UserDirectoryProvider value={directory}>
+        <OptionListField label="Options" value={[{ id: "w", label: "Waived", settableBy: { roles: ["admin"] } }]} onChange={onChange} hasColor valueKey="id" roles={["admin"]} />
+      </UserDirectoryProvider>,
+    );
+    await user.click(screen.getByTestId("option-settable-by"));
+    const dialog = await screen.findByRole("dialog", { name: "Who can set Waived" });
+    await user.click(within(dialog).getByRole("combobox", { name: "People that can set Waived" }));
+    await user.click(await screen.findByRole("option", { name: /Priya/ }));
+    expect(onChange).toHaveBeenLastCalledWith([{ id: "w", label: "Waived", settableBy: { roles: ["admin"], users: ["u-priya"] } }]);
+    expect(screen.getByTestId("option-settable-by")).toHaveTextContent("Only Admin and Priya");
   });
 });

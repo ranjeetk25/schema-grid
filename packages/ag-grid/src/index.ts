@@ -17,6 +17,8 @@ export {
   useSchemaGrid,
   createStatusCellClassRules,
   createStatusRowClassRules,
+  type CellColorReport,
+  type CellColorTarget,
   type ExportFormat,
   type RowModelKey,
   type SchemaGridFilterErrors,
@@ -89,8 +91,49 @@ export { exportCsv, type ExportCsvOptions } from "./export/csv";
 export { exportCurrentView, type ExportCurrentViewOptions } from "./export/exportCurrentView";
 
 // Theme
-export { createSchemaGridTheme, SCHEMA_GRID_THEME_PARAMS, type SchemaGridThemeOverrides } from "./theme/theme";
-export { SG_CLASSES, SG_CSS, type SgClassName } from "./theme/classNames";
+export {
+  CELL_COLOR_TOKENS,
+  type CellColorToken,
+  cellColorCssVariables,
+  cellColorVar,
+  createSchemaGridTheme,
+  SCHEMA_GRID_THEME_PARAMS,
+  type SchemaGridThemeOverrides,
+} from "./theme/theme";
+export { cellColorClass, SG_CLASSES, SG_CSS, type SgClassName } from "./theme/classNames";
+
+// Cell colors (v0.4)
+export {
+  type CellColorResolver,
+  type CellColorResolverOptions,
+  createCellColorClassRules,
+  createCellColorResolver,
+  createRowColorClassRules,
+  pruneColorRules,
+  sanitizeColorRules,
+} from "./colors/cellColors";
+export {
+  type ColorApplyOutcome,
+  type ColorController,
+  type ColorControllerOptions,
+  type ColorSource,
+  createColorController,
+} from "./colors/colorController";
+export {
+  type CellColorCapabilitiesLike,
+  canFilterByColor,
+  columnOperatorsWithColors,
+  withColorOperators,
+} from "./filters/colorOperators";
+export { CELL_COLORS, COLOR_OPERATORS, isCellColor } from "./internal/core";
+export type {
+  CellColor,
+  CellColorBatch,
+  CellColorChange,
+  CellColorResult,
+  ColorRule,
+  ColorRuleTarget,
+} from "./internal/core";
 
 // Stores
 export { createStore, useStoreSelector, type Store } from "./state/createStore";
@@ -111,7 +154,13 @@ export {
 } from "./editing/editController";
 export { createEditRequestHandler } from "./editing/editEntry";
 export type { ConflictHandler } from "./editing/conflicts";
-export { createUndoStack, invertChanges, type UndoStack } from "./undo/undoStack";
+export {
+  type ColorUndoChange,
+  createUndoStack,
+  invertChanges,
+  type UndoRedoResult,
+  type UndoStack,
+} from "./undo/undoStack";
 
 // Range, clipboard, fill (pure planners)
 export type { CellPos, CellRange, NormalizedRange } from "./range/geometry";

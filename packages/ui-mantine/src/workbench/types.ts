@@ -15,6 +15,7 @@ import type {
   ViewDef,
 } from "@ranjeetk25/schema-grid-core";
 import type { ReactNode } from "react";
+import type { UserDirectory } from "../internal/people";
 import type { ExportFileNameOption } from "./exportName";
 
 export type { ExportFileFormat, ExportFileNameContext, ExportFileNameOption } from "./exportName";
@@ -44,6 +45,10 @@ export interface WorkbenchFeatures {
   addColumn: boolean;
   undo: boolean;
   polling: boolean;
+  /** v0.4: the "Cell color" paint popover (source reads + writes colors: `capabilities.cellColors`). */
+  paint: boolean;
+  /** v0.4: the "Color rules" dialog (rules render client-side, so any loaded source; hidden without readable columns). */
+  colorRules: boolean;
 }
 
 export type WorkbenchFeatureName = keyof WorkbenchFeatures;
@@ -168,6 +173,12 @@ export interface SchemaGridWorkbenchBaseProps {
   pageSize?: number;
   /** Roles offered in the column panel's access step. Default: roles found in the schema + the user's. */
   roles?: string[];
+  /**
+   * v0.4: the host's people directory. Adds People pickers (per-person
+   * permissions: `RoleRule.users`) to the column panel's "Who can access" and
+   * to option "Who can set". Absent → no People pickers; stored `users` are kept.
+   */
+  userDirectory?: UserDirectory;
   onRemoteChanges?(entry: ChangeFeedEntry): void;
   /**
    * Host grid events, merged with the workbench's own (v0.3): `beforeCellsChange`

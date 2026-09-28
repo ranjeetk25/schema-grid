@@ -233,6 +233,14 @@ describe("Option.settableBy in the pickers (v0.3)", () => {
   };
   const counsellor = { id: "u2", roles: ["counsellor"] };
 
+  it("v0.4 per-person settableBy: a listed user may set it; others see “specific people”, never ids", () => {
+    const people: SelectEditorConfig = { options: [{ id: "waived", label: "Waived", settableBy: { roles: ["admin"], users: ["u2"] } }] };
+    const { getByRole, rerender } = renderUi(<SelectEditor {...selectProps({ config: people, user: counsellor })} />);
+    expect(getByRole("option", { name: "Waived" })).not.toHaveAttribute("aria-disabled", "true");
+    rerender(<SelectEditor {...selectProps({ config: people, user: { id: "u3", roles: [] }, value: "waived" })} />);
+    expect(getByRole("option", { name: "Waived" })).toHaveAttribute("title", "Only Admin or specific people can set this");
+  });
+
   it("SelectEditor offers only settable options, keeps the current one locked with a reason", () => {
     const { getByRole, queryByRole, rerender } = renderUi(<SelectEditor {...selectProps({ config: restricted, user: counsellor })} />);
     expect(getByRole("option", { name: "Pending" })).toBeInTheDocument();

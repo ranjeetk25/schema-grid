@@ -22,8 +22,13 @@ export interface Option {
   settableMessage?: string;
 }
 
-/** `"all"` or an explicit role list (column permissions, `Option.settableBy`). */
-export type RoleRule = "all" | { roles: string[] };
+/**
+ * `"all"` or explicit role and/or user lists (column permissions,
+ * `Option.settableBy`). A user matches when any of their roles is in `roles`
+ * or their `PermissionUser.id` is in `users` (v0.4); `{}` or empty lists =
+ * nobody. See `matchesRoleRule`.
+ */
+export type RoleRule = "all" | { roles?: string[]; users?: string[] };
 
 /** A reference to a record in another table (link field). */
 export interface LinkRef {

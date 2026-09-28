@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Option } from "../../src/common/types";
+import { optionSchema } from "../../src/field-types/builtins/options-shared";
 import { createDefaultRegistry } from "../../src/field-types/default-registry";
 import { validateCellValue } from "../../src/memory/mutations";
 import {
@@ -124,5 +125,35 @@ describe("validateCellValue with option rules", () => {
 
   it("keeps an existing non-settable value when the change does not introduce it", () => {
     expect(validateCellValue(select, "verified", registry, { user: counsellor, prev: "verified" })).toBeNull();
+  });
+});
+
+describe("per-user settableBy (v0.4)", () => {
+  const byPeople: Option = { id: "waived", label: "Waived", settableBy: { roles: ["admin"], users: ["u2"] } };
+  const peopleOnly: Option = { id: "waived", label: "Waived", settableBy: { users: ["u2"] } };
+
+  it("canSetOption honours listed user ids besides roles", () => {
+    expect(canSetOption(byPeople, counsellor)).toBe(true);
+    expect(canSetOption(byPeople, admin)).toBe(true);
+    expect(canSetOption(byPeople, { id: "u3", roles: [] })).toBe(false);
+    expect(canSetOption(peopleOnly, counsellor)).toBe(true);
+    expect(canSetOption(peopleOnly, admin)).toBe(false);
+    expect(canSetOption({ id: "x", label: "X", settableBy: {} }, admin)).toBe(false);
+  });
+
+  it("the message says “specific people” and never lists user ids", () => {
+    expect(optionNotSettableMessage(byPeople)).toBe("Option “Waived” can only be set by Admin or specific people");
+    expect(optionNotSettableMessage(peopleOnly)).toBe("Option “Waived” can only be set by specific people");
+    expect(optionNotSettableMessage({ id: "x", label: "X", settableBy: {} })).toBe("Option “X” can’t be set manually");
+    expect(optionNotSettableMessage(byPeople)).not.toContain("u2");
+  });
+
+  it("the option config schema accepts users (non-empty ids) and rules without roles", () => {
+    const parse = (settableBy: unknown) => optionSchema.safeParse({ id: "a", label: "A", settableBy }).success;
+    expect(parse({ users: ["u2"] })).toBe(true);
+    expect(parse({ roles: ["admin"], users: ["u2"] })).toBe(true);
+    expect(parse({})).toBe(true);
+    expect(parse({ users: [""] })).toBe(false);
+    expect(parse({ users: "u2" })).toBe(false);
   });
 });

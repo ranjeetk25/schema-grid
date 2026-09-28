@@ -73,7 +73,7 @@ export const ALL_ROWS_VIEW: ViewDef = {
   pageSize: 100,
 };
 
-/** Compares the parts of a view the "unsaved changes" dot cares about. */
+/** Compares the parts of a view the "unsaved changes" dot cares about (v0.4: its color rules too). */
 export function comparableView(v: ViewDef | null | undefined): string {
-  return v ? JSON.stringify({ f: v.filter, s: v.sort, q: v.search ?? "", g: v.groupBy }) : "";
+  return v ? JSON.stringify({ f: v.filter, s: v.sort, q: v.search ?? "", g: v.groupBy, c: v.colorRules ?? [] }) : "";
 }

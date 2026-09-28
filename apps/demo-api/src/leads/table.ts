@@ -1,4 +1,8 @@
-import { createExtensionCellsTableDDL, createGridSchemasTableDDL } from "@ranjeetk25/schema-grid-server/ddl";
+import {
+  createCellColorsTableDDL,
+  createExtensionCellsTableDDL,
+  createGridSchemasTableDDL,
+} from "@ranjeetk25/schema-grid-server/ddl";
 import type { GridDb } from "@ranjeetk25/schema-grid-server/drizzle";
 import { sql } from "drizzle-orm";
 import { boolean, date, int, mysqlEnum, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
@@ -60,23 +64,27 @@ export function leadSeed(i: number, now: Date, tz: string): LeadSeed {
   };
 }
 
-/** Tables behind the leads grid besides the leads table itself: the schema store and the extension cells. */
+/** Tables behind the leads grid besides the leads table itself: the schema store, the extension cells and the cell colors. */
 export interface LeadsStorageNames {
   /** `createDrizzleSchemaStore` table (one row per grid). */
   schemasTable: string;
   /** `createExtensionCellStore` table ("+" columns added from the grid). */
   extensionTable: string;
+  /** `createCellColorStore` table (manual cell colors, v0.4) — shared with the admissions grid, keyed by grid id. */
+  colorsTable: string;
 }
 
 export const DEFAULT_LEADS_STORAGE: LeadsStorageNames = {
   schemasTable: "grid_schemas",
   extensionTable: "grid_extension_cells",
+  colorsTable: "grid_cell_colors",
 };
 
-/** Idempotent `CREATE TABLE IF NOT EXISTS` for the schema store and extension cells tables (run on boot). */
+/** Idempotent `CREATE TABLE IF NOT EXISTS` for the schema store, extension cells and cell colors tables (run on boot). */
 export async function ensureLeadsStorage(db: GridDb, names: LeadsStorageNames = DEFAULT_LEADS_STORAGE): Promise<void> {
   await db.execute(sql.raw(createGridSchemasTableDDL({ table: names.schemasTable }).sql));
   await db.execute(sql.raw(createExtensionCellsTableDDL({ table: names.extensionTable }).sql));
+  await db.execute(sql.raw(createCellColorsTableDDL({ table: names.colorsTable }).sql));
 }
 
 /** Creates the table if missing and seeds `count` leads when it is empty. Returns the number inserted. */
@@ -99,7 +107,7 @@ export async function ensureLeads(
   return count;
 }
 
-/** Empties and reseeds the leads table and forgets the grid's stored schema + extension cells (dev reset). */
+/** Empties and reseeds the leads table and forgets the grid's stored schema, extension cells and cell colors (dev reset). */
 export async function resetLeads(
   db: GridDb,
   table: LeadsTable,
@@ -114,5 +122,6 @@ export async function resetLeads(
   await ensureLeadsStorage(db, storage);
   await db.execute(sql`DELETE FROM ${sql.raw(quote(storage.schemasTable))} WHERE grid_id = ${gridId}`);
   await db.execute(sql`DELETE FROM ${sql.raw(quote(storage.extensionTable))} WHERE grid_id = ${gridId}`);
+  await db.execute(sql`DELETE FROM ${sql.raw(quote(storage.colorsTable))} WHERE grid_id = ${gridId}`);
   await ensureLeads(db, table, name, now, tz);
 }

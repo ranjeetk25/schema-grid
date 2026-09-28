@@ -213,6 +213,10 @@ describe("wireSchemas outputs", () => {
     expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", color: "red" }]).success).toBe(true);
     expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: { roles: ["admin"] } }]).success).toBe(true);
     expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: "some" }]).success).toBe(false);
+    // v0.4 per-user rules: `users` (non-empty ids), `roles` optional, `{}` = nobody.
+    expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: { users: ["u1"] } }]).success).toBe(true);
+    expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: {} }]).success).toBe(true);
+    expect(wireSchemas.getOptions.output.safeParse([{ id: "a", label: "A", settableBy: { users: [""] } }]).success).toBe(false);
     expect(wireSchemas.createOption.output.safeParse({ id: "a", label: "A" }).success).toBe(true);
     expect(wireSchemas.lookup.output.safeParse([{ id: "p1", label: "P" }]).success).toBe(true);
     expect(wireSchemas.createRows.output.safeParse([]).success).toBe(true);

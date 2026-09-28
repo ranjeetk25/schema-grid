@@ -4,7 +4,7 @@
  * helpers at the bottom are UI-specific (not gaps in core).
  */
 import type { FilterValueKind } from "@ranjeetk25/schema-grid-core";
-import { RELATIVE_DATE_PRESETS } from "@ranjeetk25/schema-grid-core/filter";
+import { COLOR_OPERATORS as CORE_COLOR_OPERATORS, RELATIVE_DATE_PRESETS } from "@ranjeetk25/schema-grid-core/filter";
 
 // §4.1 schema, §4.4 query, §4.5 rows, §4.6 data source, common refs
 export type {
@@ -71,14 +71,23 @@ export type {
   RelativeDatePreset,
 } from "@ranjeetk25/schema-grid-core/filter";
 export {
+  COLOR_OPERATORS,
   MAX_FILTER_DEPTH,
   NEGATIVE_OPERATOR_IDS,
+  hasColorCondition,
   RELATIVE_DATE_PRESETS,
   findOperator,
   isFilterCondition,
   isFilterGroup,
   validateFilter,
 } from "@ranjeetk25/schema-grid-core/filter";
+
+// v0.4 cell colors
+export type { CellColor, CellColorResult, ColorRule, ColorRuleIssue, ColorRuleTarget } from "@ranjeetk25/schema-grid-core";
+export { CELL_COLORS, isCellColor, validateColorRules } from "@ranjeetk25/schema-grid-core";
+
+/** True for the v0.4 color operators (`colorIs` / `colorIsNone`). */
+export const isColorOperatorId = (id: unknown): boolean => typeof id === "string" && CORE_COLOR_OPERATORS.some((o) => o.id === id);
 
 // §4.8 formula
 export type { FormulaError, FormulaNode, FormulaResultType } from "@ranjeetk25/schema-grid-core";

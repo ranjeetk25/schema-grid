@@ -87,6 +87,18 @@ export { FORMULA_FUNCTIONS, dependencies, inferResultType, isFormulaError, parse
 export type { FormulaEnv, FormulaFunctionDef, FormulaValue } from "@ranjeetk25/schema-grid-core";
 export { DEFAULT_TIME_ZONE, evaluate } from "@ranjeetk25/schema-grid-core";
 
+// v0.4 cell colors (palette, color rules, filter by color)
+export type {
+  CellColor,
+  CellColorResult,
+  ColorRule,
+  ColorRuleIssue,
+  ColorRuleTarget,
+  ColorRulesValidation,
+} from "@ranjeetk25/schema-grid-core";
+export { CELL_COLORS, isCellColor, validateColorRules } from "@ranjeetk25/schema-grid-core";
+export { COLOR_OPERATORS } from "@ranjeetk25/schema-grid-core/filter";
+
 // ---------------------------------------------------------------------------
 // Local helpers — gaps in core's public API
 // ---------------------------------------------------------------------------

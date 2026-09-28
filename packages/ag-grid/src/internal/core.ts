@@ -14,6 +14,7 @@
  *   6. Formula engine (§4.8)
  *   7. Events (§4.9)
  *   8. IO bridge (import-export package)
+ *   9. Cell colors (v0.4)
  */
 
 import {
@@ -34,6 +35,7 @@ import {
   type ChangeBatch,
   type ChangeConflict,
   type ChangeFeedEntry,
+  type ColorRule,
   type Option,
   type ViewDef,
   DEFAULT_TIME_ZONE,
@@ -222,6 +224,8 @@ export interface MatchContext {
   tz?: string;
   /** Override cell reads (e.g. to supply computed formula values). */
   getCellValue?(row: GridRow, column: ColumnDef): unknown;
+  /** v0.4: the active view's color rules, for `colorIs` / `colorIsNone` (the SHOWN color). */
+  colorRules?: readonly ColorRule[];
 }
 
 /** LOCAL: read a cell, honouring an override (formula values). */
@@ -251,6 +255,7 @@ export function matchesFilter(row: GridRow, node: FilterNode | null, ctx: MatchC
     now: ctx.now ?? new Date(),
     tz: ctx.tz ?? DEFAULT_TIME_ZONE,
     ...(ctx.user ? { userId: ctx.user.id } : {}),
+    ...(ctx.colorRules && ctx.colorRules.length > 0 ? { colorRules: ctx.colorRules } : {}),
   });
 }
 
@@ -434,3 +439,30 @@ export interface IoExportOptions {
 export interface IoExportModule {
   buildExportBlob(opts: IoExportOptions): Promise<Blob>;
 }
+
+// ============================================================================
+// 9. Cell colors (v0.4)
+// ============================================================================
+
+export type {
+  CellColor,
+  CellColorBatch,
+  CellColorChange,
+  CellColorResult,
+  ColorMatchContext,
+  ColorRule,
+  ColorRuleIssue,
+  ColorRuleTarget,
+  ColorRulesValidation,
+  FilterMatchContext,
+} from "@ranjeetk25/schema-grid-core";
+export {
+  CELL_COLORS,
+  COLOR_OPERATORS,
+  canColorCell,
+  hasColorCondition,
+  isCellColor,
+  resolveCellColor,
+  resolveRowColor,
+  validateColorRules,
+} from "@ranjeetk25/schema-grid-core";

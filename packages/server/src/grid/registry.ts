@@ -15,6 +15,7 @@ import {
 } from "../internal/core";
 import { assertValidSchema } from "../schema/validate-schema";
 import type { GridDefinition } from "./define-grid";
+import { dedupePermissionUsers, hasPermissionUsers, redactPermissionUsers, userFromContext } from "./permission-users";
 
 /** One entry of `registry.list(ctx)`. */
 export interface GridListing {
@@ -148,7 +149,7 @@ export function createGridRegistry<Ctx = undefined>(
           { currentVersion: prev.schemaVersion },
         );
       }
-      const next: GridSchema = { ...candidate, schemaVersion: prev.schemaVersion + 1 };
+      const next: GridSchema = dedupePermissionUsers({ ...candidate, schemaVersion: prev.schemaVersion + 1 });
       assertValidSchema(next, def.registry ?? defaultRegistry, def.validation);
       await def.onSchemaChange?.(ctx, prev, next);
       await store.put(def.id, next);
@@ -215,12 +216,24 @@ export function createGridRegistry<Ctx = undefined>(
     return { ok: true, data: { ...caps, schema: { read, ...write } } };
   }
 
+  /**
+   * v0.4: the schema as `ctx` may see it. Callers without schema-write
+   * permission get per-person `users` lists reduced to themselves (see
+   * `redactPermissionUsers`); the stored schema is never touched.
+   */
+  async function schemaFor(def: GridDefinition<Ctx>, schema: GridSchema, ctx: Ctx, req: RequestGates): Promise<GridSchema> {
+    if (def.redactPermissionUsers === false || !hasPermissionUsers(schema)) return schema;
+    if ((await req.permit("updateSchema")) && (await req.schemaWritable())) return schema;
+    const user = def.user ? await def.user(ctx) : userFromContext(ctx);
+    return redactPermissionUsers(schema, user);
+  }
+
   async function run(def: GridDefinition<Ctx>, op: GridOperation, input: unknown, ctx: Ctx, req: RequestGates): Promise<WireResult> {
     if (op === "getSchema") {
       parse("getSchema", input);
-      return { ok: true, data: await currentSchema(def, ctx, req) };
+      return { ok: true, data: await schemaFor(def, await currentSchema(def, ctx, req), ctx, req) };
     }
-    if (op === "updateSchema") return { ok: true, data: await updateSchema(def, input, ctx, req) };
+    if (op === "updateSchema") return { ok: true, data: await schemaFor(def, await updateSchema(def, input, ctx, req), ctx, req) };
     const schema = await currentSchema(def, ctx, req);
     const ds = await def.source(ctx, { gridId: def.id, schema });
     const result = await createDataSourceHandler(ds, options)(op, input);

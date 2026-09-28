@@ -14,7 +14,7 @@ import { deriveWorkbenchFeatures, isReadOnly } from "./capabilities";
 import { classifyError, tapDataSource } from "./errors";
 import { collectRows } from "./exportRows";
 import { addOptions, insertColumn, removeColumn, rolesOf, upsertColumn } from "./schemaOps";
-import { ALL_ROWS_VIEW, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
+import { ALL_ROWS_VIEW, comparableView, createLocalStorageViewStore, createMemoryViewStore } from "./viewStore";
 
 /** The grid's effective matrix for the fixture schema under `over` (real core capability objects). */
 const effective = (over: Partial<DataSourceCapabilities> = {}, schema: GridSchema = createFixtureSchema()) =>
@@ -36,7 +36,21 @@ describe("deriveWorkbenchFeatures", () => {
       addColumn: true,
       undo: true,
       polling: true,
+      // v0.4: DEFAULT_CAPABILITIES has no color storage; rules still render client-side.
+      paint: false,
+      colorRules: true,
     });
+  });
+
+  it("v0.4: paint needs cellColors read + write; color rules only need loaded capabilities", () => {
+    expect(derive({ cellColors: { read: true, write: true, filter: true } }).paint).toBe(true);
+    expect(derive({ cellColors: { read: true, write: false, filter: true } }).paint).toBe(false);
+    expect(derive({ cellColors: { read: false, write: true, filter: false } }).paint).toBe(false);
+    expect(derive({ cellColors: { read: true, write: true, filter: true } }, { features: { paint: false, colorRules: false } })).toMatchObject({
+      paint: false,
+      colorRules: false,
+    });
+    expect(deriveWorkbenchFeatures({ capabilities: null, canChangeSchema: true })).toMatchObject({ paint: false, colorRules: false });
   });
 
   it("derives each feature from the effective matrix", () => {
@@ -149,6 +163,17 @@ describe("tapDataSource", () => {
     await expect(tapped.applyChanges({ changes: [] } as never)).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "permission-denied", op: "applyChanges" }));
   });
+
+  it("v0.4: passes setCellColors through (the grid only paints when the source has it) and reports its failures", async () => {
+    const onError = vi.fn();
+    const setCellColors = vi.fn().mockRejectedValue(Object.assign(new Error("down"), { status: 503 }));
+    const src = { fetch: vi.fn(), applyChanges: vi.fn(), createRows: vi.fn(), deleteRows: vi.fn(), setCellColors } as unknown as DataSource;
+    const tapped = tapDataSource(src, { onError, onReadOk: vi.fn() });
+    expect(typeof tapped.setCellColors).toBe("function");
+    await expect(tapped.setCellColors?.({ id: "b", changes: [] })).rejects.toThrow("down");
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "network", op: "setCellColors", message: "Couldn't reach the server to color cells." }));
+    expect(tapDataSource({ ...src, setCellColors: undefined } as unknown as DataSource, { onError, onReadOk: vi.fn() }).setCellColors).toBeUndefined();
+  });
 });
 
 describe("collectRows", () => {
@@ -188,5 +213,17 @@ describe("schema ops", () => {
       columns: [{ ...col("a", 0), permissions: { read: "all", edit: { roles: ["admin", "counsellor"] } } }],
     };
     expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["admin", "counsellor", "viewer"]);
+  });
+  it("skips users-only rules (v0.4 per-person permissions)", () => {
+    const s: GridSchema = { ...schema, columns: [{ ...col("a", 0), permissions: { read: { users: ["u9"] }, edit: {} } }] };
+    expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["viewer"]);
+  });
+});
+
+describe("comparableView (v0.4)", () => {
+  it("color rules count as a view change; absent equals empty", () => {
+    const rule = { id: "r1", color: "red" as const, target: { kind: "row" as const }, when: null };
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [rule] })).not.toBe(comparableView(ALL_ROWS_VIEW));
+    expect(comparableView({ ...ALL_ROWS_VIEW, colorRules: [] })).toBe(comparableView(ALL_ROWS_VIEW));
   });
 });

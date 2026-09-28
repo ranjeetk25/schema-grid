@@ -1,7 +1,20 @@
-import { resolveAccess } from "../access/query-access";
+import { type SQL, sql } from "drizzle-orm";
+import { type AccessMap, resolveAccess } from "../access/query-access";
 import { type AfterCommitHook, type CommitOutcome, runAfterCommit } from "../changes/after-commit";
-import { applyChanges } from "../changes/apply-changes";
-import type { GridDb } from "../changes/db";
+import { applyChanges, loadRowsForUpdate } from "../changes/apply-changes";
+import { insertChangeLog } from "../changes/change-log";
+import type { GridDb, WriteDeps } from "../changes/db";
+import type { CellColorStore } from "../colors/color-store";
+import { colorQueryScope } from "../colors/query-rules";
+import { withCellColors } from "../colors/rows";
+import {
+  assertCellColorBatch,
+  cellColorRowIds,
+  deleteCellColors,
+  planCellColors,
+  writeCellColors,
+} from "../colors/set-cell-colors";
+import { ident } from "../sql/column-expr";
 import { readRowsById } from "../changes/read-rows";
 import { createRows, deleteRows } from "../changes/rows-crud";
 import { type ServerContext, type ServerWarning, createServerContext } from "../context";
@@ -11,6 +24,8 @@ import { evaluateFormulaCells } from "../formula/evaluate-rows";
 import { formulaTranslatability, planFormulaColumns } from "../formula/formula-plan";
 import { buildGroupQuery, executeGroupQuery } from "../grouping/translate-grouping";
 import {
+  type CellColorBatch,
+  type CellColorResult,
   DEFAULT_CAPABILITIES,
   type DataSource,
   type DataSourceCapabilities,
@@ -81,6 +96,14 @@ export interface DrizzleDataSourceOptions {
    * "AFTER_COMMIT_FAILED", op, error })` (or `console.error` without a sink).
    */
   afterCommit?: AfterCommitHook<ServerContext>;
+  /**
+   * v0.4: manual cell colors (`createCellColorStore`, same database). Rows
+   * carry `colors` (unreadable columns dropped), `setCellColors` is available,
+   * color writes reach the change feed (change_log kind `color`) and deleted
+   * rows lose their colors. Without it only rule colors exist (`colorIs` still
+   * filters on them).
+   */
+  colors?: CellColorStore;
 }
 
 /**
@@ -144,17 +167,34 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     ...(options.storageOverrides ? { storageOverrides: options.storageOverrides } : {}),
   };
   const gridScope: GridSqlScope = { ...baseScope, gridId: options.gridId };
+  const colorStore = options.colors;
+  // v0.4: the row's manual colors document, as a keyed lookup correlated with the outer rows table
+  // (a JOIN would make the unqualified `updated_at` / `updated_by` of the projection ambiguous).
+  const colorsDoc: SQL | undefined = colorStore
+    ? sql`(select ${ident("sg_colors")}.${ident("colors")} from ${ident(colorStore.tableName)} as ${ident("sg_colors")} where ${ident("sg_colors")}.${ident("grid_id")} = ${options.gridId} and ${ident("sg_colors")}.${ident("row_id")} = CONVERT(${ident(tables.rowsTableName)}.${ident("id")} USING utf8mb4) COLLATE utf8mb4_bin)`
+    : undefined;
+  const baseRowSource = gridRowsSource(gridScope);
   const rowSource = {
-    ...gridRowsSource(gridScope),
-    hydrate: (dbRow: Record<string, unknown>) => hydrateRow(dbRow as unknown as DbRow, ctx.schema, ctx.registry, hydrateOptions),
+    ...baseRowSource,
+    ...(colorsDoc ? { projection: (acc: AccessMap) => ({ ...baseRowSource.projection(acc), sg_colors: colorsDoc }) } : {}),
+    hydrate: (dbRow: Record<string, unknown>) => {
+      const row = hydrateRow(dbRow as unknown as DbRow, ctx.schema, ctx.registry, hydrateOptions);
+      return colorsDoc ? withCellColors(row, dbRow.sg_colors) : row;
+    },
     ...(hasMap ? { mapRows } : {}),
   };
-  const scope: GridSqlScope = { ...gridScope, rowSource, formulaPlans: planFormulaColumns(baseScope) };
+  const scope: GridSqlScope = {
+    ...gridScope,
+    rowSource,
+    formulaPlans: planFormulaColumns(baseScope),
+    ...(colorsDoc ? { colors: { manual: colorsDoc } } : {}),
+  };
   const deps = { db: options.db, tables, gridId: options.gridId };
   /** `MISSING_TABLE` (naming the DDL helper) instead of a raw driver error when the grid tables were never created. */
   const known: Record<string, TableDdlHelper> = {
     [tables.rowsTableName]: "createRowsTableDDL",
     [tables.changeLogTableName]: "createChangeLogTableDDL",
+    ...(colorStore ? { [colorStore.tableName]: "createCellColorsTableDDL" as const } : {}),
   };
   const guarded = <T>(fn: () => Promise<T>): Promise<T> => guardMissingTable(known, fn);
   const caps: DataSourceCapabilities = {
@@ -162,9 +202,11 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     lookup: Boolean(options.linkLookup),
     ...(defaultSort.length > 0 ? { defaultSort: defaultSort.map((s) => ({ ...s })) } : {}),
   };
+  // Rule colors filter without a store; manual colors need one (and cell writes for painting).
+  caps.cellColors = { read: Boolean(colorStore), write: Boolean(colorStore) && caps.write.cells, filter: true };
 
-  /** `mapRows` + hydrate options shared by every rows-by-id read (change feed, `ChangeResult.rows`, `getRows`). */
-  const readOptions = { ...(hasMap ? { mapRows } : {}), ...hydrateOptions };
+  /** `mapRows` + hydrate options + colors shared by every rows-by-id read (change feed, `ChangeResult.rows`, `getRows`). */
+  const readOptions = { ...(hasMap ? { mapRows } : {}), ...hydrateOptions, ...(colorStore ? { colors: colorStore } : {}) };
   /** v0.3.1: `afterCommit`, strictly after the transaction resolved; failures only warn. */
   const afterCommit = (outcome: CommitOutcome) => runAfterCommit(options.afterCommit, ctx, outcome, options.onWarning);
 
@@ -180,10 +222,11 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     fetch: (input) =>
       guarded(async () => {
         const query = withDefaultSort(input);
+        const qScope = colorQueryScope(query, scope, access);
         if (query.groupBy && query.groupBy.length > 0) {
-          return executeGroupQuery(buildGroupQuery(query, scope, options.db, access), scope);
+          return executeGroupQuery(buildGroupQuery(query, qScope, options.db, access), qScope);
         }
-        return runRowQuery(query, scope, options.db, access);
+        return runRowQuery(query, qScope, options.db, access);
       }),
     applyChanges: async (batch) => {
       const result = await guarded(() => applyChanges(batch, ctx, deps, readOptions));
@@ -212,7 +255,12 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
     },
     deleteRows: async (ids) => {
       if (new Set(ids).size === 0) return;
-      const deletedIds = await guarded(() => deleteRows(ids, ctx, deps, options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {}));
+      const deletedIds = await guarded(() =>
+        deleteRows(ids, ctx, deps, {
+          ...(options.canDeleteRows ? { canDeleteRows: options.canDeleteRows } : {}),
+          ...(colorStore ? { onDeleted: (tx: GridDb, liveIds: string[]) => deleteCellColors(tx, colorStore, options.gridId, liveIds) } : {}),
+        }),
+      );
       await afterCommit({ kind: "deleteRows", deletedIds });
     },
     getChanges: (since) => guarded(() => getChanges(since, ctx, deps, readOptions)),
@@ -231,6 +279,34 @@ export function createDrizzleDataSource(options: DrizzleDataSourceOptions): Data
       const column = readableColumn(columnId);
       if (access.get(column.id) !== "edit") throw new PermissionError([columnId], "edit");
       return onCreate(columnId, label);
+    };
+  }
+  if (colorStore && caps.cellColors?.write) {
+    /**
+     * v0.4 manual colors: in ONE transaction, lock the batch's rows like `applyChanges`
+     * (row-aware permissions), upsert each row's colors document, log one change_log
+     * entry (kind `color`) per written cell so the change feed picks the rows up, and
+     * re-read the written rows. Rows' `version` / `updatedAt` are untouched.
+     */
+    ds.setCellColors = async (batch: CellColorBatch) => {
+      assertCellColorBatch(batch);
+      return guarded(() =>
+        options.db.transaction(async (tx): Promise<CellColorResult> => {
+          const txDeps: WriteDeps = { ...deps, db: tx as unknown as GridDb };
+          const locked = await loadRowsForUpdate(txDeps.db, txDeps, cellColorRowIds(batch), ctx);
+          const live = new Map([...locked].filter(([, row]) => !row.deletedAt));
+          const plan = planCellColors(batch, live, ctx, access);
+          if (plan.writes.size === 0) return { applied: plan.applied, rejected: plan.rejected, rows: [] };
+          const now = ctx.now();
+          await writeCellColors(txDeps.db, colorStore, options.gridId, plan.writes, ctx.user.id, now);
+          const log = [...plan.writes].flatMap(([rowId, cells]) =>
+            [...cells].map(([columnId, color]) => ({ rowId, columnId, kind: "color" as const, prev: null, next: color })),
+          );
+          await insertChangeLog(txDeps.db, tables, { gridId: options.gridId, actor: ctx.user.id, at: now, batchId: batch.id }, log);
+          const rows = await readRowsById(txDeps.db, txDeps, ctx, [...plan.writes.keys()], readOptions);
+          return { applied: plan.applied, rejected: plan.rejected, rows };
+        }),
+      );
     };
   }
   if (options.linkLookup) {

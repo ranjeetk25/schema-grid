@@ -6,6 +6,7 @@
  */
 import type { PostSortRowsParams } from "ag-grid-community";
 import {
+  type ColorRule,
   type ColumnDef,
   type FieldTypeRegistry,
   type FilterValidationError,
@@ -30,6 +31,8 @@ export interface DeriveClientRowsContext {
   now?: Date;
   /** Override cell reads (e.g. computed formula values). */
   getCellValue?(row: GridRow, column: ColumnDef): unknown;
+  /** v0.4: the active view's color rules (`colorIs` / `colorIsNone` match the SHOWN color). */
+  colorRules?: readonly ColorRule[];
 }
 
 export interface DeriveClientRowsResult<Row extends GridRow> {
@@ -68,6 +71,7 @@ export function deriveClientRows<Row extends GridRow>(
     ...(ctx.now ? { now: ctx.now } : {}),
     ...(ctx.tz ? { tz: ctx.tz } : {}),
     ...(ctx.getCellValue ? { getCellValue: ctx.getCellValue } : {}),
+    ...(ctx.colorRules ? { colorRules: ctx.colorRules } : {}),
   };
 
   let out: Row[] = filter ? rows.filter((r) => matchesFilter(r, filter, matchCtx)) : [...rows];
@@ -102,11 +106,12 @@ export function makePostSortRows<Row extends GridRow>(
   };
 }
 
-/** Build a GridQuery from query state. `groupBy` is included only when non-empty. */
+/** Build a GridQuery from query state. `groupBy` / `colorRules` are included only when non-empty. */
 export function toGridQuery(state: QueryState, page: PageRequest, opts?: { includeTotal?: boolean }): GridQuery {
   const query: GridQuery = { filter: state.filter, sort: state.sort, page };
   if (state.search !== undefined && state.search !== "") query.search = state.search;
   if (state.groupBy.length > 0) query.groupBy = state.groupBy;
+  if (state.colorRules && state.colorRules.length > 0) query.colorRules = state.colorRules;
   if (opts?.includeTotal !== undefined) query.includeTotal = opts.includeTotal;
   return query;
 }

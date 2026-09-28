@@ -99,7 +99,8 @@ export type TableDdlHelper =
   | "createRowsTableDDL"
   | "createChangeLogTableDDL"
   | "createGridSchemasTableDDL"
-  | "createExtensionCellsTableDDL";
+  | "createExtensionCellsTableDDL"
+  | "createCellColorsTableDDL";
 
 /**
  * A table this package needs does not exist (MySQL `ER_NO_SUCH_TABLE`, errno

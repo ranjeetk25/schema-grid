@@ -1,3 +1,4 @@
+import type { CellColorBatch, CellColorResult } from "../colors/types";
 import type { LinkRef, Option } from "../common/types";
 import type { DataSourceCapabilities } from "../datasource/capabilities";
 import type { RowPartial } from "../datasource/types";
@@ -21,6 +22,7 @@ export const GRID_OPERATIONS = [
   "createOption",
   "lookup",
   "getRows",
+  "setCellColors",
   "capabilities",
   "getSchema",
   "updateSchema",
@@ -33,7 +35,14 @@ export type GridOperation = (typeof GRID_OPERATIONS)[number];
  * `capabilities` is optional on a `DataSource` too, but the handler answers
  * it with `inferCapabilities` instead.
  */
-export const OPTIONAL_GRID_OPERATIONS = ["getChanges", "getOptions", "createOption", "lookup", "getRows"] as const;
+export const OPTIONAL_GRID_OPERATIONS = [
+  "getChanges",
+  "getOptions",
+  "createOption",
+  "lookup",
+  "getRows",
+  "setCellColors",
+] as const;
 
 export type OptionalGridOperation = (typeof OPTIONAL_GRID_OPERATIONS)[number];
 
@@ -72,6 +81,8 @@ export interface GridWireContract {
   lookup: { input: { columnId: string; search: string }; output: LinkRef[] };
   /** v0.3.1: rows by id (projected, formulas evaluated); unknown ids are skipped. */
   getRows: { input: { ids: string[] }; output: GridRow[] };
+  /** v0.4: write manual cell colors (`color: null` clears); last write wins, no version bump. */
+  setCellColors: { input: CellColorBatch; output: CellColorResult };
   capabilities: { input: null; output: DataSourceCapabilities };
   /** Grid-level: the grid's current schema. Input `null`. */
   getSchema: { input: null; output: GridSchema };
