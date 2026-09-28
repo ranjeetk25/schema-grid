@@ -26,9 +26,9 @@ export function MultiSelectEditor(props: UiEditorProps<string[], MultiSelectEdit
   return props.autoFocus === false ? <MultiSelectField {...props} /> : <MultiSelectPicker {...props} />;
 }
 
-function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user }: UiEditorProps<string[], MultiSelectEditorConfig>) {
+function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config, dataSource, user, capabilities }: UiEditorProps<string[], MultiSelectEditorConfig>) {
   useEditorStyles();
-  const allOptions = useSelectOptions(config, column.id, dataSource);
+  const allOptions = useSelectOptions(config, column.id, dataSource, capabilities);
   // Options the user may set, plus the ones already held (locked) — `Option.settableBy` (v0.3).
   const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
   const options = pickable.map((p) => p.option);
@@ -127,8 +127,8 @@ function MultiSelectPicker({ value, onChange, onCommit, onCancel, column, config
 }
 
 /** Form / filter mode: a Mantine MultiSelect (dropdown kept inside the component). */
-function MultiSelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user }: UiEditorProps<string[], MultiSelectEditorConfig>) {
-  const allOptions = useSelectOptions(config, column.id, dataSource);
+function MultiSelectField({ value, onChange, onCommit, onCancel, column, config, dataSource, error, user, capabilities }: UiEditorProps<string[], MultiSelectEditorConfig>) {
+  const allOptions = useSelectOptions(config, column.id, dataSource, capabilities);
   const pickable = useMemo(() => pickableOptions(allOptions, user, value), [allOptions, user, value]);
   const options = pickable.map((p) => p.option);
   const [selected, setSelected] = useState<string[]>(value ?? []);

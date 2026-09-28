@@ -665,6 +665,7 @@ export function SchemaGridWorkbench(props: SchemaGridWorkbenchProps) {
             onSave={(c) => void wb.panel.save(c)}
             onDelete={(id) => void wb.panel.remove(id)}
             dataSource={wb.dataSource}
+            capabilities={wb.effectiveCapabilities}
             size={PANEL_WIDTH}
             />
           </Suspense>

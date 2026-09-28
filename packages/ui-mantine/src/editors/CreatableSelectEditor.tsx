@@ -15,16 +15,21 @@ export const CREATE_OPTION_VALUE = "\u0000$create";
 
 export type CreatableSelectEditorProps = UiEditorProps<string, unknown>;
 
+/** v0.4.1: shown instead of the "Create" entry when the source doesn't serve options. */
+export const CREATE_OPTION_UNAVAILABLE_MESSAGE = "Creating options isn't set up for this grid";
+
 const errorMessage = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : typeof err === "string" && err ? err : "Could not create option";
 
 /**
  * Searchable single select that can create new options through
- * `dataSource.createOption`. The dropdown stays inside the editor
+ * `dataSource.createOption`. v0.4.1: gated on `capabilities.options` — when
+ * false, a new label shows "Creating options isn't set up for this grid"
+ * instead of the "Create" entry, and nothing is called. The dropdown stays inside the editor
  * (`withinPortal={false}`) so AG Grid never sees an outside click.
  */
 export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
-  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, user } = props;
+  const { value, onChange, onCommit, onCancel, column, config, dataSource, autoFocus, error, user, capabilities } = props;
   useEditorStyles();
   // Latest props for async continuations (avoids stale closures after await).
   const latest = useRef(props);
@@ -65,8 +70,10 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   const isSearching = query !== "" && query !== valueLabel;
   const filtered = isSearching ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())) : options;
   const exactMatch = options.some((o) => o.label.toLowerCase() === query.toLowerCase());
-  const canCreate = typeof dataSource?.createOption === "function";
+  const createBlocked = capabilities?.options === false;
+  const canCreate = !createBlocked && typeof dataSource?.createOption === "function";
   const showCreate = canCreate && query !== "" && !exactMatch;
+  const showCreateBlocked = createBlocked && typeof dataSource?.createOption === "function" && query !== "" && !exactMatch;
 
   useEffect(() => {
     if (gridMode) inputRef.current?.focus();
@@ -88,7 +95,7 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
   };
 
   const create = async (label: string) => {
-    const createOption = dataSource?.createOption;
+    const createOption = latest.current.capabilities?.options === false ? undefined : dataSource?.createOption;
     if (!createOption || creatingRef.current) return;
     creatingRef.current = true;
     setCreating(true);
@@ -219,7 +226,10 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
           <PickerDivider />
           <Combobox.Options className="sg-ed-list">
             {optionNodes}
-            {filtered.length === 0 && !showCreate && <PickerEmpty>{query ? "No matches" : "No options yet — type to create one"}</PickerEmpty>}
+            {filtered.length === 0 && !showCreate && !showCreateBlocked && (
+              <PickerEmpty>{query ? "No matches" : "No options yet — type to create one"}</PickerEmpty>
+            )}
+            {showCreateBlocked && <PickerEmpty>{CREATE_OPTION_UNAVAILABLE_MESSAGE}</PickerEmpty>}
           </Combobox.Options>
         </div>
       </Combobox>
@@ -243,7 +253,8 @@ export function CreatableSelectEditor(props: CreatableSelectEditorProps) {
       <Combobox.Dropdown>
         <Combobox.Options mah={240} style={{ overflowY: "auto" }}>
           {optionNodes}
-          {filtered.length === 0 && !showCreate && <Combobox.Empty>Nothing found</Combobox.Empty>}
+          {filtered.length === 0 && !showCreate && !showCreateBlocked && <Combobox.Empty>Nothing found</Combobox.Empty>}
+          {showCreateBlocked && <Combobox.Empty>{CREATE_OPTION_UNAVAILABLE_MESSAGE}</Combobox.Empty>}
         </Combobox.Options>
       </Combobox.Dropdown>
     </Combobox>

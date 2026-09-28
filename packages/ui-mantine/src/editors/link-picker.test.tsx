@@ -98,7 +98,7 @@ describe("LinkPickerEditor", () => {
 
   it("without lookup it shows the notice, is read-only and does not throw", () => {
     const { props } = setup({ dataSource: { ...buildStubDataSource(), lookup: undefined }, value: LEAD_1 });
-    expect(screen.getByText("Lookup not configured")).toBeInTheDocument();
+    expect(screen.getByText("Linking isn't set up for this grid")).toBeInTheDocument();
     expect(screen.getByText("Lead #1")).toBeInTheDocument();
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
     expect(props.onChange).not.toHaveBeenCalled();
@@ -106,6 +106,6 @@ describe("LinkPickerEditor", () => {
 
   it("without a data source at all it shows the notice", () => {
     setup({ dataSource: undefined });
-    expect(screen.getByText("Lookup not configured")).toBeInTheDocument();
+    expect(screen.getByText("Linking isn't set up for this grid")).toBeInTheDocument();
   });
 });
