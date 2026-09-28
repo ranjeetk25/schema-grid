@@ -53,7 +53,7 @@ export function rolesOf(schema: GridSchema, user: PermissionUser): string[] {
   const roles = new Set(user.roles);
   for (const c of schema.columns) {
     for (const rule of [c.permissions?.read, c.permissions?.edit]) {
-      if (rule && rule !== "all") for (const r of rule.roles) roles.add(r);
+      if (rule && rule !== "all") for (const r of rule.roles ?? []) roles.add(r);
     }
   }
   return [...roles].sort();

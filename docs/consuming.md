@@ -281,7 +281,7 @@ workbench's built-in handlers rather than replacing them:
 - **Columns picker.** The toolbar's "Columns" button shows/hides and reorders columns; the result is the current
   view's `columnState`, so "Save view" persists it and switching views undoes it. Columns the user cannot read are
   never listed.
-- **Per-option rules.** `Option.settableBy: "all" | { roles }` restricts who may SET a select option (existing
+- **Per-option rules.** `Option.settableBy: "all" | { roles?, users? }` restricts who may SET a select option (existing
   values stay readable). Editors hide such options, paste/fill count them as errors, and both the in-memory source
   and the server reject them with `Option “Verified” can only be set by Admin`. Set it from the column panel's
   Options editor ("Who can set") or in the schema.
@@ -296,6 +296,47 @@ workbench's built-in handlers rather than replacing them:
   (string or function) overrides it. Export failures reach `onError` and an inline banner with Retry.
 - **Bundle.** io, the Import wizard and the Export dialog load on first use; exceljs sits in its own chunk
   (`docs/bundle.md`).
+
+### Per-person permissions (v0.4)
+
+Column permissions (`permissions.read` / `permissions.edit`) and `Option.settableBy` take a `RoleRule`:
+`"all" | { roles?: string[]; users?: string[] }`. A user matches when any of their roles is in `roles` **or** their
+`PermissionUser.id` is in `users`; `superRoles` still bypass; `{}` (or empty lists) means nobody.
+
+```ts
+// Finance can edit the fee, and so can Priya (an exception, by user id).
+{ key: "fee", permissions: { read: "all", edit: { roles: ["finance_team"], users: ["u_priya"] } } }
+```
+
+> **Per-person lists are for exceptions; use host roles for teams.** Ids stay in the schema when people leave or
+> change teams (they show as "unknown user" in the column panel until someone removes them); a role in your auth
+> system is revoked in one place.
+
+- **Identity is the server's.** Rules match the `PermissionUser.id` your `defineGrid({ source: ctx => … })` builds
+  from the authenticated session, never anything the client sends. Enforcement (`applyChanges`, `createRows`, the
+  SQL-view write path, option rules) is the same shared matcher (`matchesRoleRule`) as for roles.
+- **Redaction.** `getSchema` sent to a caller **without** schema-write permission (`permission(ctx, "updateSchema")`
+  and `schemaWritable`) replaces every `users` list with `[caller.id]` when the caller is listed, else `[]` — the
+  client still computes the caller's own access, and nobody else's id is disclosed. Callers who may change the
+  schema get the full lists. The caller comes from `defineGrid({ user: ctx => ctx.user })`; by default `ctx.user`
+  is used when it is a `{ id, roles }` object (no user → every list is emptied). Opt out with
+  `defineGrid({ redactPermissionUsers: false })`. `updateSchema` dedupes the lists; redaction never reaches storage.
+- **Editing the lists.** Pass a `userDirectory` to `<SchemaGridWorkbench>` (or to `ColumnPanel` / the column form)
+  and "Who can access" and option "Who can set" get a People picker beside the roles picker:
+
+  ```tsx
+  const userDirectory = {
+    // async search for the picker ("" = a first page)
+    search: (query: string) => api.get<ActorRef[]>(`/people?q=${encodeURIComponent(query)}`),
+    // names for stored ids; ids it does not return show as the raw id, marked "unknown user"
+    resolve: (ids: string[]) => api.post<ActorRef[]>("/people/lookup", { ids }),
+  };
+  <SchemaGridWorkbench client={leads} user={user} userDirectory={userDirectory} />
+  ```
+
+  Summaries read "Only Finance team and Priya, Rahul can edit" ("N people" beyond 3); giving a person edit also
+  gives them view (with a note). Without `userDirectory` the People pickers are hidden and any stored `users` are
+  kept untouched on save.
 
 ## CI / AWS CodePipeline + CodeBuild
 

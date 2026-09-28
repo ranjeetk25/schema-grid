@@ -94,6 +94,7 @@ persist column edits). Other props:
 | `events` | host grid events merged with the workbench's own (see below) |
 | `exportFileName` | a string, or `(ctx) => string` with `{ gridId, schema, view, format, date }`; default `${gridId}-${view ?? "all"}-${YYYY-MM-DD}.csv`, slugified |
 | `pollIntervalMs`, `height` (`"fill"` default: give the parent a height), `pageSize`, `roles`, `gridProps` | |
+| `userDirectory` | v0.4 `{ search(query), resolve(ids) }` → `ActorRef[]`: adds People pickers (per-person `RoleRule.users`) to "Who can access" and option "Who can set". Absent: no People pickers; stored `users` are kept |
 
 ### Host events
 

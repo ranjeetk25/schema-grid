@@ -45,8 +45,8 @@ describe("createRolePermissionResolver — matrix", () => {
           const column = makeColumn({ permissions: { read, edit } });
           const ctx: PermissionContext = { user: user(roles), column };
 
-          const canRead = read === "all" || read.roles.some((r) => roles.includes(r));
-          const canEdit = edit === "all" || edit.roles.some((r) => roles.includes(r));
+          const canRead = read === "all" || (read.roles ?? []).some((r) => roles.includes(r));
+          const canEdit = edit === "all" || (edit.roles ?? []).some((r) => roles.includes(r));
 
           const expected = !canRead ? "hidden" : canEdit ? "edit" : "read";
           expect(resolver(ctx)).toBe(expected);

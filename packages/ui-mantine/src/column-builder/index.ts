@@ -17,6 +17,8 @@ export {
   type AccessSectionProps,
   type PermissionsStepProps,
 } from "./PermissionsStep";
+export { PeoplePicker, type PeoplePickerProps } from "./PeoplePicker";
+export { type PeopleNames, type UserDirectory, UserDirectoryProvider, usePeopleNames } from "../internal/people";
 export { PreviewStep, sampleValueFor, type PreviewStepProps } from "./PreviewStep";
 export { KEY_PATTERN, slugifyKey, uniqueKey } from "./keys";
 export {

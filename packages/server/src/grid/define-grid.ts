@@ -1,5 +1,5 @@
 import type { ValidateSchemaOptions } from "../schema/validate-schema";
-import type { DataSource, FieldTypeRegistry, GridOperation, GridRow, GridSchema } from "../internal/core";
+import type { DataSource, FieldTypeRegistry, GridOperation, GridRow, GridSchema, PermissionUser } from "../internal/core";
 import type { SchemaStore } from "./schema-store";
 
 /** What `source(ctx, info)` receives besides the request context. */
@@ -40,6 +40,19 @@ export interface GridDefinitionInput<Ctx = undefined> {
   registry?: FieldTypeRegistry;
   /** Extra `assertValidSchema` options (`physicalColumns`, `isFormulaTranslatable` from `./drizzle`). */
   validation?: ValidateSchemaOptions;
+  /**
+   * v0.4: the schema sent to a caller WITHOUT schema-write permission
+   * (`permission(ctx, "updateSchema")` + `schemaWritable`) has every per-person
+   * `users` list (column permissions, option `settableBy`) reduced to
+   * `[caller.id]` when the caller is listed, else `[]`. Default: true.
+   */
+  redactPermissionUsers?: boolean;
+  /**
+   * v0.4: the caller, for `redactPermissionUsers` (use the same user the
+   * `source` builds its data source with). Default: `ctx.user` when it is a
+   * `{ id, roles }` object; no user → every redacted list is `[]`.
+   */
+  user?: (ctx: Ctx) => PermissionUser | undefined | Promise<PermissionUser | undefined>;
 }
 
 /** A grid declared with `defineGrid`; register it with `createGridRegistry`. */

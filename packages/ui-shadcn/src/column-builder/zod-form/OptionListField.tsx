@@ -11,13 +11,15 @@ import {
 } from "react";
 import type { RoleRule } from "../../internal/core-contracts";
 import { OPTION_TONES, optionToneStyle } from "../../internal/options";
+import { type PeopleNames, type UserDirectory, peopleList, usePeopleNames, useUserDirectory } from "../../internal/people";
 import { cn } from "../../lib/cn";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Tooltip } from "../../ui/tooltip";
-import { titleCaseRole } from "../permissions-model";
+import { PeoplePicker } from "../PeoplePicker";
+import { rolesIn, titleCaseRole, usersIn } from "../permissions-model";
 
 export interface OptionListItem {
   label: string;
@@ -42,6 +44,11 @@ export interface OptionListFieldProps {
    * i.e. `valueKey: "id"`). Absent → the control is not shown.
    */
   roles?: string[];
+  /**
+   * v0.4: adds a People picker to "Who can set". Default: the column form's
+   * `userDirectory` (via context). Absent → existing `users` are kept untouched.
+   */
+  userDirectory?: UserDirectory;
   error?: string;
   /** Per-row errors, e.g. `rowErrors(0, "label")`. */
   rowError?: (index: number, field: "label" | "value" | "color") => string | undefined;
@@ -57,8 +64,12 @@ interface Row {
   valueEdited: boolean;
 }
 
+const isListOrAbsent = (v: unknown) => v === undefined || Array.isArray(v);
 const isRoleRule = (v: unknown): v is RoleRule =>
-  v === "all" || (!!v && typeof v === "object" && Array.isArray((v as { roles?: unknown }).roles));
+  v === "all" ||
+  (!!v && typeof v === "object" && isListOrAbsent((v as { roles?: unknown }).roles) && isListOrAbsent((v as { users?: unknown }).users));
+
+const settableUsers = (options: OptionListItem[]): string[] => options.flatMap((o) => (o.settableBy ? usersIn(o.settableBy) : []));
 
 /** "In Progress!" → "in_progress": lowercase, non-alphanumerics → "_", trimmed underscores. */
 export function slugifyOptionValue(label: string): string {
@@ -85,25 +96,48 @@ const list = (roles: string[]) => {
   return labels.length <= 1 ? labels.join("") : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 };
 
-/** "Everyone" / "Only Admin and Finance team" / "Nobody yet". */
-export function settableBySummary(rule: RoleRule | undefined): string {
+/**
+ * "Everyone" / "Only Admin and Finance Team" / "Only Admin and Priya" (v0.4
+ * people, named via `names`; "N people" beyond 3) / "Nobody yet".
+ */
+export function settableBySummary(rule: RoleRule | undefined, names?: PeopleNames): string {
   if (rule === undefined || rule === "all") return "Everyone";
-  return rule.roles.length === 0 ? "Nobody yet" : `Only ${list(rule.roles)}`;
+  const roles = rolesIn(rule);
+  const people = peopleList(usersIn(rule), names);
+  if (roles.length === 0 && !people) return "Nobody yet";
+  if (!people) return `Only ${list(roles)}`;
+  return roles.length === 0 ? `Only ${people}` : `Only ${roles.map(titleCaseRole).join(", ")} and ${people}`;
 }
 
 /**
  * Per-option "Who can set" (v0.3): a subtle pill that opens a small popover
  * with the same "Everyone | Only roles…" control as the column's access
- * section. Absent `settableBy` = everyone (never written as `"all"` unless it
- * already was).
+ * section (plus a People picker with a `userDirectory`, v0.4). Absent
+ * `settableBy` = everyone (never written as `"all"` unless it already was).
  */
-function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: RoleRule | undefined; roles: string[]; onChange(rule: RoleRule | undefined): void }) {
+function WhoCanSet({
+  label,
+  rule,
+  roles,
+  directory,
+  names,
+  onChange,
+}: {
+  label: string;
+  rule: RoleRule | undefined;
+  roles: string[];
+  directory: UserDirectory | undefined;
+  names: PeopleNames;
+  onChange(rule: RoleRule | undefined): void;
+}) {
   const [open, setOpen] = useState(false);
   const labelId = useId();
   const restricted = rule !== undefined && rule !== "all";
-  const selected = restricted ? rule.roles : [];
+  const selected = restricted ? rolesIn(rule) : [];
+  const users = restricted ? usersIn(rule) : [];
+  const current: Exclude<RoleRule, "all"> = restricted ? rule : {};
   const offered = [...roles, ...selected.filter((r) => !roles.includes(r))];
-  const summary = settableBySummary(rule);
+  const summary = settableBySummary(rule, names);
   const who = label || "this option";
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -132,11 +166,11 @@ function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: Role
               value={restricted ? "roles" : "all"}
               onValueChange={(v) => {
                 if (v === "all") onChange(rule === "all" ? "all" : undefined);
-                else if (v === "roles") onChange({ roles: selected });
+                else if (v === "roles") onChange(restricted ? rule : { roles: [] });
               }}
             >
               <ToggleGroupItem value="all">Everyone</ToggleGroupItem>
-              <ToggleGroupItem value="roles">Only roles…</ToggleGroupItem>
+              <ToggleGroupItem value="roles">{directory ? "Only some…" : "Only roles…"}</ToggleGroupItem>
             </ToggleGroup>
           </div>
           {restricted ? (
@@ -150,7 +184,7 @@ function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: Role
                         key={role}
                         type="button"
                         aria-pressed={on}
-                        onClick={() => onChange({ roles: on ? selected.filter((r) => r !== role) : [...selected, role] })}
+                        onClick={() => onChange({ ...current, roles: on ? selected.filter((r) => r !== role) : [...selected, role] })}
                         className={cn(
                           "sg:inline-flex sg:h-6 sg:items-center sg:gap-1 sg:rounded-full sg:border sg:px-2.5 sg:text-xs sg:font-medium sg:outline-none",
                           "sg:transition-colors sg:duration-150 sg:focus-visible:ring-[3px] sg:focus-visible:ring-ring",
@@ -168,9 +202,20 @@ function WhoCanSet({ label, rule, roles, onChange }: { label: string; rule: Role
               ) : (
                 <p className="sg:text-xs sg:text-muted-foreground">This grid has no roles to choose from.</p>
               )}
-              {selected.length === 0 ? (
+              {directory ? (
+                <PeoplePicker
+                  label={`People that can set ${who}`}
+                  value={users}
+                  onChange={(next) => onChange({ ...current, users: next })}
+                  directory={directory}
+                  names={names}
+                />
+              ) : users.length ? (
+                <p className="sg:text-xs sg:text-muted-foreground">{`Plus ${users.length} specific ${users.length === 1 ? "person" : "people"}`}</p>
+              ) : null}
+              {selected.length === 0 && users.length === 0 ? (
                 <p role="alert" className="sg:text-xs sg:text-danger">
-                  Pick at least one role
+                  {directory ? "Pick at least one role or person" : "Pick at least one role"}
                 </p>
               ) : null}
             </div>
@@ -279,8 +324,12 @@ export function OptionListField({
   error,
   rowError,
   roles,
+  userDirectory: directoryProp,
 }: OptionListFieldProps) {
+  const contextDirectory = useUserDirectory();
+  const userDirectory = directoryProp ?? contextDirectory;
   const showSettableBy = valueKey === "id" && roles !== undefined;
+  const names = usePeopleNames(showSettableBy ? userDirectory : undefined, settableUsers(readOptions(value, valueKey)));
   const headingId = useId();
   const nextId = useRef(0);
   const toRows = (options: OptionListItem[]): Row[] =>
@@ -462,7 +511,14 @@ export function OptionListField({
                   onChange={(e) => update(index, { value: e.currentTarget.value, valueEdited: true })}
                 />
                 {showSettableBy ? (
-                  <WhoCanSet label={row.label} rule={row.settableBy} roles={roles ?? []} onChange={(settableBy) => update(index, { settableBy })} />
+                  <WhoCanSet
+                    label={row.label}
+                    rule={row.settableBy}
+                    roles={roles ?? []}
+                    directory={userDirectory}
+                    names={names}
+                    onChange={(settableBy) => update(index, { settableBy })}
+                  />
                 ) : null}
                 <div className="sg:flex sg:shrink-0 sg:items-center">
                   <Tooltip content="Move up" shortcut="Alt ↑">

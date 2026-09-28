@@ -245,6 +245,14 @@ describe("Option.settableBy in the pickers (v0.3)", () => {
     expect(paid).toHaveAttribute("title", "Only Admin can set this");
   });
 
+  it("v0.4 per-person settableBy: a listed user may set it; others see “specific people”, never ids", () => {
+    const people: SelectEditorConfig = { options: [{ id: "waived", label: "Waived", settableBy: { roles: ["admin"], users: ["u2"] } }] };
+    const { getByRole, rerender } = renderWithMantine(<SelectEditor {...base} config={people} value={null} user={counsellor} />);
+    expect(getByRole("option", { name: "Waived" })).not.toHaveAttribute("aria-disabled");
+    rerender(<SelectEditor {...base} config={people} value="waived" user={{ id: "u3", roles: [] }} />);
+    expect(getByRole("option", { name: "Waived" })).toHaveAttribute("title", "Only Admin or specific people can set this");
+  });
+
   it("an admin sees the admin-only option; without a user every option is offered", () => {
     const { getByRole, queryByRole, unmount } = renderWithMantine(<SelectEditor {...base} value={null} user={{ id: "u1", roles: ["admin"] }} />);
     expect(getByRole("option", { name: "Paid" })).not.toHaveAttribute("aria-disabled");

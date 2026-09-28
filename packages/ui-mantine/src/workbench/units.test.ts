@@ -189,4 +189,8 @@ describe("schema ops", () => {
     };
     expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["admin", "counsellor", "viewer"]);
   });
+  it("skips users-only rules (v0.4 per-person permissions)", () => {
+    const s: GridSchema = { ...schema, columns: [{ ...col("a", 0), permissions: { read: { users: ["u9"] }, edit: {} } }] };
+    expect(rolesOf(s, { id: "u", roles: ["viewer"] })).toEqual(["viewer"]);
+  });
 });

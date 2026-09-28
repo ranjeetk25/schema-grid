@@ -61,6 +61,7 @@ describe("public entry points", () => {
         "isFormulaError",
         "isNegativeOperator",
         "matchesFilter",
+        "matchesRoleRule",
         "mergeCapabilities",
         "migrateSchema",
         "normalizeCapabilities",
